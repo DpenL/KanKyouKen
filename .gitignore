@@ -1,0 +1,29 @@
+# Virtual environments
+venv/
+__pycache__/
+*.pyc
+
+# Local configuration
+.env
+.env.local
+settings.json
+extensions.json
+
+# Supabase local data and runtime state
+.supabase/
+.supabase-dev/
+.supabase-test/
+supabase/.temp/
+supabase/.runtime/
+
+# Test artifacts
+*.log
+*.tmp
+.coverage
+.pytest_cache/
+
+# OS / IDE files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
