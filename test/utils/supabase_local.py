@@ -1,7 +1,4 @@
-import subprocess, time, os
-import requests, time
-import time, subprocess, requests, threading
-import sys
+import subprocess, time, requests, sys, os
 
 def wait_for_service(url=None, name="service", timeout=60, process=None, ready_text=None):
     """
@@ -11,10 +8,9 @@ def wait_for_service(url=None, name="service", timeout=60, process=None, ready_t
     - ready_text: string to look for in process output
     """
     start = time.time()
-   
+
     if url:
         print(f"⏳ Confirming {name} HTTP availability at {url} ...")
-        #time.sleep(5)
         while time.time() - start < timeout:
             try:
                 r = requests.options(url)
@@ -26,16 +22,17 @@ def wait_for_service(url=None, name="service", timeout=60, process=None, ready_t
             time.sleep(2)
         raise TimeoutError(f"{name} HTTP endpoint not reachable after {timeout}s")
 
-
     if process and ready_text:
-        print(f"⏳ Waiting for {name} to report ready...")
+        print(f"⏳ Waiting for {name} log output: '{ready_text}' ...")
+        start_time = time.time()
         for line in iter(process.stdout.readline, b''):
-            text = line.decode().strip()
-            print(text)
+            text = line.decode(errors="ignore").strip()
+            if text:
+                print(text)
             if ready_text in text:
-                print(f"✅ {name} log reported ready.")
-                break
-            if time.time() - start > timeout:
+                print(f"✅ {name} reported ready.")
+                return True
+            if time.time() - start_time > timeout:
                 raise TimeoutError(f"{name} did not report ready within {timeout}s")
 
     return True
@@ -59,25 +56,32 @@ class SupabaseLocalMixin:
 
 
 class SupabaseFunctionTestMixin:
+    """
+    Integration-style test mixin for running Supabase Edge Functions locally.
+    Starts a single function via 'supabase functions serve' before tests,
+    stops it afterward.
+    """
+
     BASE_URL = "http://127.0.0.1:54321/functions/v1"
     FUNCTION_NAME = None
 
     @classmethod
     def setUpClass(cls):
         assert cls.FUNCTION_NAME, "FUNCTION_NAME must be set"
-        print(f"🚀 Starting function: {cls.FUNCTION_NAME}")
 
+        debug = os.getenv("DEBUG_FUNCS", "0") == "1"
+        stdout = sys.stdout if debug else subprocess.DEVNULL
+        stderr = sys.stderr if debug else subprocess.DEVNULL
+
+        print(f"🚀 Starting function: {cls.FUNCTION_NAME}")
         cls.proc = subprocess.Popen(
             ["supabase", "functions", "serve", cls.FUNCTION_NAME, "--env-file", ".env"],
-            stdout=sys.stdout,
-            stderr=sys.stdout,
+            stdout=stdout,
+            stderr=stderr,
         )
 
-        # Use the generic helper to wait both for log and endpoint readiness
         wait_for_service(
             name=cls.FUNCTION_NAME,
-            process=cls.proc,
-            ready_text=f"/{cls.FUNCTION_NAME}",
             url=f"{cls.BASE_URL}/{cls.FUNCTION_NAME}",
             timeout=90,
         )
@@ -85,9 +89,11 @@ class SupabaseFunctionTestMixin:
     @classmethod
     def tearDownClass(cls):
         print(f"🧹 Stopping function: {cls.FUNCTION_NAME}")
-        cls.proc.terminate()
-        try:
-            cls.proc.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            cls.proc.kill()
-
+        if hasattr(cls, "proc") and cls.proc:
+            cls.proc.terminate()
+            try:
+                cls.proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                cls.proc.kill()
+        sys.stdout.flush()
+        sys.stderr.flush()

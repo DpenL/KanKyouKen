@@ -1,6 +1,5 @@
 import test.setup_tests 
 import os
-print("[DEBUG early] JWT_SECRET=", os.getenv("JWT_SECRET"))
 
 import unittest, requests, json, os
 from test.utils.gen_jwt import generate_jwt
@@ -12,7 +11,6 @@ class TestEventCollector(SupabaseFunctionTestMixin, unittest.TestCase):
     FUNCTION_NAME = "event-collector"
 
     def test_post_valid_event(self):
-        print("[DEBUG test] JWT_SECRET=", os.getenv("JWT_SECRET"))
 
         token = generate_jwt()
         print_env_and_token_debug(token)
