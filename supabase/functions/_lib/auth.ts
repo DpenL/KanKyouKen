@@ -1,12 +1,8 @@
 import { jwtVerify } from "https://deno.land/x/jose@v4.13.1/jwt/verify.ts";
 
 export async function verifyJwt(token: string) {
-  const secret =
-    Deno.env.get("JWT_SECRET") ??
-    Deno.env.get("SB_LOCAL_JWT_SECRET") ??
-    Deno.env.get("SUPABASE_JWT_SECRET") ??
-    Deno.env.get("SUPABASE_INTERNAL_JWT_SECRET");
-  if (!secret) throw new Error("JWT secret missing");
+  const secret = Deno.env.get("JWT_SECRET");
+  if (!secret) throw new Error("JWT_SECRET missing");
   const key = new TextEncoder().encode(secret);
   const { payload } = await jwtVerify(token, key, { algorithms: ["HS256"] });
   return payload;

@@ -117,6 +117,7 @@ file_size_limit = "50MiB"
 # objects_path = "./images"
 
 [auth]
+jwt_secret = "env(JWT_SECRET)"
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
 # in emails.
@@ -328,10 +329,7 @@ deno_version = 2
 
 
 [edge_runtime.secrets]
-SUPABASE_JWT_SECRET = "env(JWT_SECRET)"
-GOTRUE_JWT_SECRET = "env(JWT_SECRET)"
 JWT_SECRET = "env(JWT_SECRET)"
-SB_LOCAL_JWT_SECRET = "env(JWT_SECRET)"
 
 [analytics]
 enabled = true

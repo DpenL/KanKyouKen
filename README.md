@@ -34,46 +34,48 @@ cd kankyouken
 # Create a Python environment
 python3 -m venv venv
 source venv/bin/activate  # or venv\Scripts\activate on Windows
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Start local Supabase stack
-supabase start
 ```
 
-Take note of the Secret key shown after startup — it will be your local JWT_SECRET.
+### Environment Setup
 
-### Environment Variables
+Supabase automatically loads your local JWT secret from `.env`, as declared in `supabase/config.toml`.
 
-Create a `.env` file at the project root:
-
-```bash
-JWT_SECRET=sb_secret_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-SUPABASE_URL=http://127.0.0.1:54321
-SUPABASE_ANON_KEY=sb_publishable_xxxxxxxxxxxxxxxxxxxx
-SUPABASE_SERVICE_ROLE_KEY=sb_secret_xxxxxxxxxxxxxxxxxxxx
-```
-
-You can also use the provided example:
+Create a `.env` file at the project root (or copy the example):
 
 ```bash
 cp .env.example .env
 ```
 
-### Running Tests
-
-To verify your local setup and test Supabase Edge Functions:
+Your `.env` must contain at least:
 
 ```bash
+JWT_SECRET=sb_secret_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+SUPABASE_ANON_KEY=sb_publishable_xxxxxxxxxxxxxxxxxxxx
+SUPABASE_SERVICE_ROLE_KEY=sb_secret_xxxxxxxxxxxxxxxxxxxx
+```
+
+> **Note for CI and teammates**  
+> When running in CI or on another machine, simply export the same `JWT_SECRET` before starting Supabase:  
+> ```bash
+> export JWT_SECRET=sb_secret_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+> supabase start
+> ```  
+> The stack will initialize correctly without any manual edits to `keys.json`.
+
+### Quick Start
+
+```bash
+# Install dependencies and start the local stack
+make setup
+
+# Run all tests
 make test
 ```
 
-This command:
-- Loads environment variables
-- Spins up the local Supabase Edge runtime
-- Generates a signed JWT for authenticated requests
-- Sends event samples to the running API
+This will:
+- Load the `.env` file
+- Start a fully configured Supabase stack
+- Launch integration tests for all edge functions
 
 You should see:
 ```

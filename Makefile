@@ -26,6 +26,12 @@ ifneq (,$(wildcard .env))
   export $(shell grep -v '^#' .env | sed 's/=.*//' )
 endif
 
+clean:
+	supabase stop || true
+	docker rm -f $(docker ps -aq --filter "name=supabase") 2>/dev/null || true
+	rm -rf supabase/.temp supabase/.branches
+
+
 # Run Python tests
 test: sanitize
 	@echo "Running Python tests..."
@@ -41,7 +47,10 @@ lint:
 	@echo "Running linter..."
 	@flake8 test
 
-# Install dependencies
+# Install dependencies and copy authentication keys
 setup:
 	@echo "Installing Python dependencies..."
 	@pip install -r requirements.txt
+	@echo "Starting Supabase..."
+	supabase stop || true
+	supabase start
