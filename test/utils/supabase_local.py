@@ -1,4 +1,5 @@
 import subprocess, time, requests, sys, os
+from test.utils.gen_jwt import generate_jwt
 
 def wait_for_service(url=None, name="service", timeout=60, process=None, ready_text=None):
     """
@@ -66,6 +67,29 @@ class SupabaseFunctionTestMixin:
     FUNCTION_NAME = None
 
     @classmethod
+    def warm_up_function(cls, url, token, timeout=10):
+        """Ensure the Edge Function runtime is actually initialized (not just Kong)."""
+        start = time.time()
+
+        while time.time() - start < timeout:
+            try:
+                r = requests.post(
+                    url,
+                    headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                    json={"warmup": True},
+                    timeout=2,
+                )
+                # Any of these means: Deno runtime is up and running JS
+                if r.status_code in (200, 400, 401):
+                    return True
+            except Exception:
+                pass
+            time.sleep(0.3)
+
+        raise RuntimeError("Function did not finish booting")
+
+
+    @classmethod
     def setUpClass(cls):
         assert cls.FUNCTION_NAME, "FUNCTION_NAME must be set"
 
@@ -80,10 +104,13 @@ class SupabaseFunctionTestMixin:
             stderr=stderr,
         )
 
-        wait_for_service(
-            name=cls.FUNCTION_NAME,
+        # make sure function runtime is ready
+        token = generate_jwt()
+
+        cls.warm_up_function(
             url=f"{cls.BASE_URL}/{cls.FUNCTION_NAME}",
-            timeout=90,
+            token=token,
+            timeout=90
         )
 
     @classmethod
