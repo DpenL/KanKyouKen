@@ -5,7 +5,7 @@ import subprocess
 
 import pytest
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
+ROOT = pathlib.Path(os.getenv("PROJECT_ROOT"))
 SNAPSHOT_PATH = ROOT / "test" / "snapshots" / "schema_public.sql"
 
 DEFAULT_DB_URL = "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
@@ -62,6 +62,7 @@ def dump_remote_schema() -> str:
 
 @pytest.mark.schema
 def test_local_schema_matches_snapshot():
+    print(SNAPSHOT_PATH)
     assert SNAPSHOT_PATH.exists(), (
         "Missing canonical schema snapshot.\n"
         "Run `make snapshot-schema` and commit test/snapshots/schema_public.sql."
@@ -84,7 +85,6 @@ def test_local_schema_matches_snapshot():
 
 
 @pytest.mark.schema
-@pytest.mark.remote
 @pytest.mark.skipif(
     "REMOTE_DB_URL" not in os.environ,
     reason="REMOTE_DB_URL not set; skipping remote schema parity test",

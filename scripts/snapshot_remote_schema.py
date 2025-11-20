@@ -4,7 +4,7 @@ import pathlib
 import subprocess
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parents[1]
+ROOT = pathlib.Path(os.getenv("PROJECT_ROOT"))
 REMOTE_SNAPSHOT_PATH = ROOT / "test" / "snapshots" / "schema_public_remote.sql"
 
 def run_pg_dump(db_url: str) -> str:

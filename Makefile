@@ -1,5 +1,5 @@
 # Set project root for scripts that rely on it
-PROJECT_ROOT := $(shell pwd)
+PROJECT_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 export PROJECT_ROOT
 
 # File groups for normalization
@@ -34,8 +34,11 @@ clean:
 
 # Run Python tests
 test: sanitize
+	@if ! docker ps | grep -q supabase_db_kankyouken; then \
+		echo "Starting Supabase (auto)"; \
+		make supabase-start; \
+	fi
 	@echo "Running Python tests..."
-	@python scripts/run_tests.py
 	@pytest
 
 # Format code

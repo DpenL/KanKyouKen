@@ -1,4 +1,3 @@
-from test.utils.load_env import load_env
 import jwt, datetime, os, hashlib
 
 def get_secret():
