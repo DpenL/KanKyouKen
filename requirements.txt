@@ -3,3 +3,5 @@ python-dotenv
 black
 flake8
 pyjwt
+pytest
+psycopg2-binary

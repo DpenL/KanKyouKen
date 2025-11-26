@@ -24,6 +24,7 @@ scripts/schema_public_remote.sql
 *.tmp
 .coverage
 .pytest_cache/
+temp/*
 
 # OS / IDE files
 .DS_Store

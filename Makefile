@@ -2,11 +2,18 @@
 PROJECT_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 export PROJECT_ROOT
 
+export REMOTE_DB_URL := $(shell grep ^REMOTE_DB_URL .env | cut -d '=' -f2-)
+
+
 # File groups for normalization
 ENV_FILES := .env test/.env scripts/run_tests.py
-SOURCE_FILES := $(shell find supabase/functions -type f -name "*.ts") \
-                 $(shell find test -type f -name "*.py") \
-                 $(ENV_FILES)
+#SOURCE_FILES = $(shell find supabase/functions -type f -name "*.ts") \
+#                 $(shell find test -type f -name "*.py") \
+#                 $(ENV_FILES)
+
+TEMP_DIR := $(PROJECT_ROOT)/temp
+SCRIPT_DIR := $(PROJECT_ROOT)/scripts
+SCHEMA_SCRIPTS := $(SCRIPT_DIR)/schema
 
 # Ensure these targets always run
 .PHONY: sanitize test lint format setup
@@ -14,10 +21,12 @@ SOURCE_FILES := $(shell find supabase/functions -type f -name "*.ts") \
 # Normalize CRLF → LF (dos2unix)
 sanitize:
 	@echo "Sanitizing..."
-	@for f in $(SOURCE_FILES); do \
-	  if [ -f "$$f" ]; then \
-	    dos2unix $$f 2>/dev/null || true; \
-	  fi \
+	@for f in $$(find supabase/functions -type f -name "*.ts"; \
+	             find test -type f -name "*.py"; \
+	             echo $(ENV_FILES)); do \
+		if [ -f "$$f" ]; then \
+			dos2unix $$f 2>/dev/null || true; \
+		fi; \
 	done
 
 # Load environment variables from .env (if present)
@@ -39,7 +48,7 @@ test: sanitize
 		make supabase-start; \
 	fi
 	@echo "Running Python tests..."
-	@pytest
+	@pytest | tee temp/test-output.log
 
 # Format code
 format:
@@ -118,8 +127,9 @@ seed:
 # Generate / update canonical schema snapshot from local DB
 snapshot-schema:
 	@echo "Generating canonical schema snapshot from local DB..."
-	@LOCAL_DB_URL="$(DB_URL)" python scripts/snapshot_local_schema.py
-	@echo "✅ Updated test/snapshots/schema_public.sql"
+	@LOCAL_DB_URL="$(DB_URL)" python $(SCHEMA_SCRIPTS)/snapshot_local_schema.py
+	@cp temp/snapshots/schema_public_local.sql $(PROJECT_ROOT)/test/snapshots/schema_public.sql
+	@echo "✅ Updated temp/snapshots/schema_public_local.sql"
 
 # Run only schema parity tests
 test-schema:
@@ -129,4 +139,16 @@ test-schema:
 # Requires REMOTE_DB_URL env var set
 test-remote-schema:
 	@LOCAL_DB_URL="$(DB_URL)" REMOTE_DB_URL="$(REMOTE_DB_URL)" pytest -m "schema and remote"
+
+checkparity:
+	@python $(SCHEMA_SCRIPTS)/snapshot_local_schema.py
+
+	@python $(SCHEMA_SCRIPTS)/snapshot_remote_schema.py
+	@python $(SCHEMA_SCRIPTS)/normalize_schema_dump.py temp/snapshots/schema_public_local.sql temp/snapshots/schema_public_local_normalized.sql
+	@python $(SCHEMA_SCRIPTS)/normalize_schema_dump.py temp/snapshots/schema_public_remote.sql temp/snapshots/schema_public_remote_normalized.sql
+	@python $(SCHEMA_SCRIPTS)/diff_schemas.py
+
+pushschema:
+	ALLOW_REMOTE_SCHEMA_PUSH=true \
+	python $(SCHEMA_SCRIPTS)/apply_schema_to_remote.py
 
