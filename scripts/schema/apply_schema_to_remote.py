@@ -206,9 +206,9 @@ def main():
     if os.getenv("ALLOW_REMOTE_SCHEMA_PUSH") != "true":
         raise SystemExit("Safety flag missing: ALLOW_REMOTE_SCHEMA_PUSH=true is required.")
 
-    db_url = os.getenv("SUPABASE_DB_URL") or os.getenv("REMOTE_DB_URL")
+    db_url = os.getenv("REMOTE_DB_URL")
     if not db_url:
-        raise SystemExit("Missing SUPABASE_DB_URL or REMOTE_DB_URL")
+        raise SystemExit("Missing REMOTE_DB_URL")
 
     if not SNAPSHOT_RAW.exists():
         raise SystemExit(f"Missing local snapshot at {SNAPSHOT_RAW}")

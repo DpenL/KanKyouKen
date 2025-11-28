@@ -4,6 +4,8 @@ export PROJECT_ROOT
 
 export REMOTE_DB_URL := $(shell grep ^REMOTE_DB_URL .env | cut -d '=' -f2-)
 
+export PYTHONPATH := $(PROJECT_ROOT)
+
 
 # File groups for normalization
 ENV_FILES := .env test/.env scripts/run_tests.py
