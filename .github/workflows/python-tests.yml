@@ -52,14 +52,3 @@ jobs:
         with:
           name: python-test-logs
           path: temp/test-output.log
-
-      - name: Dump ALL TOML configs
-        if: always()
-        run: python scripts/dump_toml.py
-
-      - name: Upload TOML config artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: supabase-configs
-          path: temp/debug_supabase_all_configs
