@@ -2,16 +2,28 @@
 PROJECT_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 export PROJECT_ROOT
 
-export REMOTE_DB_URL := $(shell grep ^REMOTE_DB_URL .env | cut -d '=' -f2-)
+RUNNING_CI ?= false
+
+# Load environment variables from .env (if present)
+ifneq (,$(wildcard .env))
+-include .env
+export $(shell grep -v '^#' .env | sed 's/=.*//' )
+endif
+
+export DB_PORT
+export PROJECT_ID
+export SUPABASE_API_PORT
+export JWT_SECRET
+export DB_URL=postgresql://postgres:postgres@127.0.0.1:$(DB_PORT)/postgres
+LOCAL_DB_URL ?= $(DB_URL)
+export LOCAL_DB_URL
+export REMOTE_DB_URL
 
 export PYTHONPATH := $(PROJECT_ROOT)
 
 
 # File groups for normalization
 ENV_FILES := .env test/.env scripts/run_tests.py
-#SOURCE_FILES = $(shell find supabase/functions -type f -name "*.ts") \
-#                 $(shell find test -type f -name "*.py") \
-#                 $(ENV_FILES)
 
 TEMP_DIR := $(PROJECT_ROOT)/temp
 SCRIPT_DIR := $(PROJECT_ROOT)/scripts
@@ -31,12 +43,6 @@ sanitize:
 		fi; \
 	done
 
-# Load environment variables from .env (if present)
-ifneq (,$(wildcard .env))
-  include .env
-  export $(shell grep -v '^#' .env | sed 's/=.*//' )
-endif
-
 clean:
 	supabase stop || true
 	docker rm -f $(docker ps -aq --filter "name=supabase") 2>/dev/null || true
@@ -45,27 +51,23 @@ clean:
 
 # Run Python tests
 test: sanitize
-	@if ! docker ps | grep -q supabase_db_kankyouken; then \
+	@if ! docker ps | grep -q supabase_db_${PROJECT_ID}; then \
 		echo "Starting Supabase (auto)"; \
 		make supabase-start; \
 	fi
 	@echo "Running Python tests..."
-	@pytest | tee temp/test-output.log
+	@bash -o pipefail -c 'pytest --color=yes 2>&1 | tee temp/test-output.log'
 
-# Format code
-format:
-	@echo "Formatting Python code..."
-	@black test
 
 # Lint
 lint:
 	@echo "Running linter..."
-	@flake8 test
+	@ruff check . --fix
 
 # Install dependencies and copy authentication keys
 setup:
 	@echo "Installing Python dependencies..."
-	@pip install -r requirements.txt
+	@python -m pip install -r requirements.txt
 	@echo "Starting Supabase..."
 	@supabase stop || true
 	@make supabase-start
@@ -73,8 +75,10 @@ setup:
 
 # Database management
 supabase-start:
+	rm -rf supabase/.temp supabase/.branches || true
 	supabase stop || true
 	supabase start --ignore-health-check
+
 	@bash ./scripts/wait_for_supabase.sh
 
 .PHONY: check-migrations
@@ -102,10 +106,6 @@ check-migrations:
 # Prevent accidental remote migrations
 IS_LINKED := $(shell supabase link status 2>/dev/null | grep -q 'Linked project' && echo yes || echo no)
 
-
-# --- DB connection for local dev (Supabase default) ---
-DB_URL ?= postgresql://postgres:postgres@127.0.0.1:54322/postgres
-
 .PHONY: migrate seed snapshot-schema test-schema test-remote-schema
 
 migrate: check-migrations
@@ -129,18 +129,18 @@ seed:
 # Generate / update canonical schema snapshot from local DB
 snapshot-schema:
 	@echo "Generating canonical schema snapshot from local DB..."
-	@LOCAL_DB_URL="$(DB_URL)" python $(SCHEMA_SCRIPTS)/snapshot_local_schema.py
+	@python $(SCHEMA_SCRIPTS)/snapshot_local_schema.py
 	@cp temp/snapshots/schema_public_local.sql $(PROJECT_ROOT)/test/snapshots/schema_public.sql
 	@echo "✅ Updated temp/snapshots/schema_public_local.sql"
 
 # Run only schema parity tests
 test-schema:
-	@LOCAL_DB_URL="$(DB_URL)" pytest -m schema
+	@pytest -m schema
 
 # Compare remote DB vs local schema (for manual / CI use)
 # Requires REMOTE_DB_URL env var set
 test-remote-schema:
-	@LOCAL_DB_URL="$(DB_URL)" REMOTE_DB_URL="$(REMOTE_DB_URL)" pytest -m "schema and remote"
+	@REMOTE_DB_URL="$(REMOTE_DB_URL)" pytest -m "schema and remote"
 
 checkparity:
 	@python $(SCHEMA_SCRIPTS)/snapshot_local_schema.py
@@ -153,4 +153,3 @@ checkparity:
 pushschema:
 	ALLOW_REMOTE_SCHEMA_PUSH=true \
 	python $(SCHEMA_SCRIPTS)/apply_schema_to_remote.py
-

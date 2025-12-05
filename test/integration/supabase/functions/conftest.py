@@ -7,7 +7,9 @@ import sys
 import os
 from test.utils.gen_jwt import generate_jwt
 
-FUNCTION_BASE_URL = "http://127.0.0.1:54321/functions/v1/"
+API_PORT = os.getenv("SUPABASE_API_PORT", "54321")
+
+FUNCTION_BASE_URL = f"http://127.0.0.1:{API_PORT}/functions/v1/"
 
 
 def _warm_up_function(url, token, timeout=30):

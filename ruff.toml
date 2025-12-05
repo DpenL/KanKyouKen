@@ -1,0 +1,44 @@
+# ruff.toml — minimal, safe linting for kankyouken
+
+# Global options
+line-length = 120
+# Let Ruff auto-fix safe rules (e.g. sorting imports)
+fix = true
+
+# Ignore environment and generated dirs
+exclude = [
+  "venv",
+  ".venv",
+  "ci-venv",
+  "__pycache__",
+  ".ruff_cache",
+  "temp",
+]
+
+# Lint settings
+[lint]
+
+# Only check real issues:
+#   E = pycodestyle errors
+#   F = pyflakes errors (undefined names, missing imports)
+#   I = import sorter (safe auto-fixes)
+# This avoids style nitpicks, spacing complaints, and "PEP8 purity"
+select = ["E", "F", "I"]
+
+# Ignore cosmetic/non-problematic rules
+ignore = [
+  "E203",  # whitespace before ':'
+  "E266",  # too many leading '#' in comment
+  "E302",  # expected 2 blank lines
+  "E305",  # expected 2 blank lines after class/function
+  "E401",  # multiple imports on one line
+  "E501",  # line too long
+  "E701",  # multiple statements on one line (colon)
+  "E402",  # module import not at top of file
+  "E731",  # lambda assignment — harmless
+  "F401",  # unused imports (you have many legitimate ones in testing)
+]
+
+# Only enforce strictness in real code, not tests
+[lint.per-file-ignores]
+"test/**/*.py" = ["F401", "E401", "E402", "E701", "E305"]

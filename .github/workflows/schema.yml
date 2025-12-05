@@ -1,0 +1,65 @@
+name: Schema Parity
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_call:
+    inputs:
+      RUNNING_CI:
+        required: true
+        type: boolean
+
+jobs:
+  schema-roundtrip:
+    environment: dev-0
+    runs-on: ubuntu-latest
+    env:
+      RUNNING_CI: ${{ inputs.RUNNING_CI }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - uses: ./.github/actions/setup
+        env:
+          pythonLocation: ${{ env.pythonLocation }}
+        with:
+          RUNNING_CI: ${{ inputs.RUNNING_CI }}
+          REMOTE_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres # use local
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+
+      - name: Verify Python
+        run: |
+          echo "python is: $(which python)"
+          python --version
+          pip --version
+
+      - name: Verify supabase
+        run: |
+          echo "PATH=$PATH"
+          which supabase || echo "not found"
+          supabase --version
+
+
+      - name: Run schema roundtrip
+        env: 
+          REMOTE_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          make supabase-start
+          make snapshot-schema
+          make checkparity
+
+      - name: Upload schema artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: schema-dumps
+          path: |
+            temp/snapshots/schema_public_local.sql
+            temp/snapshots/schema_public_remote.sql
+            temp/snapshots/*normalized.sql

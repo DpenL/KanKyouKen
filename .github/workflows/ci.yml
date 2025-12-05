@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+
+  lint:
+    uses: ./.github/workflows/lint.yml
+    secrets: inherit
+    with:
+      RUNNING_CI: true
+
+  python-tests:
+    uses: ./.github/workflows/python-tests.yml
+    secrets: inherit
+    with:
+      RUNNING_CI: true
+
+
+  schema-roundtrip:
+    uses: ./.github/workflows/schema.yml
+    secrets: inherit
+    with:
+      RUNNING_CI: true
+

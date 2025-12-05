@@ -4,10 +4,7 @@ import pytest
 
 @pytest.mark.integration
 def test_triggers_and_policies_exist(supabase_ready):
-    db_url = os.getenv(
-        "LOCAL_DB_URL",
-        "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
-    )
+    db_url = os.getenv("LOCAL_DB_URL")
 
     conn = psycopg2.connect(db_url)
     cur = conn.cursor()

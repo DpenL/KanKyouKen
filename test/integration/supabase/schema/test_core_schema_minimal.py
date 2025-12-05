@@ -4,7 +4,7 @@ import pytest
 
 @pytest.mark.schema
 def test_core_tables_exist():
-    url = os.getenv("LOCAL_DB_URL", "postgresql://postgres:postgres@127.0.0.1:54322/postgres")
+    url = os.getenv("LOCAL_DB_URL")
     conn = psycopg2.connect(url)
     cur = conn.cursor()
 

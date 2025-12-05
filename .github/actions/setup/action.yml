@@ -1,0 +1,33 @@
+name: Setup Environment
+description: 'Set up Python and run setup_environment.sh'
+inputs:
+  RUNNING_CI:
+    description: 'Is CI running'
+    required: true
+
+  REMOTE_DB_URL:
+    description: 'DB URL'
+    required: false
+  JWT_SECRET:
+    description: 'JWT'
+    required: false
+  SUPABASE_SERVICE_ROLE_KEY:
+    description: 'Service Role'
+    required: false
+  SUPABASE_ANON_KEY:
+    description: 'Anon Key'
+    required: false
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/checkout@v4
+    - name: Setup environment
+      run: bash scripts/setup_ci_environment.sh
+      shell: bash
+      env:
+        RUNNING_CI: ${{ inputs.RUNNING_CI }}
+        REMOTE_DB_URL: ${{ inputs.REMOTE_DB_URL }}
+        JWT_SECRET: ${{ inputs.JWT_SECRET }}
+        SUPABASE_SERVICE_ROLE_KEY: ${{ inputs.SUPABASE_SERVICE_ROLE_KEY }}
+        SUPABASE_ANON_KEY: ${{ inputs.SUPABASE_ANON_KEY }}

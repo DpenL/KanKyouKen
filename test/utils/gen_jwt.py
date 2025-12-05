@@ -10,6 +10,7 @@ def get_secret():
 
     for k in keys:
         v = os.getenv(k)
+        print(f"JWT: {k}={v}")
         if v: return v
     return "sb_secret_fallback_for_tests"
 

@@ -4,7 +4,7 @@ set -euo pipefail
 echo "⏳ Waiting for Supabase containers to become healthy..."
 
 # Local project suffix
-PROJECT_SUFFIX="_kankyouken"
+PROJECT_SUFFIX="_${PROJECT_ID}"
 
 # Containers that define healthchecks (the only ones we should wait for)
 REQUIRED=(
