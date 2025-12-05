@@ -70,16 +70,12 @@ make setup
 
 # Run all tests
 make test
-```
 
-This will:
-- Load the `.env` file
-- Start a fully configured Supabase stack
-- Launch integration tests for all edge functions
-
-You should see:
-```
-All tests passed!
+# Other useful commands
+make test-schema      # Run database schema tests
+make test-functions   # Run Edge Function tests
+make migrate          # Apply database migrations
+make checkparity      # Compare local and remote schemas
 ```
 
 ### Manual Function Testing
@@ -98,18 +94,18 @@ curl -X POST "http://127.0.0.1:54321/functions/v1/event-collector"   -H "Content
 
 ```
 kankyouken/
-├── Makefile               # Common developer tasks
+├── .github/workflows/     # CI/CD pipelines
+├── Makefile               # Development automation
 ├── requirements.txt       # Python dependencies
-├── supabase/              # Supabase config and Edge Functions
-│   ├── config.toml
-│   └── functions/
-├── test/                  # Unit and integration test suites
-│   ├── setup_tests.py
-│   ├── functions/
-│   ├── utils/
-│   └── integration/
-├── scripts/               # Helper scripts (e.g., run_tests.py)
-└── venv/                  # Local Python environment (excluded from Git)
+├── supabase/
+│   ├── config.toml        # Local configuration
+│   ├── functions/         # Edge Functions (Deno/TypeScript)
+│   ├── migrations/        # Database migrations
+│   └── seed.sql          # Test data
+├── test/
+│   ├── integration/       # Integration tests
+│   └── utils/            # Test helpers
+└── scripts/              # Development scripts
 ```
 
 ## Research Context
@@ -127,11 +123,11 @@ Upcoming milestones focus on expanding the data pipeline, improving interoperabi
 
 ### Core Expansion
 
-- Schema Design: Normalize event storage for scalable querying (PostgreSQL / Supabase).
-
-- API Layer: Define REST and WebSocket endpoints for ingesting structured gameplay data.
+- API Layer: Expand event collection endpoints and explore WebSocket support for real-time data streaming.
 
 - Analytics Hooks: Integrate pipelines for BKT and deep learning–based learner modeling.
+
+- Performance: Profile and optimize for large-scale event ingestion.
 
 ### Research & Visualization
 
@@ -143,13 +139,11 @@ Upcoming milestones focus on expanding the data pipeline, improving interoperabi
 
 ### Deployment & Integration
 
-- Staging Deployment: Deploy Supabase and Edge Functions on cloud infrastructure (e.g., Supabase Cloud or Fly.io).
+- Staging Deployment: Deploy to cloud infrastructure (Supabase Cloud, Fly.io, or similar).
 
-- Auth Integration: Connect with real user authentication and API keys for live client testing.
+- Auth Integration: Connect with real user authentication for live client testing.
 
 - Data Export APIs: Enable secure anonymized export for research and open datasets.
-
-- Continuous Testing: Expand CI/CD pipeline to automatically verify function and database integrity
 
 ## Contributing
 
