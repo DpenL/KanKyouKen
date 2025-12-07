@@ -1,0 +1,54 @@
+name: Python Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_call:
+    inputs:
+      RUNNING_CI:
+        required: true
+        type: boolean
+
+jobs:
+  python-tests:
+    environment: dev-0
+    runs-on: ubuntu-latest
+    env:
+      RUNNING_CI: ${{ inputs.RUNNING_CI }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: ./.github/actions/setup
+        env:
+          pythonLocation: ${{ env.pythonLocation }}
+        with:
+          RUNNING_CI: ${{ inputs.RUNNING_CI }}
+          REMOTE_DB_URL: ${{ secrets.REMOTE_DB_URL }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+
+      - name: Verify Python
+        run: |
+          echo "python is: $(which python)"
+          python --version
+          pip --version
+
+
+      - name: Run DB setup & tests
+        run: |
+          make supabase-start
+          make snapshot-schema
+          make test
+
+      - name: Upload test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-test-logs
+          path: temp/test-output.log

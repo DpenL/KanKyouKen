@@ -1,5 +1,8 @@
 requests
 python-dotenv
-black
-flake8
+ruff
 pyjwt
+pytest
+psycopg2-binary
+supabase
+toml

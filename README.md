@@ -34,50 +34,48 @@ cd kankyouken
 # Create a Python environment
 python3 -m venv venv
 source venv/bin/activate  # or venv\Scripts\activate on Windows
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Start local Supabase stack
-supabase start
 ```
 
-Take note of the Secret key shown after startup — it will be your local JWT_SECRET.
+### Environment Setup
 
-### Environment Variables
+Supabase automatically loads your local JWT secret from `.env`, as declared in `supabase/config.toml`.
 
-Create a `.env` file at the project root:
-
-```bash
-JWT_SECRET=sb_secret_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-SUPABASE_URL=http://127.0.0.1:54321
-SUPABASE_ANON_KEY=sb_publishable_xxxxxxxxxxxxxxxxxxxx
-SUPABASE_SERVICE_ROLE_KEY=sb_secret_xxxxxxxxxxxxxxxxxxxx
-```
-
-You can also use the provided example:
+Create a `.env` file at the project root (or copy the example):
 
 ```bash
 cp .env.example .env
 ```
 
-### Running Tests
-
-To verify your local setup and test Supabase Edge Functions:
+Your `.env` must contain at least:
 
 ```bash
+JWT_SECRET=sb_secret_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+SUPABASE_ANON_KEY=sb_publishable_xxxxxxxxxxxxxxxxxxxx
+SUPABASE_SERVICE_ROLE_KEY=sb_secret_xxxxxxxxxxxxxxxxxxxx
+```
+
+> **Note for CI and teammates**  
+> When running in CI or on another machine, simply export the same `JWT_SECRET` before starting Supabase:  
+> ```bash
+> export JWT_SECRET=sb_secret_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+> supabase start
+> ```  
+> The stack will initialize correctly without any manual edits to `keys.json`.
+
+### Quick Start
+
+```bash
+# Install dependencies and start the local stack
+make setup
+
+# Run all tests
 make test
-```
 
-This command:
-- Loads environment variables
-- Spins up the local Supabase Edge runtime
-- Generates a signed JWT for authenticated requests
-- Sends event samples to the running API
-
-You should see:
-```
-All tests passed!
+# Other useful commands
+make test-schema      # Run database schema tests
+make test-functions   # Run Edge Function tests
+make migrate          # Apply database migrations
+make checkparity      # Compare local and remote schemas
 ```
 
 ### Manual Function Testing
@@ -96,18 +94,18 @@ curl -X POST "http://127.0.0.1:54321/functions/v1/event-collector"   -H "Content
 
 ```
 kankyouken/
-├── Makefile               # Common developer tasks
+├── .github/workflows/     # CI/CD pipelines
+├── Makefile               # Development automation
 ├── requirements.txt       # Python dependencies
-├── supabase/              # Supabase config and Edge Functions
-│   ├── config.toml
-│   └── functions/
-├── test/                  # Unit and integration test suites
-│   ├── setup_tests.py
-│   ├── functions/
-│   ├── utils/
-│   └── integration/
-├── scripts/               # Helper scripts (e.g., run_tests.py)
-└── venv/                  # Local Python environment (excluded from Git)
+├── supabase/
+│   ├── config.toml        # Local configuration
+│   ├── functions/         # Edge Functions (Deno/TypeScript)
+│   ├── migrations/        # Database migrations
+│   └── seed.sql          # Test data
+├── test/
+│   ├── integration/       # Integration tests
+│   └── utils/            # Test helpers
+└── scripts/              # Development scripts
 ```
 
 ## Research Context
@@ -125,11 +123,11 @@ Upcoming milestones focus on expanding the data pipeline, improving interoperabi
 
 ### Core Expansion
 
-- Schema Design: Normalize event storage for scalable querying (PostgreSQL / Supabase).
-
-- API Layer: Define REST and WebSocket endpoints for ingesting structured gameplay data.
+- API Layer: Expand event collection endpoints and explore WebSocket support for real-time data streaming.
 
 - Analytics Hooks: Integrate pipelines for BKT and deep learning–based learner modeling.
+
+- Performance: Profile and optimize for large-scale event ingestion.
 
 ### Research & Visualization
 
@@ -141,13 +139,11 @@ Upcoming milestones focus on expanding the data pipeline, improving interoperabi
 
 ### Deployment & Integration
 
-- Staging Deployment: Deploy Supabase and Edge Functions on cloud infrastructure (e.g., Supabase Cloud or Fly.io).
+- Staging Deployment: Deploy to cloud infrastructure (Supabase Cloud, Fly.io, or similar).
 
-- Auth Integration: Connect with real user authentication and API keys for live client testing.
+- Auth Integration: Connect with real user authentication for live client testing.
 
 - Data Export APIs: Enable secure anonymized export for research and open datasets.
-
-- Continuous Testing: Expand CI/CD pipeline to automatically verify function and database integrity
 
 ## Contributing
 

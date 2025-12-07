@@ -13,10 +13,10 @@ echo "---------------------------------------------"
 root_val=$(grep -m1 JWT_SECRET .env | cut -d"=" -f2-)
 check_var "Host (.env JWT_SECRET)" "$root_val"
 
-auth_val=$(docker exec -it supabase_auth_kankyouken printenv GOTRUE_JWT_SECRET 2>/dev/null | tr -d "\r")
+auth_val=$(docker exec -it supabase_auth_$PROJECT_ID printenv GOTRUE_JWT_SECRET 2>/dev/null | tr -d "\r")
 check_var "Auth (GOTRUE_JWT_SECRET)" "$auth_val"
 
-edge_val=$(docker exec -it supabase_edge_runtime_kankyouken printenv SUPABASE_JWT_SECRET 2>/dev/null | tr -d "\r")
+edge_val=$(docker exec -it supabase_edge_runtime_$PROJECT_ID printenv SUPABASE_JWT_SECRET 2>/dev/null | tr -d "\r")
 check_var "Edge (SUPABASE_JWT_SECRET)" "$edge_val"
 
 python_val=$(python3 - <<PY

@@ -14,13 +14,17 @@ extensions.json
 .supabase-dev/
 .supabase-test/
 supabase/.temp/
+supabase/.branches/
 supabase/.runtime/
+
+scripts/schema_public_remote.sql
 
 # Test artifacts
 *.log
 *.tmp
 .coverage
 .pytest_cache/
+temp/*
 
 # OS / IDE files
 .DS_Store

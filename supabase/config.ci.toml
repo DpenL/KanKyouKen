@@ -1,0 +1,15 @@
+# Supabase CI configuration
+project_id = "kankyouken-ci"
+
+[auth]
+# Must be at least 16 characters to satisfy Supabase CLI
+site_url = "http://localhost"
+
+[db]
+port = 54322
+
+[studio]
+port = 54330
+
+[api]
+port = 54331
