@@ -37,14 +37,30 @@ def test_triggers_and_policies_exist(supabase_ready):
     policies = {row[0] for row in cur.fetchall()}
 
     required = {
-        "events_owner_read",
-        "participants_owner_read",
-        "project_owner_read",
-        "project_owner_update",
-        "project_owner_write",
-        "researcher_read_full",
-        "study_owner_all",
-        "teacher_read_summary",
+        "projects_role_read",
+        "projects_owner_create",
+        "projects_owner_update",
+        "projects_owner_delete",
+        "studies_role_read",
+        "studies_supervisor_create",
+        "studies_supervisor_update",
+        "studies_owner_delete",
+        "participants_researcher_read",
+        "participants_service_create",
+        "sessions_researcher_read",
+        "sessions_service_create",
+        "events_researcher_read",
+        "events_service_insert",
+        "audit_owner_read",
+        "audit_service_insert",
+        "event_schemas_researcher_read",
+        "event_schemas_supervisor_write",
+        "study_roles_self_read",
+        "study_roles_owner_grant",
+        "study_roles_owner_revoke",
+        "consent_self_read",
+        "consent_system_insert",
+        "consent_withdraw",
     }
 
     missing = required - policies
