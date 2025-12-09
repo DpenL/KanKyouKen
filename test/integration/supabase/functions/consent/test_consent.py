@@ -1,6 +1,5 @@
 import pytest
 import requests
-import os
 import psycopg2
 import psycopg2.extras
 import uuid
@@ -88,11 +87,10 @@ def test_data(db_conn):
 
 @pytest.mark.integration
 @pytest.mark.usefixtures("function_runtime")
-def test_consent_get_requires_auth():
+def test_consent_get_requires_auth(function_base_url):
     """GET /consent requires authorization"""
-    base_url = os.getenv("SUPABASE_URL", "http://127.0.0.1:54321")
     resp = requests.get(
-        f"{base_url}/functions/v1/consent",
+        f"{function_base_url}/{FUNCTION_NAME}",
         params={"study_id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"}
     )
     assert resp.status_code == 401
@@ -100,12 +98,10 @@ def test_consent_get_requires_auth():
 
 @pytest.mark.integration
 @pytest.mark.usefixtures("function_runtime")
-def test_consent_get_returns_study_consents(test_data, owner_token):
+def test_consent_get_returns_study_consents(test_data, owner_token, function_base_url):
     """GET /consent returns consent records for accessible study"""
-    base_url = os.getenv("SUPABASE_URL", "http://127.0.0.1:54321")
-
     resp = requests.get(
-        f"{base_url}/functions/v1/consent",
+        f"{function_base_url}/{FUNCTION_NAME}",
         params={"study_id": test_data["study_id"]},
         headers={"Authorization": f"Bearer {owner_token}"}
     )
@@ -120,12 +116,10 @@ def test_consent_get_returns_study_consents(test_data, owner_token):
 
 @pytest.mark.integration
 @pytest.mark.usefixtures("function_runtime")
-def test_consent_get_filters_by_participant(test_data, owner_token):
+def test_consent_get_filters_by_participant(test_data, owner_token, function_base_url):
     """GET /consent can filter by participant_id"""
-    base_url = os.getenv("SUPABASE_URL", "http://127.0.0.1:54321")
-
     resp = requests.get(
-        f"{base_url}/functions/v1/consent",
+        f"{function_base_url}/{FUNCTION_NAME}",
         params={
             "study_id": test_data["study_id"],
             "participant_id": test_data["participant_id"]
@@ -141,12 +135,10 @@ def test_consent_get_filters_by_participant(test_data, owner_token):
 
 @pytest.mark.integration
 @pytest.mark.usefixtures("function_runtime")
-def test_consent_get_denies_unauthorized_study(test_data, unauthorized_token):
+def test_consent_get_denies_unauthorized_study(test_data, unauthorized_token, function_base_url):
     """GET /consent denies access to studies user doesn't have access to"""
-    base_url = os.getenv("SUPABASE_URL", "http://127.0.0.1:54321")
-
     resp = requests.get(
-        f"{base_url}/functions/v1/consent",
+        f"{function_base_url}/{FUNCTION_NAME}",
         params={"study_id": test_data["study_id"]},
         headers={"Authorization": f"Bearer {unauthorized_token}"}
     )
@@ -156,12 +148,10 @@ def test_consent_get_denies_unauthorized_study(test_data, unauthorized_token):
 
 @pytest.mark.integration
 @pytest.mark.usefixtures("function_runtime")
-def test_consent_withdraw_updates_record(test_data, owner_token, db_conn):
+def test_consent_withdraw_updates_record(test_data, owner_token, db_conn, function_base_url):
     """PUT /consent withdraws consent and updates status"""
-    base_url = os.getenv("SUPABASE_URL", "http://127.0.0.1:54321")
-
     resp = requests.put(
-        f"{base_url}/functions/v1/consent",
+        f"{function_base_url}/{FUNCTION_NAME}",
         json={
             "participant_id": str(test_data["participant_id"]),
             "study_id": str(test_data["study_id"])
@@ -189,12 +179,10 @@ def test_consent_withdraw_updates_record(test_data, owner_token, db_conn):
 
 @pytest.mark.integration
 @pytest.mark.usefixtures("function_runtime")
-def test_consent_withdraw_denies_unauthorized(test_data, unauthorized_token):
+def test_consent_withdraw_denies_unauthorized(test_data, unauthorized_token, function_base_url):
     """PUT /consent denies withdrawal for unauthorized users"""
-    base_url = os.getenv("SUPABASE_URL", "http://127.0.0.1:54321")
-
     resp = requests.put(
-        f"{base_url}/functions/v1/consent",
+        f"{function_base_url}/{FUNCTION_NAME}",
         json={
             "participant_id": str(test_data["participant_id"]),
             "study_id": str(test_data["study_id"])
@@ -207,7 +195,7 @@ def test_consent_withdraw_denies_unauthorized(test_data, unauthorized_token):
 
 @pytest.mark.integration
 @pytest.mark.usefixtures("function_runtime")
-def test_consent_withdraw_requires_granted_status(test_data, owner_token, db_conn):
+def test_consent_withdraw_requires_granted_status(test_data, owner_token, db_conn, function_base_url):
     """PUT /consent only withdraws consent with 'granted' status"""
     cur = db_conn.cursor()
     cur.execute("""
@@ -218,10 +206,8 @@ def test_consent_withdraw_requires_granted_status(test_data, owner_token, db_con
     db_conn.commit()
     cur.close()
 
-    base_url = os.getenv("SUPABASE_URL", "http://127.0.0.1:54321")
-
     resp = requests.put(
-        f"{base_url}/functions/v1/consent",
+        f"{function_base_url}/{FUNCTION_NAME}",
         json={
             "participant_id": str(test_data["participant_id"]),
             "study_id": str(test_data["study_id"])
