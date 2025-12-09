@@ -26,15 +26,6 @@ psycopg2.extras.register_uuid()
 
 
 @pytest.fixture
-def db_conn():
-    """Database connection fixture"""
-    db_url = os.getenv("LOCAL_DB_URL")
-    conn = psycopg2.connect(db_url)
-    yield conn
-    conn.close()
-
-
-@pytest.fixture
 def test_data(db_conn):
     """Create test data: 2 projects, 2 users, multiple studies"""
     cur = db_conn.cursor()
@@ -82,8 +73,8 @@ def test_data(db_conn):
     participant_a1_id = uuid.uuid4()
     cur.execute("""
         INSERT INTO public.participants (id, pseudonym, consent_status)
-        VALUES (%s, 'participant_a1', true)
-    """, (participant_a1_id,))
+        VALUES (%s, %s, true)
+    """, (participant_a1_id, f'participant_{uuid.uuid4().hex[:8]}'))
 
     # Create events in Study A1
     event_a1_id = uuid.uuid4()
