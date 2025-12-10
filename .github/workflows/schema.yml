@@ -46,6 +46,10 @@ jobs:
           which supabase || echo "not found"
           supabase --version
 
+      - name: Quick test consent
+        run: |
+          make test-quick-2
+
 
       - name: Run schema roundtrip
         env: 

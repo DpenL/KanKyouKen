@@ -39,9 +39,9 @@ jobs:
           python --version
           pip --version
 
-      - name: Quick test
+      - name: Quick test event collector
         run: |
-          make test-quick
+          make test-quick-1
 
 
       - name: Run DB setup & tests

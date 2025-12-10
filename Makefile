@@ -62,14 +62,22 @@ test: sanitize
 	@bash -o pipefail -c 'pytest $(TEST) --color=yes 2>&1 | tee temp/test-output.log'
 
 # Quick test - single consent test for CI verification
-test-quick:
+test-quick-1:
 	@if ! docker ps | grep -q supabase_db_${PROJECT_ID}; then \
 		echo "Starting Supabase (auto)"; \
 		make supabase-start; \
 	fi
 	@echo "Running quick test..."
 	@pytest test/integration/supabase/functions/event_collector/test_event_collector::test_post_valid_event -xvs
+# Quick test - single consent test for CI verification
+test-quick-2:
+	@if ! docker ps | grep -q supabase_db_${PROJECT_ID}; then \
+		echo "Starting Supabase (auto)"; \
+		make supabase-start; \
+	fi
+	@echo "Running quick test..."
 	@pytest test/integration/supabase/functions/consent/test_consent.py::test_consent_get_requires_auth -xvs
+
 
 
 # Lint
