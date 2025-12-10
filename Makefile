@@ -83,22 +83,7 @@ supabase-start:
 
 	@# Extract local SERVICE_ROLE_KEY and update .env (for tests)
 	@if [ -f .env ]; then \
-		echo "Updating .env with local SERVICE_ROLE_KEY..."; \
-		python3 -c "import json, subprocess; \
-			result = subprocess.run(['supabase', 'status', '--output', 'json'], capture_output=True, text=True, check=True); \
-			status_data = json.loads(result.stdout); \
-			service_key = status_data.get('SERVICE_ROLE_KEY'); \
-			lines = []; \
-			with open('.env') as f: \
-				for line in f: \
-					if line.startswith('SUPABASE_SERVICE_ROLE_KEY=') or line.startswith('SERVICE_KEY='): \
-						key_name = line.split('=')[0]; \
-						lines.append(f'{key_name}={service_key}\n'); \
-					else: \
-						lines.append(line); \
-			with open('.env', 'w') as f: \
-				f.writelines(lines); \
-			print(f'Updated SERVICE_ROLE_KEY: {service_key[:40]}...')"; \
+		python3 scripts/update_service_key.py; \
 	fi
 
 .PHONY: check-migrations
