@@ -43,7 +43,7 @@ def jwt_token():
     return generate_jwt()
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def function_runtime(request, function_base_url, jwt_token, supabase_ready):
     """
     Start one function per test module.

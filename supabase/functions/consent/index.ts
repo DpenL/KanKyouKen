@@ -9,14 +9,15 @@ import { verifyJwt } from "../_lib/auth.ts";
  * POST /consent - Alias for PUT
  */
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { status: 204 });
+  try {
+    if (req.method === "OPTIONS") return new Response(null, { status: 204 });
 
-  // JWT authentication required
-  const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
-  if (!token) return new Response("Missing Authorization", { status: 401 });
+    // JWT authentication required
+    const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
+    if (!token) return new Response("Missing Authorization", { status: 401 });
 
-  const claims = await verifyJwt(token);
-  if (!claims) return new Response("Unauthorized", { status: 401 });
+    const claims = await verifyJwt(token);
+    if (!claims) return new Response("Unauthorized", { status: 401 });
 
   const userId = claims.sub;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SERVICE_KEY");
@@ -50,7 +51,13 @@ serve(async (req) => {
       body: JSON.stringify({ uid: userId, stud_id: studyId }),
     });
 
-    if (!accessCheck.ok || !(await accessCheck.json())) {
+    if (!accessCheck.ok) {
+      console.error("Access check failed:", await accessCheck.text());
+      return new Response("Access check failed", { status: 500 });
+    }
+
+    const hasAccess = await accessCheck.json();
+    if (!hasAccess) {
       return new Response(JSON.stringify({ error: "Forbidden: No access to study" }), {
         status: 403,
         headers: { "Content-Type": "application/json" },
@@ -106,7 +113,13 @@ serve(async (req) => {
       body: JSON.stringify({ uid: userId, stud_id: study_id }),
     });
 
-    if (!accessCheck.ok || !(await accessCheck.json())) {
+    if (!accessCheck.ok) {
+      console.error("Access check failed:", await accessCheck.text());
+      return new Response("Access check failed", { status: 500 });
+    }
+
+    const hasAccess = await accessCheck.json();
+    if (!hasAccess) {
       return new Response(JSON.stringify({ error: "Forbidden: No access to study" }), {
         status: 403,
         headers: { "Content-Type": "application/json" },
@@ -154,4 +167,11 @@ serve(async (req) => {
   }
 
   return new Response("Method not allowed", { status: 405 });
+  } catch (error) {
+    console.error("Unhandled error in consent endpoint:", error);
+    return new Response(
+      JSON.stringify({ error: "Internal server error", message: error.message }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
 });

@@ -90,7 +90,7 @@ def test_data(db_conn):
 def test_consent_get_requires_auth(function_base_url):
     """GET /consent requires authorization"""
     resp = requests.get(
-        f"{function_base_url}/{FUNCTION_NAME}",
+        f"{function_base_url}{FUNCTION_NAME}",
         params={"study_id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"}
     )
     assert resp.status_code == 401
@@ -101,7 +101,7 @@ def test_consent_get_requires_auth(function_base_url):
 def test_consent_get_returns_study_consents(test_data, owner_token, function_base_url):
     """GET /consent returns consent records for accessible study"""
     resp = requests.get(
-        f"{function_base_url}/{FUNCTION_NAME}",
+        f"{function_base_url}{FUNCTION_NAME}",
         params={"study_id": test_data["study_id"]},
         headers={"Authorization": f"Bearer {owner_token}"}
     )
@@ -119,7 +119,7 @@ def test_consent_get_returns_study_consents(test_data, owner_token, function_bas
 def test_consent_get_filters_by_participant(test_data, owner_token, function_base_url):
     """GET /consent can filter by participant_id"""
     resp = requests.get(
-        f"{function_base_url}/{FUNCTION_NAME}",
+        f"{function_base_url}{FUNCTION_NAME}",
         params={
             "study_id": test_data["study_id"],
             "participant_id": test_data["participant_id"]
@@ -138,7 +138,7 @@ def test_consent_get_filters_by_participant(test_data, owner_token, function_bas
 def test_consent_get_denies_unauthorized_study(test_data, unauthorized_token, function_base_url):
     """GET /consent denies access to studies user doesn't have access to"""
     resp = requests.get(
-        f"{function_base_url}/{FUNCTION_NAME}",
+        f"{function_base_url}{FUNCTION_NAME}",
         params={"study_id": test_data["study_id"]},
         headers={"Authorization": f"Bearer {unauthorized_token}"}
     )
@@ -151,7 +151,7 @@ def test_consent_get_denies_unauthorized_study(test_data, unauthorized_token, fu
 def test_consent_withdraw_updates_record(test_data, owner_token, db_conn, function_base_url):
     """PUT /consent withdraws consent and updates status"""
     resp = requests.put(
-        f"{function_base_url}/{FUNCTION_NAME}",
+        f"{function_base_url}{FUNCTION_NAME}",
         json={
             "participant_id": str(test_data["participant_id"]),
             "study_id": str(test_data["study_id"])
@@ -182,7 +182,7 @@ def test_consent_withdraw_updates_record(test_data, owner_token, db_conn, functi
 def test_consent_withdraw_denies_unauthorized(test_data, unauthorized_token, function_base_url):
     """PUT /consent denies withdrawal for unauthorized users"""
     resp = requests.put(
-        f"{function_base_url}/{FUNCTION_NAME}",
+        f"{function_base_url}{FUNCTION_NAME}",
         json={
             "participant_id": str(test_data["participant_id"]),
             "study_id": str(test_data["study_id"])
@@ -207,7 +207,7 @@ def test_consent_withdraw_requires_granted_status(test_data, owner_token, db_con
     cur.close()
 
     resp = requests.put(
-        f"{function_base_url}/{FUNCTION_NAME}",
+        f"{function_base_url}{FUNCTION_NAME}",
         json={
             "participant_id": str(test_data["participant_id"]),
             "study_id": str(test_data["study_id"])
