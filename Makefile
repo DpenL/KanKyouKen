@@ -68,6 +68,7 @@ test-quick:
 		make supabase-start; \
 	fi
 	@echo "Running quick test..."
+	@pytest test/integration/supabase/functions/event_collector/test_event_collector::test_post_valid_event -xvs
 	@pytest test/integration/supabase/functions/consent/test_consent.py::test_consent_get_requires_auth -xvs
 
 
