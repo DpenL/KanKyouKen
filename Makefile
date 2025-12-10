@@ -81,11 +81,6 @@ supabase-start:
 
 	@bash ./scripts/wait_for_supabase.sh
 
-	@# Extract local SERVICE_ROLE_KEY and update .env (for tests)
-	@if [ -f .env ]; then \
-		python3 scripts/update_service_key.py; \
-	fi
-
 .PHONY: check-migrations
 check-migrations:
 	@echo "🔎 Checking migration file order and timestamps..."

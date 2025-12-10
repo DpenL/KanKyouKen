@@ -57,7 +57,7 @@ def function_runtime(request, function_base_url, jwt_token, supabase_ready):
     print(f"🚀 Starting function runtime: {FUNCTION_NAME}")
 
     proc = subprocess.Popen(
-        ["supabase", "functions", "serve", FUNCTION_NAME, "--env-file", ".env"],
+        ["supabase", "functions", "serve", FUNCTION_NAME],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )

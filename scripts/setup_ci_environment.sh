@@ -75,5 +75,3 @@ mkdir -p temp
 python3 scripts/supabase_config_loader.py
 echo "[load-config] Loaded variables:"
 cat .env
-
-echo "[ci-setup] Note: SERVICE_ROLE_KEY will be updated after 'supabase start' runs"
