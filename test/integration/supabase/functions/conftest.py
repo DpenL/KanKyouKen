@@ -64,7 +64,7 @@ def function_runtime(request, function_base_url, jwt_token, supabase_ready):
 
     # warm up function runtime, waiting to be ready
     _warm_up_function(
-        url=f"{function_base_url}/{FUNCTION_NAME}",
+        url=f"{function_base_url}{FUNCTION_NAME}",
         token=jwt_token,
         timeout=90,
     )

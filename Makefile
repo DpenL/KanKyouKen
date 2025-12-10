@@ -50,13 +50,25 @@ clean:
 
 
 # Run Python tests
+# Usage: make test                    # run all tests
+#        make test TEST=path/to/test  # run specific test
+TEST ?=
 test: sanitize
 	@if ! docker ps | grep -q supabase_db_${PROJECT_ID}; then \
 		echo "Starting Supabase (auto)"; \
 		make supabase-start; \
 	fi
 	@echo "Running Python tests..."
-	@bash -o pipefail -c 'pytest --color=yes 2>&1 | tee temp/test-output.log'
+	@bash -o pipefail -c 'pytest $(TEST) --color=yes 2>&1 | tee temp/test-output.log'
+
+# Quick test - single consent test for CI verification
+test-quick:
+	@if ! docker ps | grep -q supabase_db_${PROJECT_ID}; then \
+		echo "Starting Supabase (auto)"; \
+		make supabase-start; \
+	fi
+	@echo "Running quick test..."
+	@pytest test/integration/supabase/functions/consent/test_consent.py::test_consent_get_requires_auth -xvs
 
 
 # Lint
