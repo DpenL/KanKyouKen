@@ -68,7 +68,7 @@ test-quick-1:
 		make supabase-start; \
 	fi
 	@echo "Running quick test..."
-	@pytest test/integration/supabase/functions/event_collector/test_event_collector::test_post_valid_event -xvs
+	@pytest test/integration/supabase/functions/event_collector/test_event_collector.py::test_post_valid_event -xvs
 # Quick test - single consent test for CI verification
 test-quick-2:
 	@if ! docker ps | grep -q supabase_db_${PROJECT_ID}; then \

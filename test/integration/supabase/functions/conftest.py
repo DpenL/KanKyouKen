@@ -58,8 +58,9 @@ def function_runtime(request, function_base_url, jwt_token, supabase_ready):
 
     proc = subprocess.Popen(
         ["supabase", "functions", "serve", FUNCTION_NAME],
-        stdout=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
+	text=True
     )
 
     # warm up function runtime, waiting to be ready
