@@ -1,4 +1,5 @@
 import time
+import tempfile
 
 import requests
 import pytest
@@ -66,40 +67,54 @@ def function_runtime(request, function_base_url, jwt_token, supabase_ready):
 
     print(f"🚀 Starting function runtime: {FUNCTION_NAME}")
 
-    # Start with output visible for debugging
-    proc = subprocess.Popen(
-        ["supabase", "functions", "serve", FUNCTION_NAME],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True
-    )
+    # Create minimal env file with only JWT_SECRET
+    # (SERVICE_ROLE_KEY should come from Supabase's own environment)
+    jwt_secret = os.getenv("JWT_SECRET")
+    if not jwt_secret:
+        raise RuntimeError("JWT_SECRET not found in environment")
 
-    # Give it a moment to start
-    time.sleep(2)
+    temp_env_file = tempfile.NamedTemporaryFile(mode='w', suffix='.env', delete=False)
+    temp_env_file.write(f"JWT_SECRET={jwt_secret}\n")
+    temp_env_file.close()
 
-    # Check if process died immediately
-    poll = proc.poll()
-    if poll is not None:
-        stdout, stderr = proc.communicate()
-        print(f"❌ Function process died immediately with exit code {poll}")
-        print(f"STDOUT: {stdout[:500]}")
-        print(f"STDERR: {stderr[:500]}")
-        raise RuntimeError(f"Function {FUNCTION_NAME} failed to start")
-
-    # warm up function runtime, waiting to be ready
-    warm_url = f"{function_base_url}{FUNCTION_NAME}"
-    print(f"🔥 Warming up at: {warm_url}")
-    _warm_up_function(
-        url=warm_url,
-        token=jwt_token,
-        timeout=90,
-    )
-
-    yield
-
-    print(f"🧹 Stopping function: {FUNCTION_NAME}")
-    proc.terminate()
     try:
-        proc.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        proc.kill()
+        # Start with minimal env file
+        proc = subprocess.Popen(
+            ["supabase", "functions", "serve", FUNCTION_NAME, "--env-file", temp_env_file.name],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+
+        # Give it a moment to start
+        time.sleep(2)
+
+        # Check if process died immediately
+        poll = proc.poll()
+        if poll is not None:
+            stdout, stderr = proc.communicate()
+            print(f"❌ Function process died immediately with exit code {poll}")
+            print(f"STDOUT: {stdout[:500]}")
+            print(f"STDERR: {stderr[:500]}")
+            raise RuntimeError(f"Function {FUNCTION_NAME} failed to start")
+
+        # warm up function runtime, waiting to be ready
+        warm_url = f"{function_base_url}{FUNCTION_NAME}"
+        print(f"🔥 Warming up at: {warm_url}")
+        _warm_up_function(
+            url=warm_url,
+            token=jwt_token,
+            timeout=90,
+        )
+
+        yield
+
+        print(f"🧹 Stopping function: {FUNCTION_NAME}")
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+    finally:
+        # Clean up temp env file
+        os.unlink(temp_env_file.name)
