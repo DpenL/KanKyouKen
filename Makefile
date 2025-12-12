@@ -102,6 +102,19 @@ supabase-start:
 
 	@bash ./scripts/wait_for_supabase.sh
 
+	@# Update .env with local Supabase keys
+	@echo "Updating .env with local Supabase keys..."
+	@supabase status --output env | grep -E "SERVICE_ROLE_KEY|JWT_SECRET|ANON_KEY" | while read line; do \
+		key=$$(echo "$$line" | cut -d'=' -f1); \
+		value=$$(echo "$$line" | cut -d'=' -f2- | sed 's/^"//;s/"$$//'); \
+		if grep -q "^$$key=" .env 2>/dev/null; then \
+			sed -i "s|^$$key=.*|$$key=$$value|" .env; \
+		else \
+			echo "$$key=$$value" >> .env; \
+		fi; \
+	done
+	@echo "✅ Local Supabase keys updated in .env"
+
 .PHONY: check-migrations
 check-migrations:
 	@echo "🔎 Checking migration file order and timestamps..."

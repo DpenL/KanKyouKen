@@ -1,5 +1,4 @@
 import time
-import tempfile
 
 import requests
 import pytest
@@ -16,11 +15,8 @@ FUNCTION_BASE_URL = f"http://127.0.0.1:{API_PORT}/functions/v1/"
 def _warm_up_function(url, token, timeout=30):
     """Ensure the Edge Function runtime is actually initialized (not just Kong)."""
     start = time.time()
-    last_error = None
-    attempt = 0
 
     while time.time() - start < timeout:
-        attempt += 1
         try:
             r = requests.post(
                 url,
@@ -30,19 +26,12 @@ def _warm_up_function(url, token, timeout=30):
             )
             # Any of these means: Deno runtime is up and running JS
             if r.status_code in (200, 400, 401):
-                print(f"✅ Function ready after {attempt} attempts ({time.time() - start:.1f}s)")
                 return True
-            last_error = f"HTTP {r.status_code}: {r.text[:100]}"
-        except Exception as e:
-            last_error = f"{type(e).__name__}: {str(e)[:100]}"
-
-        if attempt % 10 == 0:
-            print(f"⏳ Still warming up... attempt {attempt}, last error: {last_error}")
+        except Exception:
+            pass
         time.sleep(0.3)
 
-    print(f"❌ Function failed to boot after {attempt} attempts")
-    print(f"   Last error: {last_error}")
-    raise RuntimeError(f"Function did not finish booting (last error: {last_error})")
+    raise RuntimeError("Function did not finish booting")
 
 
 @pytest.fixture(scope="session")
@@ -67,54 +56,25 @@ def function_runtime(request, function_base_url, jwt_token, supabase_ready):
 
     print(f"🚀 Starting function runtime: {FUNCTION_NAME}")
 
-    # Create minimal env file with only JWT_SECRET
-    # (SERVICE_ROLE_KEY should come from Supabase's own environment)
-    jwt_secret = os.getenv("JWT_SECRET")
-    if not jwt_secret:
-        raise RuntimeError("JWT_SECRET not found in environment")
+    # Use .env file which has local Supabase keys (updated by make supabase-start)
+    proc = subprocess.Popen(
+        ["supabase", "functions", "serve", FUNCTION_NAME, "--env-file", ".env"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
 
-    temp_env_file = tempfile.NamedTemporaryFile(mode='w', suffix='.env', delete=False)
-    temp_env_file.write(f"JWT_SECRET={jwt_secret}\n")
-    temp_env_file.close()
+    # warm up function runtime, waiting to be ready
+    _warm_up_function(
+        url=f"{function_base_url}{FUNCTION_NAME}",
+        token=jwt_token,
+        timeout=90,
+    )
 
+    yield
+
+    print(f"🧹 Stopping function: {FUNCTION_NAME}")
+    proc.terminate()
     try:
-        # Start with minimal env file
-        proc = subprocess.Popen(
-            ["supabase", "functions", "serve", FUNCTION_NAME, "--env-file", temp_env_file.name],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
-        )
-
-        # Give it a moment to start
-        time.sleep(2)
-
-        # Check if process died immediately
-        poll = proc.poll()
-        if poll is not None:
-            stdout, stderr = proc.communicate()
-            print(f"❌ Function process died immediately with exit code {poll}")
-            print(f"STDOUT: {stdout[:500]}")
-            print(f"STDERR: {stderr[:500]}")
-            raise RuntimeError(f"Function {FUNCTION_NAME} failed to start")
-
-        # warm up function runtime, waiting to be ready
-        warm_url = f"{function_base_url}{FUNCTION_NAME}"
-        print(f"🔥 Warming up at: {warm_url}")
-        _warm_up_function(
-            url=warm_url,
-            token=jwt_token,
-            timeout=90,
-        )
-
-        yield
-
-        print(f"🧹 Stopping function: {FUNCTION_NAME}")
-        proc.terminate()
-        try:
-            proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-    finally:
-        # Clean up temp env file
-        os.unlink(temp_env_file.name)
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
