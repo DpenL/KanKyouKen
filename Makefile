@@ -50,8 +50,15 @@ clean:
 
 
 # Run Python tests
-# Usage: make test                    # run all tests
-#        make test TEST=path/to/test  # run specific test
+# Usage: make test                                        # run all tests
+#        make test TEST=path/to/test                      # run specific test file
+#        make test TEST=path/to/test::test_function_name  # run specific test
+#        make test TEST="-k pattern"                      # run tests matching pattern
+#        make test TEST="-m marker"                       # run tests with marker
+# Examples:
+#        make test TEST=test/integration/supabase/functions/consent/
+#        make test TEST=test/integration/supabase/functions/roles_assign/test_roles_assign.py::test_assign_project_role_successfully
+#        make test TEST="-k auth"
 TEST ?=
 test: sanitize
 	@if ! docker ps | grep -q supabase_db_${PROJECT_ID}; then \
@@ -61,23 +68,16 @@ test: sanitize
 	@echo "Running Python tests..."
 	@bash -o pipefail -c 'pytest $(TEST) --color=yes 2>&1 | tee temp/test-output.log'
 
-# Quick test - single consent test for CI verification
-test-quick-1:
+# Quick test - runs fast smoke tests for CI (event collector + consent endpoints)
+test-quick:
 	@if ! docker ps | grep -q supabase_db_${PROJECT_ID}; then \
 		echo "Starting Supabase (auto)"; \
 		make supabase-start; \
 	fi
-	@echo "Running quick test..."
-	@pytest test/integration/supabase/functions/event_collector/test_event_collector.py::test_post_valid_event -xvs
-# Quick test - single consent test for CI verification
-test-quick-2:
-	@if ! docker ps | grep -q supabase_db_${PROJECT_ID}; then \
-		echo "Starting Supabase (auto)"; \
-		make supabase-start; \
-	fi
-	@echo "Running quick test..."
-	@pytest test/integration/supabase/functions/consent/test_consent.py::test_consent_get_requires_auth -xvs
-
+	@echo "Running quick smoke tests..."
+	@pytest test/integration/supabase/functions/event_collector/test_event_collector.py::test_post_valid_event \
+	        test/integration/supabase/functions/consent/test_consent.py::test_consent_get_requires_auth \
+	        -xvs
 
 
 # Lint

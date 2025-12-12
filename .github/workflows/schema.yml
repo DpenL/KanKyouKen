@@ -46,11 +46,6 @@ jobs:
           which supabase || echo "not found"
           supabase --version
 
-      - name: Quick test consent
-        run: |
-          make test-quick-2
-
-
       - name: Run schema roundtrip
         env: 
           REMOTE_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
