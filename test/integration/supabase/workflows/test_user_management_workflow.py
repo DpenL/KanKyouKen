@@ -61,7 +61,7 @@ def admin_setup(db_conn):
     }
 
 
-def test_complete_user_onboarding_workflow(base_urls, admin_setup, db_conn):
+def test_complete_user_onboarding_workflow(base_urls, admin_setup, db_conn, function_runtime):
     """
     Test complete workflow: Admin registers user → assigns role → verifies in list → checks audit
     """
@@ -159,7 +159,7 @@ def test_complete_user_onboarding_workflow(base_urls, admin_setup, db_conn):
     assert researcher_list_response.status_code == 200, "Researcher cannot access project"
 
 
-def test_role_revocation_workflow(base_urls, admin_setup, db_conn):
+def test_role_revocation_workflow(base_urls, admin_setup, db_conn, function_runtime):
     """
     Test workflow: Assign role → verify access → revoke role → verify no access → check audit
     """
@@ -227,7 +227,7 @@ def test_role_revocation_workflow(base_urls, admin_setup, db_conn):
     assert revocation_logged, "Role revocation not found in audit log"
 
 
-def test_bulk_user_management_workflow(base_urls, admin_setup):
+def test_bulk_user_management_workflow(base_urls, admin_setup, function_runtime):
     """
     Test managing multiple users: register 3 users, assign different roles, list all, revoke one
     """
