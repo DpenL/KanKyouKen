@@ -67,10 +67,11 @@ export async function callRpc(
       throw new Error(`RPC call failed after ${maxRetries} retries: ${response.status} ${errorText}`);
 
     } catch (error) {
-      lastError = error as Error;
+      const err = error as Error;
+      lastError = err;
 
       // AbortError means timeout - retry
-      if (error.name === "AbortError" && attempt < maxRetries) {
+      if (err.name === "AbortError" && attempt < maxRetries) {
         console.warn(`RPC call timed out, retrying in ${backoff}ms (attempt ${attempt + 1}/${maxRetries})`);
         await new Promise(resolve => setTimeout(resolve, backoff));
         backoff *= 2;
@@ -79,14 +80,14 @@ export async function callRpc(
 
       // Other errors - if we have retries left, try again
       if (attempt < maxRetries) {
-        console.warn(`RPC call error: ${error.message}, retrying in ${backoff}ms (attempt ${attempt + 1}/${maxRetries})`);
+        console.warn(`RPC call error: ${err.message}, retrying in ${backoff}ms (attempt ${attempt + 1}/${maxRetries})`);
         await new Promise(resolve => setTimeout(resolve, backoff));
         backoff *= 2;
         continue;
       }
 
       // Max retries exceeded
-      throw error;
+      throw err;
     }
   }
 
