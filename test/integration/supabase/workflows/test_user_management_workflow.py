@@ -12,7 +12,10 @@ import pytest
 import requests
 import uuid
 import time
+import psycopg2.extras
 from test.utils.gen_jwt import generate_jwt
+
+psycopg2.extras.register_uuid()
 
 
 @pytest.fixture(scope="module")
