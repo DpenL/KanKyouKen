@@ -104,7 +104,8 @@ serve(async (req) => {
         );
         hasPermission = Boolean(isOwner);
       } catch (error) {
-        console.error(`Owner permission check failed: ${error.message}`);
+        const err = error as Error;
+        console.error(`Owner permission check failed: ${err.message}`);
         return new Response("Permission check failed", { status: 500 });
       }
 
@@ -118,7 +119,8 @@ serve(async (req) => {
           );
           hasPermission = Boolean(isSupervisor);
         } catch (error) {
-          console.error(`Supervisor permission check failed: ${error.message}`);
+          const err = error as Error;
+          console.error(`Supervisor permission check failed: ${err.message}`);
           return new Response("Permission check failed", { status: 500 });
         }
       }
@@ -132,7 +134,8 @@ serve(async (req) => {
         );
         hasPermission = Boolean(hasSupervisorLevel);
       } catch (error) {
-        console.error(`Permission check failed: ${error.message}`);
+        const err = error as Error;
+        console.error(`Permission check failed: ${err.message}`);
         return new Response("Permission check failed", { status: 500 });
       }
     }
@@ -189,6 +192,27 @@ serve(async (req) => {
     const roleRecord = await insertResponse.json();
     const assignedRole = Array.isArray(roleRecord) ? roleRecord[0] : roleRecord;
 
+    // Log to audit trail (fire-and-forget, don't block on audit log failures)
+    try {
+      await fetch(`${supabaseUrl}/rest/v1/audit_log`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": serviceKey,
+          "Authorization": `Bearer ${serviceKey}`,
+        },
+        body: JSON.stringify({
+          user_id: callerId,
+          action: "role_assigned",
+          target: `${scopeType}:${scopeId}:user:${user_id}:role:${role}`,
+          timestamp: new Date().toISOString(),
+        }),
+      });
+    } catch (auditError) {
+      console.warn("Failed to write audit log:", auditError);
+      // Don't fail the request if audit logging fails
+    }
+
     return new Response(
       JSON.stringify({
         role_id: assignedRole.id,
@@ -198,9 +222,10 @@ serve(async (req) => {
       { status: 201, headers: { "Content-Type": "application/json" } }
     );
   } catch (error) {
+    const err = error as Error;
     console.error("Unhandled error in roles-assign endpoint:", error);
     return new Response(
-      JSON.stringify({ error: "Internal server error", message: error.message }),
+      JSON.stringify({ error: "Internal server error", message: err.message }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }

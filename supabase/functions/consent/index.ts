@@ -168,9 +168,10 @@ serve(async (req) => {
 
   return new Response("Method not allowed", { status: 405 });
   } catch (error) {
+    const err = error as Error;
     console.error("Unhandled error in consent endpoint:", error);
     return new Response(
-      JSON.stringify({ error: "Internal server error", message: error.message }),
+      JSON.stringify({ error: "Internal server error", message: err.message }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
