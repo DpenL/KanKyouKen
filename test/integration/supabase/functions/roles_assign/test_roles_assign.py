@@ -271,3 +271,84 @@ def test_assign_role_prevents_duplicates(function_base_url, function_runtime, te
     )
     assert response2.status_code in (400, 409, 500)  # Different error codes depending on DB constraint handling
     assert "already has a role" in response2.json()["error"].lower()
+
+
+def test_assign_multiple_roles_different_scopes(function_base_url, function_runtime, test_data, db_conn):
+    """Test that a user can have roles in multiple different scopes"""
+    url = f"{function_base_url}{FUNCTION_NAME}"
+
+    owner_token = generate_jwt(sub=test_data["owner_id"])
+    multi_role_user = str(uuid.uuid4())
+
+    # Assign role in project
+    response1 = requests.post(
+        url,
+        headers={"Authorization": f"Bearer {owner_token}", "Content-Type": "application/json"},
+        json={
+            "user_id": multi_role_user,
+            "project_id": test_data["project_id"],
+            "role": "researcher",
+        },
+    )
+    assert response1.status_code == 201
+
+    # Assign role in study (different scope) - should succeed
+    response2 = requests.post(
+        url,
+        headers={"Authorization": f"Bearer {owner_token}", "Content-Type": "application/json"},
+        json={
+            "user_id": multi_role_user,
+            "study_id": test_data["study_id"],
+            "role": "teacher",
+        },
+    )
+    assert response2.status_code == 201
+
+    # Verify both roles exist in database
+    cur = db_conn.cursor()
+    cur.execute("""
+        SELECT COUNT(*) FROM public.study_roles WHERE user_id = %s
+    """, (multi_role_user,))
+
+    count = cur.fetchone()[0]
+    assert count == 2, "User should have 2 roles in different scopes"
+
+
+def test_assign_role_with_invalid_uuid(function_base_url, function_runtime, test_data):
+    """Test that invalid UUIDs are rejected"""
+    url = f"{function_base_url}{FUNCTION_NAME}"
+
+    owner_token = generate_jwt(sub=test_data["owner_id"])
+
+    # Invalid user_id format
+    response = requests.post(
+        url,
+        headers={"Authorization": f"Bearer {owner_token}", "Content-Type": "application/json"},
+        json={
+            "user_id": "not-a-uuid",
+            "project_id": test_data["project_id"],
+            "role": "researcher",
+        },
+    )
+    # Should fail at database level with foreign key violation or similar
+    assert response.status_code in (400, 500)
+
+
+def test_assign_role_to_nonexistent_project(function_base_url, function_runtime, test_data):
+    """Test assigning role to non-existent project fails"""
+    url = f"{function_base_url}{FUNCTION_NAME}"
+
+    owner_token = generate_jwt(sub=test_data["owner_id"])
+    fake_project_id = str(uuid.uuid4())
+
+    response = requests.post(
+        url,
+        headers={"Authorization": f"Bearer {owner_token}", "Content-Type": "application/json"},
+        json={
+            "user_id": test_data["target_user_id"],
+            "project_id": fake_project_id,
+            "role": "researcher",
+        },
+    )
+
+    assert response.status_code == 403, "Should fail permission check for non-existent project"
