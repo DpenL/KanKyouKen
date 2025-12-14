@@ -134,20 +134,22 @@ def pytest_collection_modifyitems(session, config, items):
     """
     Collect all FUNCTION_NAME values from test modules to determine which functions to start.
     This hook runs during test collection, before any tests execute.
+
+    FUNCTION_NAME can be either:
+    - A string: "function-name" (single function)
+    - A list: ["func1", "func2"] (multiple functions)
     """
     functions_needed = set()
 
     for item in items:
         # Check if the test module defines FUNCTION_NAME
         if hasattr(item.module, "FUNCTION_NAME"):
-            functions_needed.add(item.module.FUNCTION_NAME)
-
-        # Workflow tests need user management functions
-        if "workflows" in str(item.fspath):
-            functions_needed.update([
-                "auth-register", "roles-assign", "roles-revoke",
-                "users-list", "audit-log"
-            ])
+            func_name = item.module.FUNCTION_NAME
+            # Handle both single function (string) and multiple functions (list)
+            if isinstance(func_name, list):
+                functions_needed.update(func_name)
+            else:
+                functions_needed.add(func_name)
 
     # Store in config for the fixture to access
     config._functions_needed = sorted(functions_needed)

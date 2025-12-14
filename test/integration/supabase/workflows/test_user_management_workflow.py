@@ -17,6 +17,15 @@ from test.utils.gen_jwt import generate_jwt
 
 psycopg2.extras.register_uuid()
 
+# Workflow tests need multiple Edge Functions
+FUNCTION_NAME = [
+    "auth-register",
+    "roles-assign",
+    "roles-revoke",
+    "users-list",
+    "audit-log"
+]
+
 
 @pytest.fixture(scope="module")
 def base_urls():
