@@ -141,10 +141,13 @@ def pytest_collection_modifyitems(session, config, items):
     """
     functions_needed = set()
 
+    print(f"\n🔍 DEBUG pytest_collection_modifyitems: Processing {len(items)} test items")
+
     for item in items:
         # Check if the test module defines FUNCTION_NAME
         if hasattr(item.module, "FUNCTION_NAME"):
             func_name = item.module.FUNCTION_NAME
+            print(f"  📌 Found FUNCTION_NAME in {item.module.__name__}: {func_name}")
             # Handle both single function (string) and multiple functions (list)
             if isinstance(func_name, list):
                 functions_needed.update(func_name)
@@ -153,6 +156,7 @@ def pytest_collection_modifyitems(session, config, items):
 
     # Store in config for the fixture to access
     config._functions_needed = sorted(functions_needed)
+    print(f"🔍 DEBUG: Final _functions_needed = {config._functions_needed}\n")
 
 
 @pytest.fixture(scope="session")
@@ -163,7 +167,15 @@ def edge_functions_runtime(request, function_base_url, jwt_token, supabase_ready
     Functions are determined by FUNCTION_NAME in test modules.
     Avoids race conditions by using one shared process for the entire session.
     """
-    functions_list = getattr(request.config, "_functions_needed", [])
+    functions_list = getattr(request.config, "_functions_needed", None)
+
+    # Debug: Print what we got
+    print(f"\n🔍 DEBUG edge_functions_runtime: _functions_needed = {functions_list}")
+
+    if functions_list is None:
+        raise RuntimeError(
+            "No _functions_needed attribute on config - pytest_collection_modifyitems may not have run"
+        )
 
     if not functions_list:
         raise RuntimeError(
