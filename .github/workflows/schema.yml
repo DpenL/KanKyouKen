@@ -46,7 +46,6 @@ jobs:
           which supabase || echo "not found"
           supabase --version
 
-
       - name: Run schema roundtrip
         env: 
           REMOTE_DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres

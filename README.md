@@ -108,6 +108,29 @@ kankyouken/
 └── scripts/              # Development scripts
 ```
 
+## Access Control & Roles
+
+KanKyouKen uses role-based access control (RBAC) to support multi-user collaboration within projects and studies.
+
+### User Roles
+
+- **Owner**: Project or study creator. Full control including granting/revoking roles, deleting projects/studies.
+- **Supervisor**: Can create studies, update settings, and grant researcher roles. Has all researcher permissions.
+- **Researcher**: Can query and export study data, view participants, and analyze events. Read-only access to data.
+- **Teacher**: (Reserved for future use) Read access to study summaries and dashboards.
+
+### Role Assignment
+
+Roles can be assigned at two levels:
+- **Project-level**: User has access to ALL studies within the project (e.g., PI role)
+- **Study-level**: User has access to ONLY that specific study (e.g., RA collaborating on one study)
+
+### Multi-Tenant Isolation
+
+- Row-Level Security (RLS) policies enforce strict data separation between projects/studies
+- Users can only access data from projects/studies where they have assigned roles
+- Researchers cannot see data from other projects, even with SQL access
+
 ## Research Context
 
 KanKyouKen is meant to support research in:

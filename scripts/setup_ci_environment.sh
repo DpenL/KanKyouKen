@@ -33,9 +33,23 @@ echo "[ci-setup] Fetching latest Supabase CLI release…"
 
 API_URL="https://api.github.com/repos/supabase/cli/releases/latest"
 sudo apt-get install -y jq
-TAG_NAME=$(curl -s "$API_URL" | jq -r .tag_name)
+
+# Use GITHUB_TOKEN if available to avoid rate limits
+if [ -n "$GITHUB_TOKEN" ]; then
+    TAG_NAME=$(curl -s -H "Authorization: token $GITHUB_TOKEN" "$API_URL" | jq -r .tag_name)
+else
+    TAG_NAME=$(curl -s "$API_URL" | jq -r .tag_name)
+fi
 
 echo "[ci-setup]   tag_name = ${TAG_NAME}"
+
+# Validate TAG_NAME is not null or empty
+if [ -z "$TAG_NAME" ] || [ "$TAG_NAME" = "null" ]; then
+    echo "[ERROR] Failed to fetch Supabase CLI version from GitHub API"
+    echo "[ERROR] This may be due to API rate limiting. Trying fallback version..."
+    # Fallback to a known working version
+    TAG_NAME="v2.2.3"
+fi
 
 # Strip leading 'v' → "2.62.10"
 VERSION="${TAG_NAME#v}"

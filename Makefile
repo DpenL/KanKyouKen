@@ -50,13 +50,34 @@ clean:
 
 
 # Run Python tests
+# Usage: make test                                        # run all tests
+#        make test TEST=path/to/test                      # run specific test file
+#        make test TEST=path/to/test::test_function_name  # run specific test
+#        make test TEST="-k pattern"                      # run tests matching pattern
+#        make test TEST="-m marker"                       # run tests with marker
+# Examples:
+#        make test TEST=test/integration/supabase/functions/consent/
+#        make test TEST=test/integration/supabase/functions/roles_assign/test_roles_assign.py::test_assign_project_role_successfully
+#        make test TEST="-k auth"
+TEST ?=
 test: sanitize
 	@if ! docker ps | grep -q supabase_db_${PROJECT_ID}; then \
 		echo "Starting Supabase (auto)"; \
 		make supabase-start; \
 	fi
 	@echo "Running Python tests..."
-	@bash -o pipefail -c 'pytest --color=yes 2>&1 | tee temp/test-output.log'
+	@bash -o pipefail -c 'pytest $(TEST) --color=yes 2>&1 | tee temp/test-output.log'
+
+# Quick test - runs fast smoke tests for CI (event collector + consent endpoints)
+test-quick:
+	@if ! docker ps | grep -q supabase_db_${PROJECT_ID}; then \
+		echo "Starting Supabase (auto)"; \
+		make supabase-start; \
+	fi
+	@echo "Running quick smoke tests..."
+	@pytest test/integration/supabase/functions/event_collector/test_event_collector.py::test_post_valid_event \
+	        test/integration/supabase/functions/consent/test_consent.py::test_consent_get_requires_auth \
+	        -xvs
 
 
 # Lint
@@ -80,6 +101,19 @@ supabase-start:
 	supabase start --ignore-health-check
 
 	@bash ./scripts/wait_for_supabase.sh
+
+	@# Update .env with local Supabase keys
+	@echo "Updating .env with local Supabase keys..."
+	@supabase status --output env | grep -E "SERVICE_ROLE_KEY|JWT_SECRET|ANON_KEY" | while read line; do \
+		key=$$(echo "$$line" | cut -d'=' -f1); \
+		value=$$(echo "$$line" | cut -d'=' -f2- | sed 's/^"//;s/"$$//'); \
+		if grep -q "^$$key=" .env 2>/dev/null; then \
+			sed -i "s|^$$key=.*|$$key=$$value|" .env; \
+		else \
+			echo "$$key=$$value" >> .env; \
+		fi; \
+	done
+	@echo "✅ Local Supabase keys updated in .env"
 
 .PHONY: check-migrations
 check-migrations:
