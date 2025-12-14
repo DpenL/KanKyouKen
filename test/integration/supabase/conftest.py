@@ -141,13 +141,10 @@ def pytest_collection_modifyitems(session, config, items):
     """
     functions_needed = set()
 
-    print(f"\n🔍 DEBUG pytest_collection_modifyitems: Processing {len(items)} test items")
-
     for item in items:
         # Check if the test module defines FUNCTION_NAME
         if hasattr(item.module, "FUNCTION_NAME"):
             func_name = item.module.FUNCTION_NAME
-            print(f"  📌 Found FUNCTION_NAME in {item.module.__name__}: {func_name}")
             # Handle both single function (string) and multiple functions (list)
             if isinstance(func_name, list):
                 functions_needed.update(func_name)
@@ -156,21 +153,33 @@ def pytest_collection_modifyitems(session, config, items):
 
     # Store in config for the fixture to access
     config._functions_needed = sorted(functions_needed)
-    print(f"🔍 DEBUG: Final _functions_needed = {config._functions_needed}\n")
 
 
-@pytest.fixture(scope="session")
+def pytest_sessionfinish(session, exitstatus):
+    """Cleanup: Stop Edge Functions runtime at session end"""
+    cache_key = "_edge_functions_cache"
+    cached = getattr(session.config, cache_key, None)
+    if cached and cached["proc"].poll() is None:
+        print("\n🧹 Stopping Edge Functions runtime (session end)")
+        cached["proc"].terminate()
+        try:
+            cached["proc"].wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            cached["proc"].kill()
+            cached["proc"].wait()
+
+
+@pytest.fixture(scope="function")  # Changed from session to function scope
 def edge_functions_runtime(request, function_base_url, jwt_token, supabase_ready):
     """
     Start only the Edge Functions needed for the collected tests.
 
     Functions are determined by FUNCTION_NAME in test modules.
-    Avoids race conditions by using one shared process for the entire session.
+    Now function-scoped with caching to avoid restarts within the same test session.
     """
+    # Use a cache on the config object to share across function calls
+    cache_key = "_edge_functions_cache"
     functions_list = getattr(request.config, "_functions_needed", None)
-
-    # Debug: Print what we got
-    print(f"\n🔍 DEBUG edge_functions_runtime: _functions_needed = {functions_list}")
 
     if functions_list is None:
         raise RuntimeError(
@@ -181,6 +190,13 @@ def edge_functions_runtime(request, function_base_url, jwt_token, supabase_ready
         raise RuntimeError(
             "No Edge Functions to start - test modules should define FUNCTION_NAME"
         )
+
+    # Check if we already have a runtime with the same functions
+    cached = getattr(request.config, cache_key, None)
+    if cached and cached["functions"] == functions_list and cached["proc"].poll() is None:
+        # Reuse the existing runtime
+        yield cached["proc"]
+        return  # Don't teardown - let the session finish hook do it
 
     print("\n🚀 Starting Edge Functions runtime")
     print(f"   Functions needed: {', '.join(functions_list)}")
@@ -232,16 +248,14 @@ def edge_functions_runtime(request, function_base_url, jwt_token, supabase_ready
 
     print(f"✅ {len(functions_list)} Edge Function(s) ready\n")
 
+    # Cache the process for reuse
+    setattr(request.config, cache_key, {"functions": functions_list, "proc": proc})
+
     yield proc
 
-    # Cleanup: stop the process
-    print("\n🧹 Stopping Edge Functions runtime")
-    proc.terminate()
-    try:
-        proc.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        proc.wait()
+    # Only teardown if this is the last test or if another test needs different functions
+    # The cached process will be cleaned up by pytest's session end hook
+    # For now, keep it running for the next test
 
 
 @pytest.fixture(scope="function", autouse=True)
