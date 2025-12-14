@@ -191,12 +191,12 @@ def edge_functions_runtime(request, function_base_url, jwt_token, supabase_ready
             "No Edge Functions to start - test modules should define FUNCTION_NAME"
         )
 
-    # Check if we already have a runtime with the same functions
+    # Check if we already have a runtime with the same functions and it's still alive
     cached = getattr(request.config, cache_key, None)
     if cached and cached["functions"] == functions_list and cached["proc"].poll() is None:
         # Reuse the existing runtime
         yield cached["proc"]
-        return  # Don't teardown - let the session finish hook do it
+        return
 
     print("\n🚀 Starting Edge Functions runtime")
     print(f"   Functions needed: {', '.join(functions_list)}")
@@ -258,13 +258,12 @@ def edge_functions_runtime(request, function_base_url, jwt_token, supabase_ready
     # For now, keep it running for the next test
 
 
-@pytest.fixture(scope="function", autouse=True)
+@pytest.fixture(scope="function")  # Removed autouse - tests must explicitly request it
 def function_runtime(edge_functions_runtime):
     """
     Ensure edge functions are running before each test.
 
-    This is a compatibility fixture - old tests expect 'function_runtime' to exist.
-    Now it just ensures the session-scoped edge_functions_runtime is available.
+    Tests that need Edge Functions must explicitly depend on this fixture or use the marker.
     """
     # Check if the process is still alive
     if edge_functions_runtime.poll() is not None:
