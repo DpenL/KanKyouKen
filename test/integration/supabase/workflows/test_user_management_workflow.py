@@ -28,16 +28,14 @@ FUNCTION_NAME = [
 
 
 @pytest.fixture(scope="module")
-def base_urls():
+def base_urls(function_base_url):
     """Base URLs for all user management endpoints"""
-    api_port = "54321"
-    base = f"http://127.0.0.1:{api_port}/functions/v1/"
     return {
-        "register": f"{base}auth-register",
-        "assign": f"{base}roles-assign",
-        "list": f"{base}users-list",
-        "revoke": f"{base}roles-revoke",
-        "audit": f"{base}audit-log",
+        "register": f"{function_base_url}auth-register",
+        "assign": f"{function_base_url}roles-assign",
+        "list": f"{function_base_url}users-list",
+        "revoke": f"{function_base_url}roles-revoke",
+        "audit": f"{function_base_url}audit-log",
     }
 
 
