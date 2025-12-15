@@ -42,14 +42,15 @@ def _should_skip_remote_test():
     if not github_ref:
         return True
 
-    if github_ref != "refs/heads/main":
-        return True
+    # Temporarily allow fix/schema-formatting branch to run remote parity test
+    if github_ref in ("refs/heads/main", "refs/heads/fix/schema-formatting"):
+        return False
 
-    return False
+    return True
 
 
 @pytest.mark.schema
-@pytest.mark.skipif(_should_skip_remote_test(), reason="Skipping remote parity on feature branch")
+#@pytest.mark.skipif(_should_skip_remote_test(), reason="Skipping remote parity on feature branch")
 def test_remote_matches_local():
     from scripts.schema.snapshot_remote_schema import run_pg_dump as dump_remote
 
