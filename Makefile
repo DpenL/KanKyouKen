@@ -185,5 +185,6 @@ checkparity:
 	@python $(SCHEMA_SCRIPTS)/diff_schemas.py
 
 pushschema:
+	make snapshot-schema
 	ALLOW_REMOTE_SCHEMA_PUSH=true \
 	python $(SCHEMA_SCRIPTS)/apply_schema_to_remote.py

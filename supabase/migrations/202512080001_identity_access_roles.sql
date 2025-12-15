@@ -53,6 +53,7 @@ begin
     consent_status = (new.consent_status = 'granted'),
     consent_timestamp = coalesce(new.granted_at, new.withdrawn_at, new.created_at)
   where id = new.participant_id;
+
   return new;
 end;
 $$;
