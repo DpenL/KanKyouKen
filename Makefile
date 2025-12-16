@@ -75,7 +75,7 @@ test-quick:
 		make supabase-start; \
 	fi
 	@echo "Running quick smoke tests..."
-	@pytest test/integration/supabase/functions/event_collector/test_event_collector.py::test_post_valid_event \
+	@pytest test/integration/supabase/functions/event_collector/test_event_collector.py::test_post_valid_event_persists_to_db \
 	        test/integration/supabase/functions/consent/test_consent.py::test_consent_get_requires_auth \
 	        -xvs
 

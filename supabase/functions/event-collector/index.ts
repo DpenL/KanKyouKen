@@ -15,16 +15,41 @@ serve(async (req) => {
 
     const body = await req.json();
 
+    // Validate required fields
+    if (!body.participant_id || typeof body.participant_id !== "string") {
+      return new Response(
+        JSON.stringify({ error: "participant_id is required and must be a string" }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!body.study_id || typeof body.study_id !== "string") {
+      return new Response(
+        JSON.stringify({ error: "study_id is required and must be a string" }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!body.event_type || typeof body.event_type !== "string") {
+      return new Response(
+        JSON.stringify({ error: "event_type is required and must be a string" }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    // Get service role key for database operations
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SERVICE_KEY");
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "http://127.0.0.1:54321";
+
+    if (!serviceKey) {
+      console.error("SUPABASE_SERVICE_ROLE_KEY not configured");
+      return new Response("Server configuration error", { status: 500 });
+    }
+
+    // Check study access if claims exist
     if (claims && body.study_id) {
       const userId = claims.sub;
       const studyId = body.study_id;
-      const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SERVICE_KEY");
-
-      if (!serviceKey) {
-        return new Response("Server configuration error", { status: 500 });
-      }
-
-      const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "http://127.0.0.1:54321";
       const rpcUrl = `${supabaseUrl}/rest/v1/rpc/has_study_access`;
 
       const rpcResponse = await fetch(rpcUrl, {
@@ -52,9 +77,52 @@ serve(async (req) => {
       }
     }
 
-    return new Response(JSON.stringify({ ok: true, claims, received: body }), {
-      headers: { "Content-Type": "application/json" },
+    // Prepare event data for insertion
+    const eventData = {
+      participant_id: body.participant_id,
+      study_id: body.study_id,
+      event_type: body.event_type,
+      payload: body.payload || null,
+      ts: body.ts || new Date().toISOString(),
+      session_id: body.session_id || null,
+      app_version: body.app_version || null,
+      platform: body.platform || null,
+      item_id: body.item_id || null,
+      task_id: body.task_id || null,
+    };
+
+    // Insert event into database
+    const insertResponse = await fetch(`${supabaseUrl}/rest/v1/events`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": serviceKey,
+        "Authorization": `Bearer ${serviceKey}`,
+        "Prefer": "return=representation",
+      },
+      body: JSON.stringify(eventData),
     });
+
+    if (!insertResponse.ok) {
+      const errorText = await insertResponse.text();
+      console.error("Failed to insert event:", errorText);
+      return new Response(
+        JSON.stringify({ error: "Failed to store event", details: errorText }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    const insertedEvent = await insertResponse.json();
+    const event = Array.isArray(insertedEvent) ? insertedEvent[0] : insertedEvent;
+
+    return new Response(
+      JSON.stringify({
+        event_id: event.id,
+        created_at: event.created_at,
+        message: "Event stored successfully",
+      }),
+      { status: 201, headers: { "Content-Type": "application/json" } }
+    );
   } catch (error) {
     const err = error as Error;
     console.error("Unhandled error in event-collector endpoint:", error);
