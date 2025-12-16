@@ -103,7 +103,7 @@ def test_query_events_with_filters(function_base_url, db_conn, authenticated_use
         VALUES (%s, %s, %s, %s)
         RETURNING id
     """, (auth["participant_id"], auth["study_id"], "login", json.dumps({"action": "login"})))
-    login_event_id = cur.fetchone()[0]
+    #login_event_id = cur.fetchone()[0]
 
     # Event 2: logout event
     cur.execute("""
@@ -111,7 +111,7 @@ def test_query_events_with_filters(function_base_url, db_conn, authenticated_use
         VALUES (%s, %s, %s, %s)
         RETURNING id
     """, (auth["participant_id"], auth["study_id"], "logout", json.dumps({"action": "logout"})))
-    logout_event_id = cur.fetchone()[0]
+    #logout_event_id = cur.fetchone()[0]
 
     db_conn.commit()
 
