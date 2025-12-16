@@ -46,6 +46,95 @@ def jwt_token():
     return generate_jwt()
 
 
+@pytest.fixture
+def authenticated_user_with_study(db_conn):
+    """
+    Create an authenticated user with access to a study.
+    Returns a JWT token and test data (user_id, project_id, study_id, participant_id).
+
+    This fixture ensures:
+    - User exists in auth.users
+    - User has owner role on a project
+    - Study exists and is accessible to the user
+    - Participant exists in the study
+    - JWT token is valid for the user
+    """
+    import uuid
+    import psycopg2.extras
+    from test.utils.gen_jwt import generate_jwt
+
+    psycopg2.extras.register_uuid()
+
+    cur = db_conn.cursor()
+
+    # Create unique IDs
+    user_id = uuid.uuid4()
+    project_id = uuid.uuid4()
+    study_id = uuid.uuid4()
+    participant_id = uuid.uuid4()
+
+    # Insert user into auth.users
+    cur.execute("""
+        INSERT INTO auth.users (
+            id,
+            email,
+            encrypted_password,
+            email_confirmed_at,
+            created_at,
+            updated_at,
+            aud,
+            role
+        )
+        VALUES (
+            %s,
+            %s,
+            crypt('test_password', gen_salt('bf')),
+            now(),
+            now(),
+            now(),
+            'authenticated',
+            'authenticated'
+        )
+    """, (user_id, f'test_user_{str(user_id)[:8]}@test.com'))
+
+    # Create project
+    cur.execute("""
+        INSERT INTO public.projects (id, name, owner_id)
+        VALUES (%s, 'Test Project', %s)
+    """, (project_id, user_id))
+
+    # Create study
+    cur.execute("""
+        INSERT INTO public.studies (id, name, project_id, owner_id)
+        VALUES (%s, 'Test Study', %s, %s)
+    """, (study_id, project_id, user_id))
+
+    # Grant owner role to user
+    cur.execute("""
+        INSERT INTO public.study_roles (user_id, project_id, role, granted_by)
+        VALUES (%s, %s, 'owner', %s)
+    """, (user_id, project_id, user_id))
+
+    # Create participant
+    cur.execute("""
+        INSERT INTO public.participants (id, pseudonym)
+        VALUES (%s, %s)
+    """, (participant_id, f'test_participant_{str(participant_id)[:8]}'))
+
+    db_conn.commit()
+
+    # Generate JWT for this user
+    token = generate_jwt(sub=str(user_id))
+
+    return {
+        "token": token,
+        "user_id": str(user_id),
+        "project_id": str(project_id),
+        "study_id": str(study_id),
+        "participant_id": str(participant_id),
+    }
+
+
 def _warm_up_function(url, token, timeout=30):
     """Ensure the Edge Function runtime is actually initialized and ready to handle requests.
 
