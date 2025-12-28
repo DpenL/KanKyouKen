@@ -26,6 +26,10 @@ scripts/schema_public_remote.sql
 .pytest_cache/
 temp/*
 
+# Kanji data files (downloaded and processed)
+data/kanji_raw/
+data/kanji_processed/
+
 # OS / IDE files
 .DS_Store
 Thumbs.db

@@ -6,3 +6,5 @@ pytest
 psycopg2-binary
 supabase
 toml
+pypdf
+pandas
