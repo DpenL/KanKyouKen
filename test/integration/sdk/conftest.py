@@ -2,7 +2,20 @@
 import pytest
 import json
 from datetime import datetime, timedelta
-from kankyouken import KanKyouKenClient
+from test.utils.install_sdk import install_sdk_package
+
+
+@pytest.fixture(scope="session", autouse=True)
+def install_sdk():
+    """
+    Install the SDK package before running SDK tests.
+
+    This fixture runs once per test session and only when SDK tests are collected.
+    If the SDK fails to build, only SDK tests will fail (not the entire test suite).
+    """
+    success, error = install_sdk_package()
+    if not success:
+        pytest.fail(error)
 
 
 @pytest.fixture
@@ -13,6 +26,9 @@ def sdk_client(authenticated_user_with_study, function_base_url):
     Uses fixtures from parent conftest (test/integration/supabase/conftest.py)
     which are automatically discovered by pytest.
     """
+    # Import here to ensure SDK is installed first
+    from kankyouken import KanKyouKenClient
+
     auth = authenticated_user_with_study
 
     # Extract base URL from function URL

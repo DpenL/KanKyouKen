@@ -30,7 +30,7 @@ SCRIPT_DIR := $(PROJECT_ROOT)/scripts
 SCHEMA_SCRIPTS := $(SCRIPT_DIR)/schema
 
 # Ensure these targets always run
-.PHONY: sanitize test lint format setup
+.PHONY: sanitize test lint format setup install-sdk
 
 # Normalize CRLF → LF (dos2unix)
 sanitize:
@@ -48,6 +48,10 @@ clean:
 	docker rm -f $(docker ps -aq --filter "name=supabase") 2>/dev/null || true
 	rm -rf supabase/.temp supabase/.branches
 
+# Install SDK in editable mode
+install-sdk:
+	@echo "Installing KanKyouKen SDK..."
+	@pip install -e sdk/
 
 # Run Python tests
 # Usage: make test                                        # run all tests
