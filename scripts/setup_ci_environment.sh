@@ -25,6 +25,9 @@ echo "[ci-setup] Installing Python requirements..."
 $PYTHON -m pip install --upgrade pip
 $PYTHON -m pip install -r requirements.txt
 
+echo "[ci-setup] Installing KanKyouKen SDK..."
+$PYTHON -m pip install -e sdk/
+
 echo "[ci-setup] Applying Supabase CI config..."
 cp supabase/config.ci.toml supabase/config.toml
 
