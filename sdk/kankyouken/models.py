@@ -135,3 +135,87 @@ class EventsResponse:
             records.append(record)
 
         return pd.DataFrame(records)
+
+    def to_csv(self, filepath: str, index: bool = False, **kwargs):
+        """
+        Export events to CSV file
+
+        Args:
+            filepath: Path where CSV file will be saved
+            index: Whether to include DataFrame index (default: False)
+            **kwargs: Additional arguments passed to pandas.DataFrame.to_csv()
+
+        Raises:
+            ImportError: If pandas is not installed
+        """
+        df = self.to_dataframe()
+        df.to_csv(filepath, index=index, **kwargs)
+
+    def summary_stats(self) -> Dict[str, Any]:
+        """
+        Get summary statistics for the events
+
+        Returns:
+            dict: Dictionary containing:
+                - total_events: Total number of events
+                - unique_participants: Number of unique participants
+                - unique_event_types: Number of unique event types
+                - event_type_counts: Count of events by type
+                - date_range: Earliest and latest event timestamps
+        """
+        if not self.events:
+            return {
+                "total_events": 0,
+                "unique_participants": 0,
+                "unique_event_types": 0,
+                "event_type_counts": {},
+                "date_range": {"start": None, "end": None}
+            }
+
+        participants = set()
+        event_types = set()
+        timestamps = []
+
+        for event in self.events:
+            participants.add(event.participant_id)
+            event_types.add(event.event_type)
+            timestamps.append(event.ts)
+
+        event_type_counts = {}
+        for event in self.events:
+            event_type_counts[event.event_type] = event_type_counts.get(event.event_type, 0) + 1
+
+        return {
+            "total_events": len(self.events),
+            "unique_participants": len(participants),
+            "unique_event_types": len(event_types),
+            "event_type_counts": event_type_counts,
+            "date_range": {
+                "start": min(timestamps),
+                "end": max(timestamps)
+            }
+        }
+
+    def event_counts(self) -> Dict[str, int]:
+        """
+        Get count of events by event type
+
+        Returns:
+            dict: Dictionary mapping event_type to count
+        """
+        counts = {}
+        for event in self.events:
+            counts[event.event_type] = counts.get(event.event_type, 0) + 1
+        return counts
+
+    def participant_counts(self) -> Dict[str, int]:
+        """
+        Get count of events by participant
+
+        Returns:
+            dict: Dictionary mapping participant_id to event count
+        """
+        counts = {}
+        for event in self.events:
+            counts[event.participant_id] = counts.get(event.participant_id, 0) + 1
+        return counts

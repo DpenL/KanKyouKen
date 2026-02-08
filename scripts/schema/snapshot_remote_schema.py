@@ -1,7 +1,7 @@
 import os
-import subprocess
 from pathlib import Path
 
+from scripts.pg_dump_wrapper import run_pg_dump as pg_dump_wrapper
 from scripts.schema.normalize import normalize
 
 PROJECT_ROOT = Path(os.getenv("PROJECT_ROOT", Path(__file__).resolve().parents[2]))
@@ -19,20 +19,15 @@ def run_pg_dump(db_url: str | None = None) -> str:
         if not db_url:
             raise SystemExit("REMOTE_DB_URL not set in environment.")
 
-    result = subprocess.run(
-        [
-            "pg_dump",
+    return pg_dump_wrapper(
+        db_url,
+        extra_args=[
             "--schema-only",
             "--no-owner",
             "--no-privileges",
             "--schema=public",
-            db_url,
-        ],
-        text=True,
-        capture_output=True,
-        check=True,
+        ]
     )
-    return result.stdout
 
 
 def main() -> None:

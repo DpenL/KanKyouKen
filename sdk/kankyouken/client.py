@@ -102,9 +102,17 @@ class KanKyouKenClient:
         if event_type:
             params["event_type"] = event_type
         if date_from:
-            params["date_from"] = date_from.isoformat()
+            # Replace timezone suffix (+00:00) with 'Z' for UTC, or strip timezone entirely
+            # This ensures compatibility with the API's datetime parsing
+            date_str = date_from.isoformat()
+            if date_str.endswith('+00:00'):
+                date_str = date_str[:-6] + 'Z'
+            params["date_from"] = date_str
         if date_to:
-            params["date_to"] = date_to.isoformat()
+            date_str = date_to.isoformat()
+            if date_str.endswith('+00:00'):
+                date_str = date_str[:-6] + 'Z'
+            params["date_to"] = date_str
 
         # Make API request
         url = f"{self.url}/functions/v1/query-events"

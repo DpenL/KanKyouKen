@@ -5,7 +5,7 @@ Unit tests for data models
 import pytest
 from datetime import datetime
 
-from sdk.kankyouken.models import Event, EventsResponse, Pagination
+from kankyouken.models import Event, EventsResponse, Pagination
 
 
 class TestEvent:

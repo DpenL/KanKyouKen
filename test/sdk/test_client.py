@@ -6,8 +6,8 @@ import pytest
 from datetime import datetime
 from unittest.mock import Mock, patch
 
-from sdk.kankyouken.client import KanKyouKenClient
-from sdk.kankyouken.models import EventsResponse
+from kankyouken.client import KanKyouKenClient
+from kankyouken.models import EventsResponse
 
 
 class TestKanKyouKenClient:
@@ -34,8 +34,11 @@ class TestKanKyouKenClient:
 
         assert client.url == "http://example.com"
 
-    def test_init_without_token_raises_error(self):
+    def test_init_without_token_raises_error(self, monkeypatch):
         """Test that missing token raises ValueError"""
+        # Clear environment variable to ensure test conditions
+        monkeypatch.delenv("KANKYOUKEN_TOKEN", raising=False)
+
         with pytest.raises(ValueError, match="JWT token required"):
             KanKyouKenClient(url="http://example.com")
 
@@ -63,7 +66,7 @@ class TestKanKyouKenClient:
         with pytest.raises(ValueError, match="Cannot specify both"):
             client.query_events(study_id="study-1", project_id="project-1")
 
-    @patch('sdk.kankyouken.client.requests.get')
+    @patch('kankyouken.client.requests.get')
     def test_query_events_with_study_id(self, mock_get):
         """Test querying events by study_id"""
         # Mock API response
@@ -114,7 +117,7 @@ class TestKanKyouKenClient:
         assert response.events[0].id == "event-1"
         assert response.pagination.total == 1
 
-    @patch('sdk.kankyouken.client.requests.get')
+    @patch('kankyouken.client.requests.get')
     def test_query_events_with_all_filters(self, mock_get):
         """Test querying with all available filters"""
         mock_response = Mock()
@@ -151,7 +154,7 @@ class TestKanKyouKenClient:
         assert params["limit"] == 50
         assert params["offset"] == 10
 
-    @patch('sdk.kankyouken.client.requests.get')
+    @patch('kankyouken.client.requests.get')
     def test_iter_events_pagination(self, mock_get):
         """Test iter_events handles pagination correctly"""
         # Mock two pages of results
@@ -182,7 +185,7 @@ class TestKanKyouKenClient:
         assert len(pages[1].events) == 50
         assert mock_get.call_count == 2
 
-    @patch('sdk.kankyouken.client.requests.get')
+    @patch('kankyouken.client.requests.get')
     def test_query_events_handles_http_error(self, mock_get):
         """Test that HTTP errors are raised"""
         import requests
