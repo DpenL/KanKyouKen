@@ -5,7 +5,7 @@ Python client library for querying event data from the KanKyouKen platform.
 """
 
 from .client import KanKyouKenClient
-from .models import EventsResponse, Event
+from .models import EventsResponse, Event, PostEventResponse
 
 __version__ = "0.1.0"
-__all__ = ["KanKyouKenClient", "EventsResponse", "Event"]
+__all__ = ["KanKyouKenClient", "EventsResponse", "Event", "PostEventResponse"]

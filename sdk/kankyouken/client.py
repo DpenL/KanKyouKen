@@ -3,12 +3,12 @@ KanKyouKen API Client
 """
 
 import os
-from typing import Iterator, Optional
+from typing import Any, Dict, Iterator, List, Optional
 from datetime import datetime
 
 import requests
 
-from .models import EventsResponse
+from .models import EventsResponse, PostEventResponse
 
 
 class KanKyouKenClient:
@@ -177,3 +177,105 @@ class KanKyouKenClient:
                 break
 
             offset += page_size
+
+    def post_event(
+        self,
+        study_id: str,
+        participant_id: str,
+        event_type: str,
+        payload: Optional[Dict[str, Any]] = None,
+        ts: Optional[datetime] = None,
+        session_id: Optional[str] = None,
+        app_version: Optional[str] = None,
+        platform: Optional[str] = None,
+        item_id: Optional[str] = None,
+        task_id: Optional[str] = None,
+    ) -> PostEventResponse:
+        """
+        Post a single event to the KanKyouKen platform
+
+        Args:
+            study_id: Study this event belongs to
+            participant_id: Participant who generated the event
+            event_type: Type/name of the event
+            payload: Arbitrary JSON payload for event data
+            ts: Event timestamp (defaults to server time if not provided)
+            session_id: Optional session identifier
+            app_version: Optional app version string
+            platform: Optional platform identifier
+            item_id: Optional item identifier
+            task_id: Optional task identifier
+
+        Returns:
+            PostEventResponse: Response containing event_id and created_at
+
+        Raises:
+            requests.HTTPError: If the API request fails
+        """
+        body: Dict[str, Any] = {
+            "study_id": study_id,
+            "participant_id": participant_id,
+            "event_type": event_type,
+        }
+
+        if payload is not None:
+            body["payload"] = payload
+        if ts is not None:
+            ts_str = ts.isoformat()
+            if ts_str.endswith("+00:00"):
+                ts_str = ts_str[:-6] + "Z"
+            body["ts"] = ts_str
+        if session_id is not None:
+            body["session_id"] = session_id
+        if app_version is not None:
+            body["app_version"] = app_version
+        if platform is not None:
+            body["platform"] = platform
+        if item_id is not None:
+            body["item_id"] = item_id
+        if task_id is not None:
+            body["task_id"] = task_id
+
+        url = f"{self.url}/functions/v1/event-collector"
+        headers = {
+            "Authorization": f"Bearer {self.token}",
+            "Content-Type": "application/json",
+        }
+
+        response = requests.post(url, headers=headers, json=body, timeout=self.timeout)
+        response.raise_for_status()
+
+        return PostEventResponse.from_dict(response.json())
+
+    def post_events(
+        self,
+        events: List[Dict[str, Any]],
+    ) -> List[PostEventResponse]:
+        """
+        Post multiple events to the KanKyouKen platform
+
+        Each dict in the list must contain at minimum: study_id, participant_id, event_type.
+        All other fields accepted by post_event() are also supported.
+
+        Args:
+            events: List of event dicts to post
+
+        Returns:
+            List[PostEventResponse]: One response per event, in the same order
+
+        Raises:
+            ValueError: If a required field is missing from an event dict
+            requests.HTTPError: If any API request fails
+        """
+        required = {"study_id", "participant_id", "event_type"}
+        results = []
+
+        for i, event in enumerate(events):
+            missing = required - event.keys()
+            if missing:
+                raise ValueError(
+                    f"Event at index {i} is missing required fields: {missing}"
+                )
+            results.append(self.post_event(**event))
+
+        return results

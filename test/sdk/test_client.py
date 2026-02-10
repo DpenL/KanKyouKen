@@ -7,7 +7,7 @@ from datetime import datetime
 from unittest.mock import Mock, patch
 
 from kankyouken.client import KanKyouKenClient
-from kankyouken.models import EventsResponse
+from kankyouken.models import EventsResponse, PostEventResponse
 
 
 class TestKanKyouKenClient:
@@ -198,3 +198,132 @@ class TestKanKyouKenClient:
 
         with pytest.raises(requests.HTTPError):
             client.query_events(study_id="study-1")
+
+    @patch('kankyouken.client.requests.post')
+    def test_post_event_basic(self, mock_post):
+        """Test posting a single event"""
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "event_id": "evt-123",
+            "created_at": "2025-12-17T10:00:00Z",
+            "message": "Event stored successfully",
+        }
+        mock_post.return_value = mock_response
+
+        client = KanKyouKenClient(url="http://test.com", token="token")
+        result = client.post_event(
+            study_id="study-1",
+            participant_id="p1",
+            event_type="login",
+        )
+
+        assert isinstance(result, PostEventResponse)
+        assert result.event_id == "evt-123"
+        assert result.message == "Event stored successfully"
+
+        mock_post.assert_called_once()
+        call_args = mock_post.call_args
+        assert call_args[0][0] == "http://test.com/functions/v1/event-collector"
+        assert call_args[1]["headers"]["Authorization"] == "Bearer token"
+        body = call_args[1]["json"]
+        assert body["study_id"] == "study-1"
+        assert body["participant_id"] == "p1"
+        assert body["event_type"] == "login"
+
+    @patch('kankyouken.client.requests.post')
+    def test_post_event_with_payload(self, mock_post):
+        """Test posting an event with a payload"""
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "event_id": "evt-456",
+            "created_at": "2025-12-17T10:00:00Z",
+            "message": "Event stored successfully",
+        }
+        mock_post.return_value = mock_response
+
+        client = KanKyouKenClient(url="http://test.com", token="token")
+        client.post_event(
+            study_id="study-1",
+            participant_id="p1",
+            event_type="radical_battle_result",
+            payload={"radical": "⺡", "correct": True, "response_time_ms": 1243},
+        )
+
+        body = mock_post.call_args[1]["json"]
+        assert body["payload"] == {"radical": "⺡", "correct": True, "response_time_ms": 1243}
+
+    @patch('kankyouken.client.requests.post')
+    def test_post_event_with_ts(self, mock_post):
+        """Test that ts is serialised with Z suffix"""
+        from datetime import timezone
+
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "event_id": "evt-789",
+            "created_at": "2025-12-17T10:00:00Z",
+            "message": "Event stored successfully",
+        }
+        mock_post.return_value = mock_response
+
+        client = KanKyouKenClient(url="http://test.com", token="token")
+        ts = datetime(2025, 12, 17, 10, 0, 0, tzinfo=timezone.utc)
+        client.post_event(
+            study_id="study-1",
+            participant_id="p1",
+            event_type="login",
+            ts=ts,
+        )
+
+        body = mock_post.call_args[1]["json"]
+        assert body["ts"] == "2025-12-17T10:00:00Z"
+
+    @patch('kankyouken.client.requests.post')
+    def test_post_events_batch(self, mock_post):
+        """Test posting multiple events"""
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "event_id": "evt-1",
+            "created_at": "2025-12-17T10:00:00Z",
+            "message": "Event stored successfully",
+        }
+        mock_post.return_value = mock_response
+
+        client = KanKyouKenClient(url="http://test.com", token="token")
+        events = [
+            {"study_id": "s1", "participant_id": "p1", "event_type": "login"},
+            {"study_id": "s1", "participant_id": "p1", "event_type": "logout"},
+            {"study_id": "s1", "participant_id": "p1", "event_type": "action", "payload": {"x": 1}},
+        ]
+        results = client.post_events(events)
+
+        assert len(results) == 3
+        assert mock_post.call_count == 3
+        for r in results:
+            assert isinstance(r, PostEventResponse)
+
+    def test_post_events_missing_required_field(self):
+        """Test that post_events raises ValueError for missing required fields"""
+        client = KanKyouKenClient(url="http://test.com", token="token")
+
+        with pytest.raises(ValueError, match="missing required fields"):
+            client.post_events([
+                {"study_id": "s1", "participant_id": "p1"},  # missing event_type
+            ])
+
+    @patch('kankyouken.client.requests.post')
+    def test_post_event_http_error(self, mock_post):
+        """Test that HTTP errors from post_event are raised"""
+        import requests
+
+        mock_response = Mock()
+        mock_response.raise_for_status.side_effect = requests.HTTPError("403 Forbidden")
+        mock_post.return_value = mock_response
+
+        client = KanKyouKenClient(url="http://test.com", token="token")
+
+        with pytest.raises(requests.HTTPError):
+            client.post_event(
+                study_id="study-1",
+                participant_id="p1",
+                event_type="login",
+            )
