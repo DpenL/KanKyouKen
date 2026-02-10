@@ -154,6 +154,89 @@ class TestKanKyouKenClient:
         assert params["limit"] == 50
         assert params["offset"] == 10
 
+    @patch('kankyouken.client.time.sleep')
+    @patch('kankyouken.client.requests.get')
+    def test_subscribe_to_events_yields_events(self, mock_get, mock_sleep):
+        """Test that subscribe_to_events yields events from each poll"""
+        from datetime import timezone
+
+        poll1 = Mock()
+        poll1.json.return_value = {
+            "events": [
+                {"id": "e1", "participant_id": "p1", "study_id": "s1",
+                 "event_type": "login", "ts": "2025-12-17T10:00:00Z"},
+                {"id": "e2", "participant_id": "p1", "study_id": "s1",
+                 "event_type": "action", "ts": "2025-12-17T10:01:00Z"},
+            ],
+            "pagination": {"total": 2, "limit": 1000, "offset": 0, "returned": 2},
+            "filters": {}
+        }
+        poll2 = Mock()
+        poll2.json.return_value = {
+            "events": [
+                {"id": "e3", "participant_id": "p1", "study_id": "s1",
+                 "event_type": "logout", "ts": "2025-12-17T10:02:00Z"},
+            ],
+            "pagination": {"total": 1, "limit": 1000, "offset": 0, "returned": 1},
+            "filters": {}
+        }
+        mock_get.side_effect = [poll1, poll2]
+
+        client = KanKyouKenClient(url="http://test.com", token="token")
+        since = datetime(2025, 12, 17, 9, 0, 0, tzinfo=timezone.utc)
+
+        # Collect events from 2 polls then stop
+        events = []
+        for event in client.subscribe_to_events(study_id="s1", poll_interval=5, since=since):
+            events.append(event)
+            if len(events) == 3:
+                break
+
+        assert len(events) == 3
+        assert events[0].id == "e1"
+        assert events[1].id == "e2"
+        assert events[2].id == "e3"
+        assert mock_sleep.call_count == 1  # slept once between polls
+        assert mock_sleep.call_args[0][0] == 5
+
+    @patch('kankyouken.client.time.sleep')
+    @patch('kankyouken.client.requests.get')
+    def test_subscribe_advances_cursor(self, mock_get, mock_sleep):
+        """Test that the cursor advances so the second poll uses the latest event ts"""
+        from datetime import timezone
+
+        def make_poll(events):
+            m = Mock()
+            m.json.return_value = {
+                "events": events,
+                "pagination": {"total": len(events), "limit": 1000, "offset": 0, "returned": len(events)},
+                "filters": {}
+            }
+            return m
+
+        event_record = {"id": "e1", "participant_id": "p1", "study_id": "s1",
+                        "event_type": "login", "ts": "2025-12-17T10:00:00Z"}
+        # poll1 has one event; poll2 is empty; poll3 yields a second event so we can break
+        mock_get.side_effect = [
+            make_poll([event_record]),
+            make_poll([]),
+            make_poll([{**event_record, "id": "e2", "ts": "2025-12-17T10:05:00Z"}]),
+        ]
+
+        client = KanKyouKenClient(url="http://test.com", token="token")
+        since = datetime(2025, 12, 17, 9, 0, 0, tzinfo=timezone.utc)
+
+        events = []
+        for event in client.subscribe_to_events(study_id="s1", poll_interval=1, since=since):
+            events.append(event)
+            if len(events) == 2:
+                break
+
+        # Second poll should have used the cursor advanced from poll1 (10:00:00Z)
+        assert mock_get.call_count >= 2
+        second_call_params = mock_get.call_args_list[1][1]["params"]
+        assert "2025-12-17T10:00:00" in second_call_params["date_from"]
+
     @patch('kankyouken.client.requests.get')
     def test_iter_events_pagination(self, mock_get):
         """Test iter_events handles pagination correctly"""
