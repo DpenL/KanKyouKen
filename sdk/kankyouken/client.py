@@ -3,8 +3,9 @@ KanKyouKen API Client
 """
 
 import os
+import time
 from typing import Any, Dict, Iterator, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 import requests
 
@@ -279,3 +280,56 @@ class KanKyouKenClient:
             results.append(self.post_event(**event))
 
         return results
+
+    def subscribe_to_events(
+        self,
+        study_id: Optional[str] = None,
+        project_id: Optional[str] = None,
+        participant_id: Optional[str] = None,
+        event_type: Optional[str] = None,
+        poll_interval: int = 30,
+        since: Optional[datetime] = None,
+    ) -> Iterator["Event"]:  # noqa: F821
+        """
+        Poll for new events, yielding each event as it arrives
+
+        Continuously polls the query-events endpoint and yields new events
+        since the last poll. Useful for live dashboards and real-time
+        research notebooks.
+
+        Args:
+            study_id: Filter by study ID (mutually exclusive with project_id)
+            project_id: Filter by project ID
+            participant_id: Filter by participant ID
+            event_type: Filter by event type
+            poll_interval: Seconds between polls (default: 30)
+            since: Start yielding events after this timestamp.
+                   Defaults to now, so only future events are returned.
+
+        Yields:
+            Event: Each new event in the order it was recorded
+
+        Example:
+            >>> for event in client.subscribe_to_events(study_id="study-123"):
+            ...     print(event.event_type, event.payload)
+        """
+        from .models import Event  # avoid circular import at module level
+
+        cursor = since if since is not None else datetime.now(timezone.utc)
+
+        while True:
+            response = self.query_events(
+                study_id=study_id,
+                project_id=project_id,
+                participant_id=participant_id,
+                event_type=event_type,
+                date_from=cursor,
+                limit=1000,
+            )
+
+            for event in response.events:
+                yield event
+                if event.ts > cursor:
+                    cursor = event.ts
+
+            time.sleep(poll_interval)
