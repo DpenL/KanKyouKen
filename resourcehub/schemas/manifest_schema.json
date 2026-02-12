@@ -1,0 +1,151 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "KanKyouKen Layer 3 Resource Manifest",
+  "description": "Schema for Layer 3 resource manifest following BioConductor AnnotationHub pattern",
+  "type": "object",
+  "required": ["version", "updated_at", "resources"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Manifest format version (semantic versioning)",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "example": "1.0.0"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this manifest was last updated (ISO 8601)"
+    },
+    "resources": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Resource"
+      }
+    }
+  },
+  "definitions": {
+    "Resource": {
+      "type": "object",
+      "required": ["id", "version", "tier", "type", "title", "size_bytes", "checksum", "url", "license"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique resource identifier (snake_case)",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "example": "kanjidic2_core"
+        },
+        "version": {
+          "type": "string",
+          "description": "Resource version (semantic versioning)",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "example": "2024.1.0"
+        },
+        "tier": {
+          "type": "integer",
+          "enum": [1, 2, 3],
+          "description": "1=bundled (<5MB), 2=standard analytics (~50MB), 3=extended (>50MB)"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["dictionary", "analytics", "benchmark", "graph", "corpus"],
+          "description": "Resource category"
+        },
+        "title": {
+          "type": "string",
+          "description": "Human-readable resource name",
+          "example": "KANJIDIC2 Core Dictionary"
+        },
+        "description": {
+          "type": "string",
+          "description": "Detailed description of resource content and use cases"
+        },
+        "size_bytes": {
+          "type": "integer",
+          "description": "File size in bytes",
+          "minimum": 0
+        },
+        "checksum": {
+          "type": "string",
+          "description": "SHA256 hash for integrity verification",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Download URL (absolute path)"
+        },
+        "format": {
+          "type": "string",
+          "enum": ["json", "jsonl", "parquet", "csv", "sqlite"],
+          "description": "File format"
+        },
+        "license": {
+          "type": "object",
+          "required": ["name", "url"],
+          "properties": {
+            "name": {
+              "type": "string",
+              "example": "CC BY-SA 4.0"
+            },
+            "url": {
+              "type": "string",
+              "format": "uri"
+            }
+          }
+        },
+        "source": {
+          "type": "object",
+          "description": "Provenance metadata",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Original data source",
+              "example": "EDRDG KANJIDIC2"
+            },
+            "url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "date_retrieved": {
+              "type": "string",
+              "format": "date"
+            },
+            "methodology": {
+              "type": "string",
+              "description": "How this resource was created/curated"
+            }
+          }
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "description": "Resource IDs that must be loaded first"
+          },
+          "example": ["kanjidic2_core"]
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Searchable keywords",
+          "example": ["dictionary", "jouyou", "readings"]
+        },
+        "citation": {
+          "type": "string",
+          "description": "How to cite this resource in publications"
+        },
+        "deprecated": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether this version is deprecated (replaced by newer)"
+        },
+        "superseded_by": {
+          "type": "string",
+          "description": "Resource ID that replaces this one (if deprecated)"
+        }
+      }
+    }
+  }
+}
