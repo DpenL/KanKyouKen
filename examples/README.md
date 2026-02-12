@@ -29,6 +29,7 @@ export STUDY_ID="your-study-id"
 | **01_basic_sdk_usage** | Full SDK walkthrough: connect, query, iterate, post, subscribe |
 | **02_event_analysis** | Analytics patterns: distributions, participant stats, time series, cohorts |
 | **03_visualization** | Chart templates: matplotlib, seaborn, plotly, publication-ready figures |
+| **04_kanji_learning_analysis** | ResourceHub showcase: kanji property exploration, radical transfer analysis, learning curves |
 
 ```bash
 jupyter notebook examples/

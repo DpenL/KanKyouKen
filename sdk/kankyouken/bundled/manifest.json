@@ -1,0 +1,103 @@
+{
+  "version": "1.0.0",
+  "updated_at": "2026-01-02T07:09:24.128788+00:00",
+  "resources": [
+    {
+      "id": "kanjidic2_core",
+      "version": "2025.1.0",
+      "tier": 1,
+      "type": "dictionary",
+      "title": "KANJIDIC2 Core Dictionary",
+      "description": "Comprehensive kanji character database with readings, meanings, stroke counts, and grade levels for 13,108 kanji characters. Essential reference for Japanese language learners and developers.",
+      "size_bytes": 4766228,
+      "checksum": "28208c634ef3be8d41457459f6cd000fb53d5e2c1c96b9d447594520c4fbaf3a",
+      "url": "https://github.com/DpenL/KanKyouKen/releases/download/resources-v2025.1.0/kanjidic2_core_v2025.1.0.json",
+      "format": "json",
+      "license": {
+        "name": "CC BY-SA 4.0",
+        "url": "https://creativecommons.org/licenses/by-sa/4.0/"
+      },
+      "source": {
+        "name": "EDRDG KANJIDIC2 (via davidluzgouveia/kanji-data)",
+        "url": "https://github.com/davidluzgouveia/kanji-data",
+        "date_retrieved": "2026-01-02",
+        "methodology": "Converted from kanji-data JSON format to KANJIDIC2 schema with Unicode codepoints, readings, meanings, and metadata"
+      },
+      "tags": [
+        "dictionary",
+        "kanji",
+        "readings",
+        "jouyou",
+        "jlpt",
+        "core"
+      ],
+      "citation": "KANJIDIC2 - Copyright (C) The Electronic Dictionary Research and Development Group. Used under Creative Commons Attribution-ShareAlike License."
+    },
+    {
+      "id": "kradfile_u",
+      "version": "2025.1.0",
+      "tier": 1,
+      "type": "analytics",
+      "title": "KRADFILE Radical Decomposition",
+      "description": "Kanji radical decomposition database mapping 6,355 characters to their component radicals (253 total radicals). Essential for radical-based search, stroke order analysis, and character composition studies.",
+      "size_bytes": 810846,
+      "checksum": "7dcbd1114b0a286455916c82379d5f12f242f62cfb885cea90f012a06b9a8826",
+      "url": "https://github.com/DpenL/KanKyouKen/releases/download/resources-v2025.1.0/kradfile_u_v2025.1.0.json",
+      "format": "json",
+      "license": {
+        "name": "EDRDG License",
+        "url": "https://www.edrdg.org/edrdg/licence.html"
+      },
+      "source": {
+        "name": "EDRDG KRADFILE/RADKFILE (via bhffmnn/krad-unicode)",
+        "url": "https://github.com/bhffmnn/krad-unicode",
+        "date_retrieved": "2026-01-02",
+        "methodology": "Converted from krad-unicode JSON format with bidirectional radical-kanji mappings and radical catalog with stroke counts"
+      },
+      "dependencies": [
+        "kanjidic2_core"
+      ],
+      "tags": [
+        "radicals",
+        "decomposition",
+        "analytics",
+        "search",
+        "composition"
+      ],
+      "citation": "KRADFILE/RADKFILE - Copyright (C) The Electronic Dictionary Research and Development Group. Used under EDRDG License."
+    },
+    {
+      "id": "jlpt_mappings",
+      "version": "2025.1.0",
+      "tier": 1,
+      "type": "analytics",
+      "title": "JLPT Level Mappings",
+      "description": "Japanese Language Proficiency Test (JLPT) level mappings for 2,211 kanji across levels N5 (beginner) through N1 (advanced). Essential for study planning and curriculum design.",
+      "size_bytes": 71880,
+      "checksum": "0d94d1cd52d4a2882011d9e23db92dba24ac6c90e7b56b9b92e11c070442196b",
+      "url": "https://github.com/DpenL/KanKyouKen/releases/download/resources-v2025.1.0/jlpt_mappings_v2025.1.0.json",
+      "format": "json",
+      "license": {
+        "name": "CC BY-SA 4.0",
+        "url": "https://creativecommons.org/licenses/by-sa/4.0/"
+      },
+      "source": {
+        "name": "JLPT Kanji Lists (via davidluzgouveia/kanji-data)",
+        "url": "https://github.com/davidluzgouveia/kanji-data",
+        "date_retrieved": "2026-01-02",
+        "methodology": "Extracted JLPT level information from kanji-data with bidirectional level-kanji mappings"
+      },
+      "dependencies": [
+        "kanjidic2_core"
+      ],
+      "tags": [
+        "jlpt",
+        "study",
+        "proficiency",
+        "levels",
+        "curriculum"
+      ],
+      "citation": "JLPT level data compiled from various community sources. No official JLPT kanji list exists."
+    }
+  ]
+}
