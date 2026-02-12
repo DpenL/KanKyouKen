@@ -2,6 +2,7 @@ import subprocess
 import os
 import pytest
 import psycopg2
+from pathlib import Path
 
 
 @pytest.mark.integration
@@ -20,10 +21,13 @@ def test_migrations_apply_cleanly():
     conn = psycopg2.connect(db_url)
     conn.close()
 
-    # 2) Run pg_dump --schema-only on the live DB
+    # 2) Run pg_dump --schema-only on the live DB (using wrapper to handle version mismatch)
+    # Path from test/integration/supabase/schema/ to scripts/
+    wrapper_path = Path(__file__).parent.parent.parent.parent.parent / "scripts" / "pg_dump_wrapper.py"
     live = subprocess.run(
         [
-            "pg_dump",
+            "python3",
+            str(wrapper_path),
             "--schema-only",
             "--no-owner",
             "--no-privileges",

@@ -1,7 +1,7 @@
 import os
-import subprocess
 from pathlib import Path
 
+from scripts.pg_dump_wrapper import run_pg_dump as _run_pg_dump
 from scripts.schema.normalize import normalize
 
 PROJECT_ROOT = Path(os.getenv("PROJECT_ROOT", Path(__file__).resolve().parents[2]))
@@ -11,31 +11,22 @@ SNAPSHOT_NORMALIZED = PROJECT_ROOT / "temp" / "snapshots" / "schema_public_local
 
 def run_pg_dump(db_url: str) -> str:
     """
-    Run pg_dump --schema-only on the given DB URL (public schema only)
-    and return the raw SQL as text.
+    Run pg_dump --schema-only on the given DB URL (public schema only).
+    Backward-compatible wrapper that defaults to public schema only.
     """
-    try:
-        result = subprocess.run(
-            [
-                "pg_dump",
-                "--schema-only",
-                "--no-owner",
-                "--no-privileges",
-                "--schema=public",
-                db_url,
-            ],
-            text=True,
-            capture_output=True,
-            check=True,
-        )
-        return result.stdout
-    except subprocess.CalledProcessError as e:
-        print("[snapshot_local_schema] pg_dump FAILED", flush=True)
-        print("---- STDOUT ----", flush=True)
-        print(e.stdout or "<empty>", flush=True)
-        print("---- STDERR ----", flush=True)
-        print(e.stderr or "<empty>", flush=True)
-        raise
+    return _run_pg_dump(
+        db_url,
+        extra_args=[
+            "--schema-only",
+            "--no-owner",
+            "--no-privileges",
+            "--schema=public",
+        ]
+    )
+
+
+# Re-export for backward compatibility
+__all__ = ["run_pg_dump", "main"]
 
 
 def main() -> None:
