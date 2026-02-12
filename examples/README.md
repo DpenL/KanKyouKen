@@ -10,163 +10,91 @@ cd sdk
 pip install -e ".[pandas]"
 ```
 
-2. Set environment variables:
+2. Install notebook dependencies:
+```bash
+pip install -r examples/requirements.txt
+```
+
+3. Set environment variables (or create `examples/.env`):
 ```bash
 export KANKYOUKEN_URL="http://localhost:54321"
 export KANKYOUKEN_TOKEN="your-jwt-token"
-export STUDY_ID="your-study-id"  # optional
+export STUDY_ID="your-study-id"
 ```
 
-## Examples
+## Notebooks
 
-### Python Scripts
+| Notebook | Description |
+|---|---|
+| **01_basic_sdk_usage** | Full SDK walkthrough: connect, query, iterate, post, subscribe |
+| **02_event_analysis** | Analytics patterns: distributions, participant stats, time series, cohorts |
+| **03_visualization** | Chart templates: matplotlib, seaborn, plotly, publication-ready figures |
 
-**`basic_query.py`** - Simple script showing basic SDK usage
 ```bash
-python examples/basic_query.py
-```
-
-### Jupyter Notebooks
-
-**`01_basic_sdk_usage.ipynb`** - Interactive tutorial covering:
-- Client initialization
-- Querying events with filters
-- Converting to DataFrame
-- Pagination with `iter_events()`
-- Basic data analysis
-
-To use the notebooks:
-```bash
-pip install jupyter pandas matplotlib
 jupyter notebook examples/
 ```
 
+## Helper Scripts
+
+| Script | Description |
+|---|---|
+| `basic_query.py` | Minimal CLI example — query + DataFrame in ~20 lines |
+| `populate_test_events.py` | Seed a study with realistic test events via SDK |
+| `get_sdk_token.py` | Generate a JWT token for local development |
+| `setup_example_study.py` | Create a project, study, and participants in the local DB |
+
 ## Quick Reference
 
-### Initialize Client
+### Connect
 
 ```python
 from kankyouken import KanKyouKenClient
 
-# From environment variables
-client = KanKyouKenClient()
-
-# Or with explicit parameters
 client = KanKyouKenClient(
     url="http://localhost:54321",
-    token="your-jwt-token"
+    token="your-jwt-token",
 )
 ```
 
 ### Query Events
 
 ```python
-# By study
-response = client.query_events(study_id="study-123")
+response = client.query_events(study_id="...", event_type="login", limit=100)
 
-# By project (all studies)
-response = client.query_events(project_id="project-456")
-
-# With filters
-from datetime import datetime, timedelta
-
-response = client.query_events(
-    study_id="study-123",
-    event_type="login",
-    date_from=datetime.now() - timedelta(days=7),
-    limit=100
-)
-```
-
-### Work with Results
-
-```python
-# Access events
 for event in response.events:
     print(event.event_type, event.ts, event.payload)
-
-# Pagination info
-print(response.pagination.total)  # Total matching events
-print(response.pagination.returned)  # Events in this response
-
-# Convert to DataFrame
-df = response.to_dataframe()
 ```
 
-### Iterate All Events
+### Iterate All Events (automatic pagination)
 
 ```python
-# Automatic pagination
-for page in client.iter_events(study_id="study-123", page_size=100):
-    process_events(page.events)
-```
-
-## Use Cases
-
-### Research Workflow
-
-```python
-# Fetch all events for a study
-all_events = []
-for page in client.iter_events(study_id=STUDY_ID, page_size=500):
-    all_events.extend(page.events)
-
-# Convert to DataFrame for analysis
-from kankyouken import KanKyouKenClient
-client = KanKyouKenClient()
-response = client.query_events(study_id=STUDY_ID, limit=10000)
-df = response.to_dataframe()
-
-# Analyze with pandas
 import pandas as pd
-event_counts = df.groupby(['participant_id', 'event_type']).size()
+
+# iter_events yields flat Event objects across all pages
+events = list(client.iter_events(study_id="..."))
+
+# Build a DataFrame — Event.to_dict() flattens payload into payload_<key> columns
+df = pd.DataFrame([e.to_dict() for e in events])
 ```
 
-### ML Pipeline
+### Post Events
 
 ```python
-# Extract features from events
-response = client.query_events(
-    study_id=STUDY_ID,
-    event_type="answer_submitted"
+client.post_event(
+    study_id="...",
+    participant_id="...",
+    event_type="answer_submitted",
+    payload={"item": "漢", "correct": True, "rt_ms": 1243},
 )
-
-df = response.to_dataframe()
-
-# Extract features from payload
-df['correct'] = df['payload_correct'].astype(int)
-df['response_time'] = df['payload_response_time']
-
-# Feed to ML model
-from sklearn.model_selection import train_test_split
-X = df[['response_time', 'item_id']]
-y = df['correct']
 ```
 
-### Visualization
+### Subscribe to Live Events
 
 ```python
-import matplotlib.pyplot as plt
-import pandas as pd
-
-# Get events and convert to DataFrame
-response = client.query_events(study_id=STUDY_ID, limit=5000)
-df = response.to_dataframe()
-
-# Plot activity over time
-df['date'] = pd.to_datetime(df['ts']).dt.date
-daily_activity = df.groupby('date').size()
-
-plt.figure(figsize=(12, 6))
-daily_activity.plot(kind='bar')
-plt.title('Daily Event Activity')
-plt.xlabel('Date')
-plt.ylabel('Number of Events')
-plt.show()
+# Polls for new events, yields each one as it arrives
+for event in client.subscribe_to_events(study_id="...", poll_interval=30):
+    print(event.event_type, event.payload)
 ```
 
-## Next Steps
-
-- Check the [SDK documentation](../sdk/README.md) for full API reference
-- See notebooks for detailed examples
-- Read the [main project README](../README.md) for platform overview
+`iter_events` and `subscribe_to_events` both yield `Event` objects, so the same
+processing code works for historical back-fill and live streaming.

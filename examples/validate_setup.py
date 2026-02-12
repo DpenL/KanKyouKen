@@ -117,7 +117,6 @@ def main():
     check_package("matplotlib")
     check_package("seaborn")
     check_package("plotly")
-    check_package("sklearn", "sklearn")
     check_package("nbformat")
     check_package("nbconvert")
     print()
