@@ -11,6 +11,34 @@ from kankyouken.models import Event, EventsResponse, Pagination
 class TestEvent:
     """Test Event model"""
 
+    def test_event_to_dict_flattens_payload(self):
+        """Test that to_dict flattens payload fields with payload_ prefix"""
+        event = Event.from_dict({
+            "id": "e1", "participant_id": "p1", "study_id": "s1",
+            "event_type": "login", "ts": "2025-12-17T10:00:00Z",
+            "payload": {"score": 42, "correct": True},
+        })
+
+        d = event.to_dict()
+
+        assert d["id"] == "e1"
+        assert d["event_type"] == "login"
+        assert d["payload_score"] == 42
+        assert d["payload_correct"] is True
+        assert "payload" not in d
+
+    def test_event_to_dict_no_payload(self):
+        """Test that to_dict works when payload is None"""
+        event = Event.from_dict({
+            "id": "e1", "participant_id": "p1", "study_id": "s1",
+            "event_type": "login", "ts": "2025-12-17T10:00:00Z",
+        })
+
+        d = event.to_dict()
+
+        assert "payload" not in d
+        assert not any(k.startswith("payload_") for k in d)
+
     def test_event_from_dict(self):
         """Test creating Event from dictionary"""
         data = {

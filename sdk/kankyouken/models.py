@@ -24,6 +24,31 @@ class Event:
     task_id: Optional[str] = None
     created_at: Optional[datetime] = None
 
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert event to a flat dictionary, with payload fields inlined as ``payload_<key>``.
+
+        Suitable for building a pandas DataFrame:
+            ``pd.DataFrame([e.to_dict() for e in events])``
+        """
+        record: Dict[str, Any] = {
+            "id": self.id,
+            "participant_id": self.participant_id,
+            "study_id": self.study_id,
+            "event_type": self.event_type,
+            "ts": self.ts,
+            "session_id": self.session_id,
+            "app_version": self.app_version,
+            "platform": self.platform,
+            "item_id": self.item_id,
+            "task_id": self.task_id,
+            "created_at": self.created_at,
+        }
+        if self.payload:
+            for key, value in self.payload.items():
+                record[f"payload_{key}"] = value
+        return record
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Event":
         """Create Event from API response dictionary"""
@@ -130,31 +155,7 @@ class EventsResponse:
         if not self.events:
             return pd.DataFrame()
 
-        # Convert events to list of dicts
-        records = []
-        for event in self.events:
-            record = {
-                "id": event.id,
-                "participant_id": event.participant_id,
-                "study_id": event.study_id,
-                "event_type": event.event_type,
-                "ts": event.ts,
-                "session_id": event.session_id,
-                "app_version": event.app_version,
-                "platform": event.platform,
-                "item_id": event.item_id,
-                "task_id": event.task_id,
-                "created_at": event.created_at,
-            }
-
-            # Flatten payload if it exists
-            if event.payload:
-                for key, value in event.payload.items():
-                    record[f"payload_{key}"] = value
-
-            records.append(record)
-
-        return pd.DataFrame(records)
+        return pd.DataFrame([event.to_dict() for event in self.events])
 
     def to_csv(self, filepath: str, index: bool = False, **kwargs):
         """

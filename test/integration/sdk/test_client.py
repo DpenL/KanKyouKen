@@ -150,13 +150,12 @@ def test_iter_events_pagination(sdk_client_with_data):
     client = data["client"]
     auth = data["auth"]
 
-    # Collect all events using iter_events
-    all_events = []
-    for page in client.iter_events(study_id=auth["study_id"], page_size=3):
-        all_events.extend(page.events)
+    # Collect all events using iter_events (yields flat Event objects)
+    all_events = list(client.iter_events(study_id=auth["study_id"], page_size=3))
 
     # Should have collected all 10 events we inserted
     assert len(all_events) >= 10
+    assert all(isinstance(e, Event) for e in all_events)
 
 
 @pytest.mark.integration

@@ -154,7 +154,68 @@ class TestKanKyouKenClient:
         assert params["limit"] == 50
         assert params["offset"] == 10
 
-    @patch('kankyouken.client.time.sleep')
+    @patch('kankyouken.client.requests.get')
+    def test_iter_events_yields_flat_events(self, mock_get):
+        """Test that iter_events yields flat Event objects across pages"""
+        page1 = Mock()
+        page1.json.return_value = {
+            "events": [
+                {"id": "e1", "participant_id": "p1", "study_id": "s1",
+                 "event_type": "login", "ts": "2025-12-17T10:00:00Z"},
+                {"id": "e2", "participant_id": "p1", "study_id": "s1",
+                 "event_type": "action", "ts": "2025-12-17T10:01:00Z"},
+            ],
+            "pagination": {"total": 3, "limit": 2, "offset": 0, "returned": 2},
+            "filters": {}
+        }
+        page2 = Mock()
+        page2.json.return_value = {
+            "events": [
+                {"id": "e3", "participant_id": "p2", "study_id": "s1",
+                 "event_type": "logout", "ts": "2025-12-17T10:02:00Z"},
+            ],
+            "pagination": {"total": 3, "limit": 2, "offset": 2, "returned": 1},
+            "filters": {}
+        }
+        mock_get.side_effect = [page1, page2]
+
+        from kankyouken.models import Event
+        client = KanKyouKenClient(url="http://test.com", token="token")
+        events = list(client.iter_events(study_id="s1", page_size=2))
+
+        assert len(events) == 3
+        assert all(isinstance(e, Event) for e in events)
+        assert [e.id for e in events] == ["e1", "e2", "e3"]
+        assert mock_get.call_count == 2
+
+    @patch('kankyouken.client.requests.get')
+    def test_iter_pages_yields_response_pages(self, mock_get):
+        """Test that iter_pages yields EventsResponse pages"""
+        page1_response = Mock()
+        page1_response.json.return_value = {
+            "events": [{"id": f"event-{i}", "participant_id": "p1", "study_id": "s1",
+                       "event_type": "test", "ts": "2025-12-17T10:00:00Z"} for i in range(100)],
+            "pagination": {"total": 150, "limit": 100, "offset": 0, "returned": 100},
+            "filters": {}
+        }
+        page2_response = Mock()
+        page2_response.json.return_value = {
+            "events": [{"id": f"event-{i}", "participant_id": "p1", "study_id": "s1",
+                       "event_type": "test", "ts": "2025-12-17T10:00:00Z"} for i in range(100, 150)],
+            "pagination": {"total": 150, "limit": 100, "offset": 100, "returned": 50},
+            "filters": {}
+        }
+        mock_get.side_effect = [page1_response, page2_response]
+
+        client = KanKyouKenClient(url="http://test.com", token="token")
+        pages = list(client._iter_pages(study_id="s1", page_size=100))
+
+        assert len(pages) == 2
+        assert len(pages[0].events) == 100
+        assert len(pages[1].events) == 50
+        assert mock_get.call_count == 2
+
+    @patch('kankyouken.client.sleep')
     @patch('kankyouken.client.requests.get')
     def test_subscribe_to_events_yields_events(self, mock_get, mock_sleep):
         """Test that subscribe_to_events yields events from each poll"""
@@ -199,7 +260,7 @@ class TestKanKyouKenClient:
         assert mock_sleep.call_count == 1  # slept once between polls
         assert mock_sleep.call_args[0][0] == 5
 
-    @patch('kankyouken.client.time.sleep')
+    @patch('kankyouken.client.sleep')
     @patch('kankyouken.client.requests.get')
     def test_subscribe_advances_cursor(self, mock_get, mock_sleep):
         """Test that the cursor advances so the second poll uses the latest event ts"""
@@ -237,36 +298,6 @@ class TestKanKyouKenClient:
         second_call_params = mock_get.call_args_list[1][1]["params"]
         assert "2025-12-17T10:00:00" in second_call_params["date_from"]
 
-    @patch('kankyouken.client.requests.get')
-    def test_iter_events_pagination(self, mock_get):
-        """Test iter_events handles pagination correctly"""
-        # Mock two pages of results
-        page1_response = Mock()
-        page1_response.json.return_value = {
-            "events": [{"id": f"event-{i}", "participant_id": "p1", "study_id": "s1",
-                       "event_type": "test", "ts": "2025-12-17T10:00:00Z"} for i in range(100)],
-            "pagination": {"total": 150, "limit": 100, "offset": 0, "returned": 100},
-            "filters": {}
-        }
-
-        page2_response = Mock()
-        page2_response.json.return_value = {
-            "events": [{"id": f"event-{i}", "participant_id": "p1", "study_id": "s1",
-                       "event_type": "test", "ts": "2025-12-17T10:00:00Z"} for i in range(100, 150)],
-            "pagination": {"total": 150, "limit": 100, "offset": 100, "returned": 50},
-            "filters": {}
-        }
-
-        mock_get.side_effect = [page1_response, page2_response]
-
-        client = KanKyouKenClient(url="http://test.com", token="token")
-
-        pages = list(client.iter_events(study_id="s1", page_size=100))
-
-        assert len(pages) == 2
-        assert len(pages[0].events) == 100
-        assert len(pages[1].events) == 50
-        assert mock_get.call_count == 2
 
     @patch('kankyouken.client.requests.get')
     def test_query_events_handles_http_error(self, mock_get):
