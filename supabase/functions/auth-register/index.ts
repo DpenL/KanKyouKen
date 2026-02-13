@@ -1,135 +1,75 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { verifyJwt, shouldSkipVerification } from "../_lib/auth.ts";
+import { withHandler } from "../_lib/middleware.ts";
+import { AppError, Errors } from "../_lib/errors.ts";
 
 /**
- * User Registration Endpoint
+ * User Registration
  *
- * POST /auth-register - Create a new user account
+ * POST /auth-register
  *
- * Body:
- * {
- *   email: string,
- *   password: string,
- *   name?: string,
- *   metadata?: object
- * }
+ * Body: { email, password, name?, metadata? }
  *
- * Response:
- * {
- *   user: { id: string, email: string, created_at: string },
- *   message: string
- * }
+ * Authentication: requires JWT unless ALLOW_PUBLIC_REGISTRATION=true.
  *
- * Authentication:
- * - Requires JWT authentication (admin/supervisor creating accounts for researchers)
- * - OR can be public (if ALLOW_PUBLIC_REGISTRATION=true for participant self-registration)
+ * Response 201: { user: { id, email, created_at }, message }
  */
-serve(async (req) => {
-  try {
-    if (req.method === "OPTIONS") return new Response(null, { status: 204 });
-    if (req.method !== "POST") return new Response("Only POST allowed", { status: 405 });
+const allowPublic = Deno.env.get("ALLOW_PUBLIC_REGISTRATION") === "true";
 
-    // Check if public registration is allowed
-    const allowPublicRegistration = Deno.env.get("ALLOW_PUBLIC_REGISTRATION") === "true";
+// Parse request body
+serve(withHandler(async (req, ctx) => {
+  if (req.method !== "POST") throw Errors.methodNotAllowed(["POST"]);
 
-    let claims = null;
-    if (!allowPublicRegistration && !shouldSkipVerification()) {
-      const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
-      if (!token) return new Response("Missing Authorization", { status: 401 });
-
-      claims = await verifyJwt(token);
-      if (!claims) return new Response("Unauthorized", { status: 401 });
-    }
-
-    // Parse request body
-    const body = await req.json();
-    const { email, password, name, metadata } = body;
+  const body = await req.json();
+  const { email, password, name, metadata } = body;
 
     // Validate required fields
-    if (!email || typeof email !== "string") {
-      return new Response(
-        JSON.stringify({ error: "Email is required and must be a string" }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
-    }
-
-    if (!password || typeof password !== "string" || password.length < 8) {
-      return new Response(
-        JSON.stringify({ error: "Password is required and must be at least 8 characters" }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
-    }
-
-    // Get service role key for admin operations
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SERVICE_KEY");
-    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "http://127.0.0.1:54321";
-
-    if (!serviceKey) {
-      console.error("SUPABASE_SERVICE_ROLE_KEY not configured");
-      return new Response("Server configuration error", { status: 500 });
-    }
-
-    // Create user via Supabase Auth Admin API
-    const createUserResponse = await fetch(`${supabaseUrl}/auth/v1/admin/users`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "apikey": serviceKey,
-        "Authorization": `Bearer ${serviceKey}`,
-      },
-      body: JSON.stringify({
-        email,
-        password,
-        email_confirm: true, // Auto-confirm email for admin-created users
-        user_metadata: {
-          name: name || email.split("@")[0],
-          ...metadata,
-        },
-      }),
-    });
-
-    if (!createUserResponse.ok) {
-      const errorText = await createUserResponse.text();
-      console.error("Failed to create user:", errorText);
-
-      // Parse common errors
-      let errorMessage = "Failed to create user";
-      try {
-        const errorJson = JSON.parse(errorText);
-        if (errorJson.msg?.includes("already registered")) {
-          errorMessage = "User with this email already exists";
-        } else if (errorJson.msg) {
-          errorMessage = errorJson.msg;
-        }
-      } catch {
-        // Keep default error message
-      }
-
-      return new Response(
-        JSON.stringify({ error: errorMessage, details: errorText }),
-        { status: createUserResponse.status, headers: { "Content-Type": "application/json" } }
-      );
-    }
-
-    const user = await createUserResponse.json();
-
-    return new Response(
-      JSON.stringify({
-        user: {
-          id: user.id,
-          email: user.email,
-          created_at: user.created_at,
-        },
-        message: "User created successfully",
-      }),
-      { status: 201, headers: { "Content-Type": "application/json" } }
-    );
-  } catch (error) {
-    const err = error as Error;
-    console.error("Unhandled error in auth-register endpoint:", error);
-    return new Response(
-      JSON.stringify({ error: "Internal server error", message: err.message }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    );
+  if (!email || typeof email !== "string") {
+    throw Errors.badRequest("email is required and must be a string");
   }
-});
+  if (!password || typeof password !== "string" || password.length < 8) {
+    throw Errors.badRequest("password is required and must be at least 8 characters");
+  }
+
+  const createRes = await fetch(`${ctx.supabaseUrl}/auth/v1/admin/users`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "apikey": ctx.serviceKey,
+      "Authorization": `Bearer ${ctx.serviceKey}`,
+    },
+    body: JSON.stringify({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: { name: name || email.split("@")[0], ...metadata },
+    }),
+  });
+
+  if (!createRes.ok) {
+    const errorText = await createRes.text();
+    console.error("Failed to create user:", errorText);
+
+    // Surface known domain errors; hide everything else.
+    // Supabase GoTrue uses "msg" in some versions, "message" in others.
+    try {
+      const parsed = JSON.parse(errorText);
+      const msg: string = (parsed.msg ?? parsed.message ?? "").toLowerCase();
+      if (msg.includes("already") || msg.includes("exists") || parsed.error_code === "email_exists") {
+        throw Errors.conflict("A user with this email address already exists");
+      }
+    } catch (e) {
+      if (e instanceof AppError) throw e;
+    }
+    throw Errors.internal();
+  }
+
+  const user = await createRes.json();
+
+  return Response.json(
+    {
+      user: { id: user.id, email: user.email, created_at: user.created_at },
+      message: "User created successfully",
+    },
+    { status: 201 },
+  );
+}, { requireAuth: !allowPublic }));
