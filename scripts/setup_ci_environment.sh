@@ -92,3 +92,25 @@ mkdir -p temp
 python3 scripts/supabase_config_loader.py
 echo "[load-config] Loaded variables:"
 cat .env
+
+# Ensure GitHub-provided secrets are in .env so edge functions can read them
+echo "[ci-setup] Writing GitHub secrets to .env..."
+for secret in JWT_SECRET SUPABASE_SERVICE_ROLE_KEY SUPABASE_ANON_KEY; do
+    value=$(eval echo \$$secret)
+    if [ -n "$value" ]; then
+        # Remove existing entry if present, then add new one
+        sed -i "/^${secret}=/d" .env
+        echo "${secret}=${value}" >> .env
+        echo "[ci-setup] ${secret} written to .env"
+    fi
+done
+
+# Propagate JWT_SECRET to subsequent workflow steps so generate_jwt() uses the
+# same secret as the Edge Functions (which read it from .env).
+if [ -n "$GITHUB_ENV" ]; then
+    JWT_SECRET_VALUE=$(grep "^JWT_SECRET=" .env | cut -d'=' -f2-)
+    if [ -n "$JWT_SECRET_VALUE" ]; then
+        echo "JWT_SECRET=${JWT_SECRET_VALUE}" >> "$GITHUB_ENV"
+        echo "[ci-setup] JWT_SECRET exported to GITHUB_ENV"
+    fi
+fi
