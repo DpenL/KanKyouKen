@@ -86,7 +86,7 @@ def test_list_users_requires_scope(function_base_url, jwt_token, function_runtim
     )
 
     assert response.status_code == 400
-    assert "exactly one" in response.json()["error"].lower()
+    assert "exactly one" in response.json()["detail"].lower()
 
 
 def test_list_users_requires_access(function_base_url, function_runtime, test_data):
@@ -104,7 +104,7 @@ def test_list_users_requires_access(function_base_url, function_runtime, test_da
     )
 
     assert response.status_code == 403
-    assert "access" in response.json()["error"].lower()
+    assert "access" in response.json()["detail"].lower()
 
 
 def test_list_project_users_successfully(function_base_url, function_runtime, test_data):

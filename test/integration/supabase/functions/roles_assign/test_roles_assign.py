@@ -79,7 +79,7 @@ def test_assign_role_requires_user_id(function_base_url, jwt_token, function_run
     )
 
     assert response.status_code == 400
-    assert "user_id" in response.json()["error"].lower()
+    assert "user_id" in response.json()["detail"].lower()
 
 
 def test_assign_role_requires_scope(function_base_url, jwt_token, function_runtime, test_data):
@@ -96,7 +96,7 @@ def test_assign_role_requires_scope(function_base_url, jwt_token, function_runti
         },
     )
     assert response.status_code == 400
-    assert "exactly one" in response.json()["error"].lower()
+    assert "exactly one" in response.json()["detail"].lower()
 
     # Both specified
     response = requests.post(
@@ -110,7 +110,7 @@ def test_assign_role_requires_scope(function_base_url, jwt_token, function_runti
         },
     )
     assert response.status_code == 400
-    assert "exactly one" in response.json()["error"].lower()
+    assert "exactly one" in response.json()["detail"].lower()
 
 
 def test_assign_role_validates_role_value(function_base_url, jwt_token, function_runtime, test_data):
@@ -128,7 +128,7 @@ def test_assign_role_validates_role_value(function_base_url, jwt_token, function
     )
 
     assert response.status_code == 400
-    assert "owner, supervisor, researcher, teacher" in response.json()["error"]
+    assert "owner, supervisor, researcher, teacher" in response.json()["detail"]
 
 
 def test_assign_role_requires_supervisor_permission(function_base_url, function_runtime, test_data):
@@ -150,7 +150,7 @@ def test_assign_role_requires_supervisor_permission(function_base_url, function_
     )
 
     assert response.status_code == 403
-    assert "supervisor or owner" in response.json()["error"].lower()
+    assert "supervisor or owner" in response.json()["detail"].lower()
 
 
 def test_assign_project_role_successfully(function_base_url, function_runtime, test_data, db_conn):
@@ -270,7 +270,7 @@ def test_assign_role_prevents_duplicates(function_base_url, function_runtime, te
         },
     )
     assert response2.status_code in (400, 409, 500)  # Different error codes depending on DB constraint handling
-    assert "already has a role" in response2.json()["error"].lower()
+    assert "already has a role" in response2.json()["detail"].lower()
 
 
 def test_assign_multiple_roles_different_scopes(function_base_url, function_runtime, test_data, db_conn):

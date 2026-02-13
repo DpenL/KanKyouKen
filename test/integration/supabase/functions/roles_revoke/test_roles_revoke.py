@@ -90,7 +90,7 @@ def test_revoke_role_requires_role_id_or_user_id(function_base_url, jwt_token, f
     )
 
     assert response.status_code == 400
-    assert "role_id or user_id" in response.json()["error"].lower()
+    assert "role_id or user_id" in response.json()["detail"].lower()
 
 
 def test_revoke_role_requires_supervisor_permission(function_base_url, function_runtime, test_data):
@@ -108,7 +108,7 @@ def test_revoke_role_requires_supervisor_permission(function_base_url, function_
     )
 
     assert response.status_code == 403
-    assert "supervisor or owner" in response.json()["error"].lower()
+    assert "supervisor or owner" in response.json()["detail"].lower()
 
 
 def test_revoke_role_by_role_id_successfully(function_base_url, function_runtime, test_data, db_conn):
@@ -213,7 +213,7 @@ def test_revoke_nonexistent_role_returns_404(function_base_url, function_runtime
     )
 
     assert response.status_code == 404
-    assert "not found" in response.json()["error"].lower()
+    assert "not found" in response.json()["detail"].lower()
 
 
 def test_revoke_role_validates_scope_combination(function_base_url, jwt_token, function_runtime, test_data):

@@ -27,7 +27,7 @@ def test_register_requires_valid_email(function_base_url, jwt_token, function_ru
         json={"password": test_user_data["password"]},
     )
     assert response.status_code == 400
-    assert "email" in response.json()["error"].lower()
+    assert "email" in response.json()["detail"].lower()
 
     # Invalid email type
     response = requests.post(
@@ -49,7 +49,7 @@ def test_register_requires_strong_password(function_base_url, jwt_token, functio
         json={"email": test_user_data["email"]},
     )
     assert response.status_code == 400
-    assert "password" in response.json()["error"].lower()
+    assert "password" in response.json()["detail"].lower()
 
     # Password too short
     response = requests.post(
@@ -58,7 +58,7 @@ def test_register_requires_strong_password(function_base_url, jwt_token, functio
         json={"email": test_user_data["email"], "password": "short"},
     )
     assert response.status_code == 400
-    assert "8 characters" in response.json()["error"].lower()
+    assert "8 characters" in response.json()["detail"].lower()
 
 
 def test_register_creates_user_successfully(function_base_url, jwt_token, function_runtime, test_user_data):
@@ -100,7 +100,7 @@ def test_register_prevents_duplicate_email(function_base_url, jwt_token, functio
         json=test_user_data,
     )
     assert response2.status_code in (400, 409, 422)  # Different Supabase versions may return different codes
-    assert "already" in response2.json()["error"].lower()
+    assert "already" in response2.json()["detail"].lower()
 
 
 def test_register_with_metadata(function_base_url, jwt_token, function_runtime):

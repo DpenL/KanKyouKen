@@ -86,7 +86,7 @@ def test_audit_log_requires_scope(function_base_url, jwt_token, function_runtime
     )
 
     assert response.status_code == 400
-    assert "must specify" in response.json()["error"].lower()
+    assert "must specify" in response.json()["detail"].lower()
 
 
 def test_audit_log_requires_supervisor_permission(function_base_url, function_runtime, test_data):
@@ -104,7 +104,7 @@ def test_audit_log_requires_supervisor_permission(function_base_url, function_ru
     )
 
     assert response.status_code == 403
-    assert "supervisor or owner" in response.json()["error"].lower()
+    assert "supervisor or owner" in response.json()["detail"].lower()
 
 
 def test_query_audit_logs_by_project(function_base_url, function_runtime, test_data):
