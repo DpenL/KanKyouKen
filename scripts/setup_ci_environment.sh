@@ -104,13 +104,3 @@ for secret in JWT_SECRET SUPABASE_SERVICE_ROLE_KEY SUPABASE_ANON_KEY; do
         echo "[ci-setup] ${secret} written to .env"
     fi
 done
-
-# Propagate JWT_SECRET to subsequent workflow steps so generate_jwt() uses the
-# same secret as the Edge Functions (which read it from .env).
-#if [ -n "$GITHUB_ENV" ]; then
-#    JWT_SECRET_VALUE=$(grep "^JWT_SECRET=" .env | cut -d'=' -f2-)
-#    if [ -n "$JWT_SECRET_VALUE" ]; then
-#        echo "JWT_SECRET=${JWT_SECRET_VALUE}" >> "$GITHUB_ENV"
-#        echo "[ci-setup] JWT_SECRET exported to GITHUB_ENV"
-#    fi
-#fi
