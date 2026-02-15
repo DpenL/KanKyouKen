@@ -2,10 +2,10 @@
 -- PostgreSQL database dump
 --
 
-\restrict tGbcff66gtY3CAjOyQGJahCdRDpEfEnoGbDvJN0hOrH18005TYqrGMR7o9SFvSE
+\restrict gOeufnuIDDuyDRNtaWYEt0Yoe94CoEqJjfOhyzmqLXQwU9HXP49fDUQafjaetGL
 
 -- Dumped from database version 17.6
--- Dumped by pg_dump version 18.1 (Ubuntu 18.1-1.pgdg22.04+2)
+-- Dumped by pg_dump version 17.6
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -38,7 +38,8 @@ COMMENT ON SCHEMA public IS 'standard public schema';
 --
 
 CREATE FUNCTION public.audit_row() RETURNS trigger
-    LANGUAGE plpgsql
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
     AS $$
 declare
   who uuid := auth.uid();
@@ -307,7 +308,6 @@ CREATE FUNCTION public.sync_participant_consent() RETURNS trigger
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 begin
-  -- Update participant's consent_status based on latest consent record
   update public.participants
   set
     consent_status = (new.consent_status = 'granted'),
@@ -1160,5 +1160,5 @@ CREATE POLICY study_roles_self_read ON public.study_roles FOR SELECT USING (((au
 -- PostgreSQL database dump complete
 --
 
-\unrestrict tGbcff66gtY3CAjOyQGJahCdRDpEfEnoGbDvJN0hOrH18005TYqrGMR7o9SFvSE
+\unrestrict gOeufnuIDDuyDRNtaWYEt0Yoe94CoEqJjfOhyzmqLXQwU9HXP49fDUQafjaetGL
 
