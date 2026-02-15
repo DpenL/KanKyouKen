@@ -2,9 +2,6 @@ name: Frontend
 
 on:
   workflow_call:
-    secrets:
-      SUPABASE_ANON_KEY:
-        required: false
 
 jobs:
   build:
@@ -47,7 +44,9 @@ jobs:
         run: cp supabase/config.ci.toml supabase/config.toml
 
       - name: Start Supabase
-        run: supabase start
+        run: |
+          supabase stop --no-backup || true
+          supabase start --ignore-health-check
         timeout-minutes: 5
 
       - uses: actions/setup-node@v4
@@ -66,19 +65,20 @@ jobs:
 
       - name: Write .env.local
         run: |
-          ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}"
-          # Fall back to the local default anon key if secret is not set
-          if [ -z "$ANON_KEY" ]; then
-            ANON_KEY=$(supabase status --output json | jq -r '.ANON_KEY // empty' 2>/dev/null || echo "")
-          fi
-          echo "NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321" > frontend/.env.local
-          echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${ANON_KEY}" >> frontend/.env.local
+          # URL comes from config.ci.toml [api] port = 54331
+          # Anon key is the well-known JWT for jwt_secret = "super-secret-jwt-token-with-at-least-32-characters-long"
+          echo "NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54331" > frontend/.env.local
+          echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.27VtTI_rRir39XilYeLGD1oRk66qLkHy-5qhp7kNQaA" >> frontend/.env.local
 
       - name: Run Playwright E2E tests
         run: npx playwright test
         working-directory: frontend
         env:
           CI: true
+
+      - name: Stop Supabase
+        if: always()
+        run: supabase stop --no-backup || true
 
       - name: Upload Playwright report
         if: always()
