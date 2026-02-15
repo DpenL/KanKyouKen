@@ -1,0 +1,9 @@
+name: Setup Supabase CLI
+description: 'Install the latest Supabase CLI and add it to PATH'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Supabase CLI
+      run: bash scripts/install_supabase_cli.sh
+      shell: bash
