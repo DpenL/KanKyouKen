@@ -31,8 +31,7 @@ $PYTHON -m pip install -e sdk/
 echo "[ci-setup] Applying Supabase CI config..."
 cp supabase/config.ci.toml supabase/config.toml
 
-echo "[ci-setup] Installing Supabase CLI..."
-bash scripts/install_supabase_cli.sh
+# Supabase CLI is installed by supabase/setup-cli@v1 action before this script runs.
 
 # === Add Python toolcache bin ===
 PY_BIN="${pythonLocation}/bin"
