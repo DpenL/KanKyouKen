@@ -32,7 +32,7 @@ export default async function DashboardPage() {
             <CardTitle className="text-sm font-medium text-muted-foreground">Studies</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold">{studyCount ?? 0}</p>
+            <p className="text-3xl font-bold" data-testid="study-count">{studyCount ?? 0}</p>
           </CardContent>
         </Card>
       </div>

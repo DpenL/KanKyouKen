@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { CreateStudyDialog } from "@/components/create-study-dialog";
 
 interface Props {
   params: Promise<{ projectId: string }>;
@@ -37,6 +39,7 @@ export default async function ProjectPage({ params }: Props) {
 
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-medium">Studies</h2>
+        <CreateStudyDialog projectId={projectId} />
       </div>
 
       {!studies?.length ? (
@@ -44,10 +47,14 @@ export default async function ProjectPage({ params }: Props) {
       ) : (
         <div className="flex flex-col gap-2">
           {studies.map((study) => (
-            <div key={study.id} className="flex items-center justify-between rounded-md border px-4 py-3 text-sm">
+            <Link
+              key={study.id}
+              href={`/projects/${projectId}/studies/${study.id}`}
+              className="flex items-center justify-between rounded-md border px-4 py-3 text-sm hover:bg-muted/50 transition-colors"
+            >
               <span className="font-medium">{study.name}</span>
               <span className="text-muted-foreground">{study.status}</span>
-            </div>
+            </Link>
           ))}
         </div>
       )}
