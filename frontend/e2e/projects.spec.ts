@@ -30,7 +30,7 @@ test("create a project and see it in the list", async ({ page }) => {
 
 test("dashboard project count increments after creating a project", async ({ page }) => {
   await page.goto("/dashboard");
-  await expect(page.getByText("0")).toBeVisible();
+  await expect(page.getByTestId("project-count")).toHaveText("0");
 
   await page.goto("/projects");
   await page.getByRole("button", { name: "New project" }).click();
@@ -49,5 +49,5 @@ test("clicking a project navigates to its detail page", async ({ page }) => {
 
   await page.getByText("Detail nav project").click();
   await expect(page.getByRole("heading", { name: "Detail nav project" })).toBeVisible();
-  await expect(page.getByText("Studies")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Studies" })).toBeVisible();
 });

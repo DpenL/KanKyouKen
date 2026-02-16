@@ -23,7 +23,7 @@ export default async function DashboardPage() {
               <CardTitle className="text-sm font-medium text-muted-foreground">Projects</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-3xl font-bold">{projectCount ?? 0}</p>
+              <p className="text-3xl font-bold" data-testid="project-count">{projectCount ?? 0}</p>
             </CardContent>
           </Card>
         </Link>
