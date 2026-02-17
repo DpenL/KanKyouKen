@@ -6,11 +6,11 @@ import { Label } from "@/components/ui/label";
 import { login } from "./actions";
 
 interface Props {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; invite?: string }>;
 }
 
 export default async function LoginPage({ searchParams }: Props) {
-  const { error } = await searchParams;
+  const { error, invite } = await searchParams;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-muted/40">
@@ -20,6 +20,7 @@ export default async function LoginPage({ searchParams }: Props) {
         </CardHeader>
         <CardContent>
           <form action={login} className="flex flex-col gap-4">
+            {invite && <input type="hidden" name="invite" value={invite} />}
             <div className="grid gap-2">
               <Label htmlFor="email">Email</Label>
               <Input

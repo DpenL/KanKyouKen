@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { GenerateInviteDialog } from "@/components/generate-invite-dialog";
 
 interface Props {
   params: Promise<{ projectId: string; studyId: string }>;
@@ -25,6 +26,12 @@ export default async function StudyPage({ params }: Props) {
     .eq("id", projectId)
     .single();
 
+  const { data: members } = await supabase
+    .from("study_roles")
+    .select("id, user_id, role, granted_at")
+    .eq("study_id", studyId)
+    .order("granted_at", { ascending: true });
+
   return (
     <div>
       <nav className="text-sm text-muted-foreground mb-4 flex items-center gap-1">
@@ -44,7 +51,26 @@ export default async function StudyPage({ params }: Props) {
         </p>
       </div>
 
-      <p className="text-muted-foreground text-sm">No data yet.</p>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-medium">Members</h2>
+        <GenerateInviteDialog studyId={studyId} projectId={projectId} />
+      </div>
+
+      {!members?.length ? (
+        <p className="text-muted-foreground text-sm">No members yet.</p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {members.map((m) => (
+            <div
+              key={m.id}
+              className="flex items-center justify-between rounded-md border px-4 py-3 text-sm"
+            >
+              <span className="font-mono text-xs text-muted-foreground">{m.user_id}</span>
+              <span className="capitalize text-muted-foreground">{m.role}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
