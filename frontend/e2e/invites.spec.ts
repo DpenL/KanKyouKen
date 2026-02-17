@@ -18,7 +18,7 @@ test.describe.serial("Study Invites", () => {
     await page.getByRole("button", { name: "Register" }).click();
 
     await page.waitForURL("/dashboard");
-    await page.getByRole("link", { name: "Projects" }).click();
+    await page.getByRole("link", { name: "Projects", exact: true }).click();
     await page.getByRole("button", { name: "Create project" }).click();
     await page.getByLabel("Name").fill("Invite Test Project");
     await page.getByRole("button", { name: "Create", exact: true }).click();
@@ -40,7 +40,7 @@ test.describe.serial("Study Invites", () => {
     await page.getByRole("button", { name: "Sign in" }).click();
 
     await page.waitForURL("/dashboard");
-    await page.getByRole("link", { name: "Projects" }).click();
+    await page.getByRole("link", { name: "Projects", exact: true }).click();
     await page.getByRole("link", { name: "Invite Test Project" }).first().click();
     await page.getByRole("link", { name: "Invite Test Study" }).first().click();
 
@@ -67,7 +67,7 @@ test.describe.serial("Study Invites", () => {
     await page.getByRole("button", { name: "Sign in" }).click();
 
     await page.waitForURL("/dashboard");
-    await page.getByRole("link", { name: "Projects" }).click();
+    await page.getByRole("link", { name: "Projects", exact: true }).click();
     await page.getByRole("link", { name: "Invite Test Project" }).first().click();
     await page.getByRole("link", { name: "Invite Test Study" }).first().click();
 
@@ -108,7 +108,7 @@ test.describe.serial("Study Invites", () => {
     await page.getByRole("button", { name: "Sign in" }).click();
 
     await page.waitForURL("/dashboard");
-    await page.getByRole("link", { name: "Projects" }).click();
+    await page.getByRole("link", { name: "Projects", exact: true }).click();
     await page.getByRole("link", { name: "Invite Test Project" }).first().click();
     await page.getByRole("link", { name: "Invite Test Study" }).first().click();
 
@@ -146,7 +146,7 @@ test.describe.serial("Study Invites", () => {
     await page.getByRole("button", { name: "Sign in" }).click();
 
     await page.waitForURL("/dashboard");
-    await page.getByRole("link", { name: "Projects" }).click();
+    await page.getByRole("link", { name: "Projects", exact: true }).click();
     await page.getByRole("link", { name: "Invite Test Project" }).first().click();
     await page.getByRole("link", { name: "Invite Test Study" }).first().click();
 
@@ -193,7 +193,7 @@ test.describe.serial("Study Invites", () => {
     await page.getByRole("button", { name: "Sign in" }).click();
 
     await page.waitForURL("/dashboard");
-    await page.getByRole("link", { name: "Projects" }).click();
+    await page.getByRole("link", { name: "Projects", exact: true }).click();
     await page.getByRole("link", { name: "Invite Test Project" }).first().click();
     await page.getByRole("link", { name: "Invite Test Study" }).first().click();
 
@@ -247,7 +247,7 @@ test.describe.serial("Study Invites", () => {
     await page.getByRole("button", { name: "Sign in" }).click();
 
     await page.waitForURL("/dashboard");
-    await page.getByRole("link", { name: "Projects" }).click();
+    await page.getByRole("link", { name: "Projects", exact: true }).click();
     await page.getByRole("link", { name: "Invite Test Project" }).first().click();
     await page.getByRole("link", { name: "Invite Test Study" }).first().click();
 
