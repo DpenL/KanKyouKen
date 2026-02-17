@@ -19,9 +19,11 @@ interface Props {
   projectId: string;
 }
 
+type InvitableRole = typeof INVITABLE_ROLES[number]["value"];
+
 export function GenerateInviteDialog({ studyId, projectId }: Props) {
   const [open, setOpen] = useState(false);
-  const [role, setRole] = useState(INVITABLE_ROLES[0].value);
+  const [role, setRole] = useState<InvitableRole>(INVITABLE_ROLES[0].value);
   const [link, setLink] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -69,7 +71,7 @@ export function GenerateInviteDialog({ studyId, projectId }: Props) {
             <select
               id="role"
               value={role}
-              onChange={(e) => setRole(e.target.value)}
+              onChange={(e) => setRole(e.target.value as InvitableRole)}
               className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
               {INVITABLE_ROLES.map((r) => (
