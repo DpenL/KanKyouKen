@@ -1,11 +1,20 @@
 import { test, expect } from "@playwright/test";
 
+// Generate unique emails per test run to avoid test pollution in CI
+const timestamp = Date.now();
+const adminEmail = `admin-invites-${timestamp}@example.com`;
+const researcherEmail = `researcher-${timestamp}@example.com`;
+const supervisorEmail = `supervisor-${timestamp}@example.com`;
+const teacherEmail = `teacher-${timestamp}@example.com`;
+const duplicateEmail = `duplicate-${timestamp}@example.com`;
+
 test.describe("Study Invites", () => {
   test("shows empty members list on new study", async ({ page }) => {
-    await page.goto("/login");
-    await page.getByLabel("Email").fill("admin@example.com");
+    // Register new admin user
+    await page.goto("/register");
+    await page.getByLabel("Email").fill(adminEmail);
     await page.getByLabel("Password").fill("password123");
-    await page.getByRole("button", { name: "Sign in" }).click();
+    await page.getByRole("button", { name: "Register" }).click();
 
     await page.waitForURL("/dashboard");
     await page.getByRole("link", { name: "Projects" }).click();
@@ -25,7 +34,7 @@ test.describe("Study Invites", () => {
 
   test("generates invite link for researcher role", async ({ page }) => {
     await page.goto("/login");
-    await page.getByLabel("Email").fill("admin@example.com");
+    await page.getByLabel("Email").fill(adminEmail);
     await page.getByLabel("Password").fill("password123");
     await page.getByRole("button", { name: "Sign in" }).click();
 
@@ -52,7 +61,7 @@ test.describe("Study Invites", () => {
   test("shows invite page for unauthenticated user", async ({ page }) => {
     // First create an invite as admin
     await page.goto("/login");
-    await page.getByLabel("Email").fill("admin@example.com");
+    await page.getByLabel("Email").fill(adminEmail);
     await page.getByLabel("Password").fill("password123");
     await page.getByRole("button", { name: "Sign in" }).click();
 
@@ -85,7 +94,7 @@ test.describe("Study Invites", () => {
   test("accepts invite when logged in", async ({ page }) => {
     // Create a second user first
     await page.goto("/register");
-    await page.getByLabel("Email").fill("researcher@example.com");
+    await page.getByLabel("Email").fill(researcherEmail);
     await page.getByLabel("Password").fill("password123");
     await page.getByRole("button", { name: "Register" }).click();
     await page.waitForURL("/dashboard");
@@ -93,7 +102,7 @@ test.describe("Study Invites", () => {
 
     // Log in as admin and create invite
     await page.goto("/login");
-    await page.getByLabel("Email").fill("admin@example.com");
+    await page.getByLabel("Email").fill(adminEmail);
     await page.getByLabel("Password").fill("password123");
     await page.getByRole("button", { name: "Sign in" }).click();
 
@@ -114,7 +123,7 @@ test.describe("Study Invites", () => {
     await page.goto("/dashboard");
     await page.getByRole("button", { name: "Sign out" }).click();
     await page.goto("/login");
-    await page.getByLabel("Email").fill("researcher@example.com");
+    await page.getByLabel("Email").fill(researcherEmail);
     await page.getByLabel("Password").fill("password123");
     await page.getByRole("button", { name: "Sign in" }).click();
 
@@ -131,7 +140,7 @@ test.describe("Study Invites", () => {
   test("registers via invite link", async ({ page }) => {
     // Log in as admin and create invite
     await page.goto("/login");
-    await page.getByLabel("Email").fill("admin@example.com");
+    await page.getByLabel("Email").fill(adminEmail);
     await page.getByLabel("Password").fill("password123");
     await page.getByRole("button", { name: "Sign in" }).click();
 
@@ -158,7 +167,7 @@ test.describe("Study Invites", () => {
 
     // Should be on register page with invite token
     await expect(page).toHaveURL(`/register?invite=${token}`);
-    await page.getByLabel("Email").fill("supervisor@example.com");
+    await page.getByLabel("Email").fill(supervisorEmail);
     await page.getByLabel("Password").fill("password123");
     await page.getByRole("button", { name: "Register" }).click();
 
@@ -170,7 +179,7 @@ test.describe("Study Invites", () => {
   test("logs in via invite link", async ({ page }) => {
     // Create a third user
     await page.goto("/register");
-    await page.getByLabel("Email").fill("teacher@example.com");
+    await page.getByLabel("Email").fill(teacherEmail);
     await page.getByLabel("Password").fill("password123");
     await page.getByRole("button", { name: "Register" }).click();
     await page.waitForURL("/dashboard");
@@ -178,7 +187,7 @@ test.describe("Study Invites", () => {
 
     // Log in as admin and create invite
     await page.goto("/login");
-    await page.getByLabel("Email").fill("admin@example.com");
+    await page.getByLabel("Email").fill(adminEmail);
     await page.getByLabel("Password").fill("password123");
     await page.getByRole("button", { name: "Sign in" }).click();
 
@@ -205,7 +214,7 @@ test.describe("Study Invites", () => {
 
     // Should be on login page with invite token
     await expect(page).toHaveURL(`/login?invite=${token}`);
-    await page.getByLabel("Email").fill("teacher@example.com");
+    await page.getByLabel("Email").fill(teacherEmail);
     await page.getByLabel("Password").fill("password123");
     await page.getByRole("button", { name: "Sign in" }).click();
 
@@ -224,7 +233,7 @@ test.describe("Study Invites", () => {
   test("shows error for already used invite", async ({ page }) => {
     // Create user
     await page.goto("/register");
-    await page.getByLabel("Email").fill("duplicate@example.com");
+    await page.getByLabel("Email").fill(duplicateEmail);
     await page.getByLabel("Password").fill("password123");
     await page.getByRole("button", { name: "Register" }).click();
     await page.waitForURL("/dashboard");
@@ -232,7 +241,7 @@ test.describe("Study Invites", () => {
 
     // Log in as admin and create invite
     await page.goto("/login");
-    await page.getByLabel("Email").fill("admin@example.com");
+    await page.getByLabel("Email").fill(adminEmail);
     await page.getByLabel("Password").fill("password123");
     await page.getByRole("button", { name: "Sign in" }).click();
 
@@ -253,7 +262,7 @@ test.describe("Study Invites", () => {
     await page.goto("/dashboard");
     await page.getByRole("button", { name: "Sign out" }).click();
     await page.goto("/login");
-    await page.getByLabel("Email").fill("duplicate@example.com");
+    await page.getByLabel("Email").fill(duplicateEmail);
     await page.getByLabel("Password").fill("password123");
     await page.getByRole("button", { name: "Sign in" }).click();
 
