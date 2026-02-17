@@ -51,6 +51,9 @@ test("dashboard study count increments after creating a study", async ({ page })
   await page.getByLabel("Name").fill("Count study");
   await page.getByRole("button", { name: "Create" }).click();
 
+  // Wait for study to appear in the list before checking dashboard
+  await expect(page.getByText("Count study")).toBeVisible();
+
   await page.goto("/dashboard");
   await expect(page.getByTestId("study-count")).toHaveText("1");
 });

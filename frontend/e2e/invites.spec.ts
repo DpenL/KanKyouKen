@@ -8,7 +8,8 @@ const supervisorEmail = `supervisor-${timestamp}@example.com`;
 const teacherEmail = `teacher-${timestamp}@example.com`;
 const duplicateEmail = `duplicate-${timestamp}@example.com`;
 
-test.describe("Study Invites", () => {
+// Tests must run sequentially - they share the same admin user/project/study
+test.describe.serial("Study Invites", () => {
   test("shows empty members list on new study", async ({ page }) => {
     // Register new admin user
     await page.goto("/register");
