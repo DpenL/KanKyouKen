@@ -29,7 +29,7 @@ export default async function InvitePage({ params }: Props) {
     return <InviteCard title="Link expired" message="This invite link has expired. Ask the study owner for a new one." />;
   }
 
-  const studyName = (invite.studies as { name: string } | null)?.name ?? "a study";
+  const studyName = (Array.isArray(invite.studies) && invite.studies[0]?.name) || "a study";
 
   // Check if user is already logged in
   const supabase = await createClient();

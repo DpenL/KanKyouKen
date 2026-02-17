@@ -6,7 +6,7 @@ create table public.study_invitations (
   id         uuid primary key default gen_random_uuid(),
   token      text unique not null default encode(gen_random_bytes(32), 'hex'),
   study_id   uuid not null references public.studies(id) on delete cascade,
-  role       text not null check (role in ('researcher', 'supervisor', 'teacher')),
+  role       text not null check (role in ('owner', 'supervisor', 'researcher', 'teacher', 'participant')),
   invited_by uuid not null,
   created_at timestamptz default now(),
   expires_at timestamptz default now() + interval '7 days',
@@ -16,3 +16,11 @@ create table public.study_invitations (
 
 -- All access goes through server-side actions using the service role key,
 -- so no RLS policy is needed on this table.
+
+-- Also update study_roles to support all role types
+alter table public.study_roles
+  drop constraint if exists study_roles_role_check;
+
+alter table public.study_roles
+  add constraint study_roles_role_check
+  check (role in ('owner', 'supervisor', 'researcher', 'teacher', 'participant'));

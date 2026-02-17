@@ -32,7 +32,10 @@ export async function createInvite(
     .select("token")
     .single();
 
-  if (error || !data) return { error: "Failed to create invitation" };
+  if (error || !data) {
+    console.error("Invitation creation failed:", error);
+    return { error: error?.message || "Failed to create invitation" };
+  }
 
   const origin = (await headers()).get("origin") ?? process.env.NEXT_PUBLIC_SUPABASE_URL!.replace("/rest/v1", "");
   return { url: `${origin}/invite/${data.token}` };

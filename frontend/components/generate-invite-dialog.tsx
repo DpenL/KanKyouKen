@@ -12,21 +12,16 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createInvite } from "@/app/(app)/projects/[projectId]/studies/[studyId]/invites/actions";
+import { INVITABLE_ROLES } from "@/lib/constants/roles";
 
 interface Props {
   studyId: string;
   projectId: string;
 }
 
-const ROLES = [
-  { value: "researcher", label: "Researcher" },
-  { value: "supervisor", label: "Supervisor" },
-  { value: "teacher", label: "Teacher" },
-];
-
 export function GenerateInviteDialog({ studyId, projectId }: Props) {
   const [open, setOpen] = useState(false);
-  const [role, setRole] = useState("researcher");
+  const [role, setRole] = useState(INVITABLE_ROLES[0].value);
   const [link, setLink] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -55,7 +50,7 @@ export function GenerateInviteDialog({ studyId, projectId }: Props) {
       setLink(null);
       setError(null);
       setCopied(false);
-      setRole("researcher");
+      setRole(INVITABLE_ROLES[0].value);
     }
   }
 
@@ -77,7 +72,7 @@ export function GenerateInviteDialog({ studyId, projectId }: Props) {
               onChange={(e) => setRole(e.target.value)}
               className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
-              {ROLES.map((r) => (
+              {INVITABLE_ROLES.map((r) => (
                 <option key={r.value} value={r.value}>
                   {r.label}
                 </option>
