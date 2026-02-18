@@ -13,11 +13,14 @@ export default async function InvitePage({ params }: Props) {
   const { token } = await params;
 
   const service = createServiceClient();
-  const { data: invite } = await service
+  const { data: invite, error } = await service
     .from("study_invitations")
-    .select("study_id, role, expires_at, used_by, studies!study_id(name)")
+    .select("study_id, role, expires_at, used_by, studies(name)")
     .eq("token", token)
     .single();
+
+  // Log error for debugging
+  if (error) console.error("Invite query error:", error);
 
   if (!invite) {
     return <InviteCard title="Invalid link" message="This invite link doesn't exist or has been removed." />;
