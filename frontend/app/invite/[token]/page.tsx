@@ -13,14 +13,11 @@ export default async function InvitePage({ params }: Props) {
   const { token } = await params;
 
   const service = createServiceClient();
-  const { data: invite, error } = await service
+  const { data: invite } = await service
     .from("study_invitations")
-    .select("study_id, role, expires_at, used_by, studies(name)")
+    .select("study_id, role, expires_at, used_by")
     .eq("token", token)
     .single();
-
-  // Log error for debugging
-  if (error) console.error("Invite query error:", error);
 
   if (!invite) {
     return <InviteCard title="Invalid link" message="This invite link doesn't exist or has been removed." />;
@@ -32,9 +29,14 @@ export default async function InvitePage({ params }: Props) {
     return <InviteCard title="Link expired" message="This invite link has expired. Ask the study owner for a new one." />;
   }
 
-  // Supabase returns relationships as either single object or array depending on cardinality
-  const studies = invite.studies;
-  const studyName = (Array.isArray(studies) ? studies[0]?.name : (studies as { name?: string } | null)?.name) || "a study";
+  // Fetch study name separately to avoid relationship query issues
+  const { data: study } = await service
+    .from("studies")
+    .select("name")
+    .eq("id", invite.study_id)
+    .single();
+
+  const studyName = study?.name || "a study";
 
   // Check if user is already logged in
   const supabase = await createClient();
