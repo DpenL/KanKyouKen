@@ -46,8 +46,13 @@ def run_pg_dump(
             "pg_dump", *extra_args, internal_url
         ]
     else:
-        # Use host's pg_dump for remote databases
-        cmd = ["pg_dump", *extra_args, db_url]
+        # Use Docker postgres:17 for remote databases to avoid version mismatch
+        # (host may have pg_dump 16 while remote is 17)
+        cmd = [
+            "docker", "run", "--rm", "--network=host",
+            "postgres:17",
+            "pg_dump", *extra_args, db_url
+        ]
 
     try:
         result = subprocess.run(
