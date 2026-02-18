@@ -24,7 +24,7 @@ test.describe.serial("Study Invites", () => {
     await page.getByRole("button", { name: "Create", exact: true }).click();
 
     await page.getByRole("link", { name: "Invite Test Project" }).click();
-    await page.getByRole("button", { name: "Create study" }).click();
+    await page.getByRole("button", { name: "New study" }).click();
     await page.getByLabel("Name").fill("Invite Test Study");
     await page.getByRole("button", { name: "Create", exact: true }).click();
 
