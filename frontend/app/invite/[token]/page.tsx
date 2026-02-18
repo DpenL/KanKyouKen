@@ -31,7 +31,7 @@ export default async function InvitePage({ params }: Props) {
 
   // Supabase returns relationships as either single object or array depending on cardinality
   const studies = invite.studies;
-  const studyName = (Array.isArray(studies) ? studies[0]?.name : studies?.name) || "a study";
+  const studyName = (Array.isArray(studies) ? studies[0]?.name : (studies as { name?: string } | null)?.name) || "a study";
 
   // Check if user is already logged in
   const supabase = await createClient();
