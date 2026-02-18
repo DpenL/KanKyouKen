@@ -15,7 +15,7 @@ export default async function InvitePage({ params }: Props) {
   const service = createServiceClient();
   const { data: invite } = await service
     .from("study_invitations")
-    .select("study_id, role, expires_at, used_by, studies(name)")
+    .select("study_id, role, expires_at, used_by, studies!study_id(name)")
     .eq("token", token)
     .single();
 
