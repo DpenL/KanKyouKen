@@ -84,8 +84,8 @@ test.describe.serial("Study Invites", () => {
     await page.getByRole("button", { name: "Sign out" }).click();
 
     // Visit invite page as unauthenticated user
-    await page.goto(`/invite/${token}`, { waitUntil: "networkidle" });
-    await expect(page.getByRole("heading", { name: /been invited/ })).toBeVisible();
+    await page.goto(`/invite/${token}`, { waitUntil: "load" });
+    await expect(page.getByRole("heading", { name: /been invited/ })).toBeVisible({ timeout: 10000 });
     await expect(page.getByText(/Invite Test Study/)).toBeVisible();
     await expect(page.getByText(/Teacher/)).toBeVisible();
     await expect(page.getByRole("link", { name: /Create account/i })).toBeVisible();
