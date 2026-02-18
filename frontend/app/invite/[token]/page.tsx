@@ -42,7 +42,7 @@ export default async function InvitePage({ params }: Props) {
     <div className="min-h-screen flex items-center justify-center bg-muted/40">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle className="text-xl">You've been invited</CardTitle>
+          <CardTitle className="text-xl">You&apos;ve been invited</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <p className="text-sm text-muted-foreground">
