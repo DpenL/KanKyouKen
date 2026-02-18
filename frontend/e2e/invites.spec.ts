@@ -84,22 +84,12 @@ test.describe.serial("Study Invites", () => {
     await page.getByRole("button", { name: "Sign out" }).click();
 
     // Visit invite page as unauthenticated user
-    const response = await page.goto(`/invite/${token}`, { waitUntil: "load" });
-    console.log(`DEBUG: Response status: ${response?.status()}`);
-    console.log(`DEBUG: Response URL: ${response?.url()}`);
+    await page.goto(`/invite/${token}`, { waitUntil: "networkidle" });
 
-    // Debug: capture full page content
-    const bodyText = await page.locator('body').textContent();
-    const htmlContent = await page.content();
-    console.log(`DEBUG: Token used: ${token}`);
-    console.log(`DEBUG: Body text length: ${bodyText?.length || 0}`);
-    console.log(`DEBUG: Body text: ${bodyText?.substring(0, 500)}`);
-    console.log(`DEBUG: HTML length: ${htmlContent.length}`);
+    // Wait for React to fully hydrate by waiting for interactive buttons
+    await page.waitForSelector('a[href*="register"]', { state: "attached", timeout: 10000 });
 
-    // Wait a bit for any delayed rendering
-    await page.waitForTimeout(2000);
-
-    await expect(page.getByRole("heading", { name: /been invited/ })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole("heading", { name: /been invited/ })).toBeVisible();
     await expect(page.getByText(/Invite Test Study/)).toBeVisible();
     await expect(page.getByText(/Teacher/)).toBeVisible();
     await expect(page.getByRole("link", { name: /Create account/i })).toBeVisible();
