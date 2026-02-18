@@ -13,18 +13,13 @@ export default async function InvitePage({ params }: Props) {
   const { token } = await params;
 
   const service = createServiceClient();
-  const { data: invite, error } = await service
+  const { data: invite } = await service
     .from("study_invitations")
     .select("study_id, role, expires_at, used_by")
     .eq("token", token)
     .single();
 
-  console.log('[INVITE PAGE] Token:', token);
-  console.log('[INVITE PAGE] Invite data:', invite);
-  console.log('[INVITE PAGE] Error:', error);
-
   if (!invite) {
-    console.log('[INVITE PAGE] Showing invalid link message');
     return <InviteCard title="Invalid link" message="This invite link doesn't exist or has been removed." />;
   }
   if (invite.used_by) {
@@ -35,14 +30,11 @@ export default async function InvitePage({ params }: Props) {
   }
 
   // Fetch study name separately to avoid relationship query issues
-  const { data: study, error: studyError } = await service
+  const { data: study } = await service
     .from("studies")
     .select("name")
     .eq("id", invite.study_id)
     .single();
-
-  console.log('[INVITE PAGE] Study data:', study);
-  console.log('[INVITE PAGE] Study error:', studyError);
 
   const studyName = study?.name || "a study";
 
