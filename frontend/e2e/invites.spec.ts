@@ -85,6 +85,12 @@ test.describe.serial("Study Invites", () => {
 
     // Visit invite page as unauthenticated user
     await page.goto(`/invite/${token}`, { waitUntil: "load" });
+
+    // Debug: log what heading is actually shown
+    const headings = await page.locator('h1, h2, h3').allTextContents();
+    console.log(`DEBUG: Headings on page: ${JSON.stringify(headings)}`);
+    console.log(`DEBUG: Token used: ${token}`);
+
     await expect(page.getByRole("heading", { name: /been invited/ })).toBeVisible({ timeout: 60000 });
     await expect(page.getByText(/Invite Test Study/)).toBeVisible();
     await expect(page.getByText(/Teacher/)).toBeVisible();
