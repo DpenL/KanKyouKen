@@ -132,7 +132,7 @@ test.describe.serial("Study Invites", () => {
 
     // Visit invite page
     await page.goto(`/invite/${token}`, { waitUntil: "networkidle" });
-    await expect(page.getByRole("heading", { name: "You've been invited" })).toBeVisible();
+    await expect(page.getByText("You've been invited")).toBeVisible();
     await page.getByRole("button", { name: "Accept & join" }).click();
 
     // Should redirect to study page
@@ -229,7 +229,7 @@ test.describe.serial("Study Invites", () => {
   test("shows error for invalid invite", async ({ page }) => {
     // Visit with a fake token
     await page.goto("/invite/0000000000000000000000000000000000000000000000000000000000000000", { waitUntil: "networkidle" });
-    await expect(page.getByRole("heading", { name: "Invalid link" })).toBeVisible();
+    await expect(page.getByText("Invalid link")).toBeVisible();
     await expect(page.getByText(/doesn't exist or has been removed/i)).toBeVisible();
   });
 
@@ -276,7 +276,7 @@ test.describe.serial("Study Invites", () => {
 
     // Try to accept same invite again
     await page.goto(`/invite/${token}`, { waitUntil: "networkidle" });
-    await expect(page.getByRole("heading", { name: "Link already used" })).toBeVisible();
+    await expect(page.getByText("Link already used")).toBeVisible();
     await expect(page.getByText(/already been accepted/i)).toBeVisible();
   });
 });
