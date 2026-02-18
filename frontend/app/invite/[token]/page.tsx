@@ -29,7 +29,8 @@ export default async function InvitePage({ params }: Props) {
     return <InviteCard title="Link expired" message="This invite link has expired. Ask the study owner for a new one." />;
   }
 
-  const studyName = (Array.isArray(invite.studies) && invite.studies[0]?.name) || "a study";
+  const studies = invite.studies as { name: string } | null;
+  const studyName = studies?.name || "a study";
 
   // Check if user is already logged in
   const supabase = await createClient();
@@ -41,7 +42,7 @@ export default async function InvitePage({ params }: Props) {
     <div className="min-h-screen flex items-center justify-center bg-muted/40">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle className="text-xl">You&apos;ve been invited</CardTitle>
+          <CardTitle className="text-xl">You've been invited</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <p className="text-sm text-muted-foreground">
