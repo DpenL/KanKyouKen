@@ -29,8 +29,9 @@ export default async function InvitePage({ params }: Props) {
     return <InviteCard title="Link expired" message="This invite link has expired. Ask the study owner for a new one." />;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const studyName = (invite.studies as any)?.name || "a study";
+  // Supabase returns relationships as either single object or array depending on cardinality
+  const studies = invite.studies;
+  const studyName = (Array.isArray(studies) ? studies[0]?.name : studies?.name) || "a study";
 
   // Check if user is already logged in
   const supabase = await createClient();
