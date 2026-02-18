@@ -84,14 +84,22 @@ test.describe.serial("Study Invites", () => {
     await page.getByRole("button", { name: "Sign out" }).click();
 
     // Visit invite page as unauthenticated user
-    await page.goto(`/invite/${token}`, { waitUntil: "load" });
+    const response = await page.goto(`/invite/${token}`, { waitUntil: "load" });
+    console.log(`DEBUG: Response status: ${response?.status()}`);
+    console.log(`DEBUG: Response URL: ${response?.url()}`);
 
-    // Debug: log what heading is actually shown
-    const headings = await page.locator('h1, h2, h3').allTextContents();
-    console.log(`DEBUG: Headings on page: ${JSON.stringify(headings)}`);
+    // Debug: capture full page content
+    const bodyText = await page.locator('body').textContent();
+    const htmlContent = await page.content();
     console.log(`DEBUG: Token used: ${token}`);
+    console.log(`DEBUG: Body text length: ${bodyText?.length || 0}`);
+    console.log(`DEBUG: Body text: ${bodyText?.substring(0, 500)}`);
+    console.log(`DEBUG: HTML length: ${htmlContent.length}`);
 
-    await expect(page.getByRole("heading", { name: /been invited/ })).toBeVisible({ timeout: 60000 });
+    // Wait a bit for any delayed rendering
+    await page.waitForTimeout(2000);
+
+    await expect(page.getByRole("heading", { name: /been invited/ })).toBeVisible({ timeout: 5000 });
     await expect(page.getByText(/Invite Test Study/)).toBeVisible();
     await expect(page.getByText(/Teacher/)).toBeVisible();
     await expect(page.getByRole("link", { name: /Create account/i })).toBeVisible();
