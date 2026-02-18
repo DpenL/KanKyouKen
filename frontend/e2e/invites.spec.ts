@@ -84,7 +84,7 @@ test.describe.serial("Study Invites", () => {
     await page.getByRole("button", { name: "Sign out" }).click();
 
     // Visit invite page as unauthenticated user
-    await page.goto(`/invite/${token}`);
+    await page.goto(`/invite/${token}`, { waitUntil: "networkidle" });
     await expect(page.getByRole("heading", { name: /been invited/ })).toBeVisible();
     await expect(page.getByText(/Invite Test Study/)).toBeVisible();
     await expect(page.getByText(/Teacher/)).toBeVisible();
@@ -129,7 +129,7 @@ test.describe.serial("Study Invites", () => {
     await page.getByRole("button", { name: "Sign in" }).click();
 
     // Visit invite page
-    await page.goto(`/invite/${token}`);
+    await page.goto(`/invite/${token}`, { waitUntil: "networkidle" });
     await expect(page.getByRole("heading", { name: "You've been invited" })).toBeVisible();
     await page.getByRole("button", { name: "Accept & join" }).click();
 
@@ -163,7 +163,7 @@ test.describe.serial("Study Invites", () => {
     await page.getByRole("button", { name: "Sign out" }).click();
 
     // Visit invite page and click create account
-    await page.goto(`/invite/${token}`);
+    await page.goto(`/invite/${token}`, { waitUntil: "networkidle" });
     await page.getByRole("link", { name: /Create account/i }).click();
 
     // Should be on register page with invite token
@@ -210,7 +210,7 @@ test.describe.serial("Study Invites", () => {
     await page.getByRole("button", { name: "Sign out" }).click();
 
     // Visit invite page and click sign in
-    await page.goto(`/invite/${token}`);
+    await page.goto(`/invite/${token}`, { waitUntil: "networkidle" });
     await page.getByRole("link", { name: /Sign in/i }).click();
 
     // Should be on login page with invite token
@@ -226,7 +226,7 @@ test.describe.serial("Study Invites", () => {
 
   test("shows error for invalid invite", async ({ page }) => {
     // Visit with a fake token
-    await page.goto("/invite/0000000000000000000000000000000000000000000000000000000000000000");
+    await page.goto("/invite/0000000000000000000000000000000000000000000000000000000000000000", { waitUntil: "networkidle" });
     await expect(page.getByRole("heading", { name: "Invalid link" })).toBeVisible();
     await expect(page.getByText(/doesn't exist or has been removed/i)).toBeVisible();
   });
@@ -268,12 +268,12 @@ test.describe.serial("Study Invites", () => {
     await page.getByRole("button", { name: "Sign in" }).click();
 
     // Accept invite first time
-    await page.goto(`/invite/${token}`);
+    await page.goto(`/invite/${token}`, { waitUntil: "networkidle" });
     await page.getByRole("button", { name: "Accept & join" }).click();
     await expect(page).toHaveURL(/\/projects\/.*\/studies\/.*/);
 
     // Try to accept same invite again
-    await page.goto(`/invite/${token}`);
+    await page.goto(`/invite/${token}`, { waitUntil: "networkidle" });
     await expect(page.getByRole("heading", { name: "Link already used" })).toBeVisible();
     await expect(page.getByText(/already been accepted/i)).toBeVisible();
   });
