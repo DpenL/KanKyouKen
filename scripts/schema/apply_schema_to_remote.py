@@ -232,6 +232,9 @@ def main():
         log("Dropping all public objects …")
         drop_all_public_objects(cur)
 
+        log("Ensuring required extensions are enabled …")
+        cur.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;")
+
         log("Applying schema …")
         cur.execute("SET check_function_bodies = false;")
         cur.execute(canonical_sql)
