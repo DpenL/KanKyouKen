@@ -86,10 +86,8 @@ test.describe.serial("Study Invites", () => {
     // Visit invite page as unauthenticated user
     await page.goto(`/invite/${token}`, { waitUntil: "networkidle" });
 
-    // Wait for React to fully hydrate by waiting for interactive buttons
-    await page.waitForSelector('a[href*="register"]', { state: "attached", timeout: 10000 });
-
-    await expect(page.getByRole("heading", { name: /been invited/ })).toBeVisible();
+    // Wait for the main content to be present
+    await expect(page.getByText("You've been invited")).toBeVisible();
     await expect(page.getByText(/Invite Test Study/)).toBeVisible();
     await expect(page.getByText(/Teacher/)).toBeVisible();
     await expect(page.getByRole("link", { name: /Create account/i })).toBeVisible();
