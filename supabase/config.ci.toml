@@ -4,6 +4,9 @@ project_id = "kankyouken-ci"
 [auth]
 # Must be at least 16 characters to satisfy Supabase CLI
 site_url = "http://localhost"
+# Fixed test secret so the anon JWT is predictable for E2E tests.
+# The Python CI job overrides this via supabase_config_loader.py.
+jwt_secret = "super-secret-jwt-token-with-at-least-32-characters-long"
 
 [db]
 port = 54322

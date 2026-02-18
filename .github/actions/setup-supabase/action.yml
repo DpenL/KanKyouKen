@@ -1,0 +1,9 @@
+name: Setup Supabase CLI
+description: 'Install the latest Supabase CLI and add it to PATH'
+
+runs:
+  using: "composite"
+  steps:
+    - uses: supabase/setup-cli@v1
+      with:
+        version: latest
