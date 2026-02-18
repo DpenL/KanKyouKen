@@ -269,6 +269,7 @@ test.describe.serial("Study Invites", () => {
     await page.getByLabel("Email").fill(duplicateEmail);
     await page.getByLabel("Password").fill("password123");
     await page.getByRole("button", { name: "Sign in" }).click();
+    await page.waitForURL("/dashboard");
 
     // Accept invite first time
     await page.goto(`/invite/${token}`, { waitUntil: "networkidle" });
