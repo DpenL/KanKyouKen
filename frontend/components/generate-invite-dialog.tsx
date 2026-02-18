@@ -86,9 +86,9 @@ export function GenerateInviteDialog({ studyId, projectId }: Props) {
 
           {link ? (
             <div className="grid gap-2">
-              <Label>Invite link</Label>
+              <Label htmlFor="invite-link">Invite link</Label>
               <div className="flex gap-2">
-                <Input value={link} readOnly className="font-mono text-xs" />
+                <Input id="invite-link" value={link} readOnly className="font-mono text-xs" />
                 <Button type="button" variant="outline" onClick={handleCopy}>
                   {copied ? "Copied!" : "Copy"}
                 </Button>
