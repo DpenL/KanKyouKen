@@ -129,6 +129,7 @@ test.describe.serial("Study Invites", () => {
     await page.getByLabel("Email").fill(researcherEmail);
     await page.getByLabel("Password").fill("password123");
     await page.getByRole("button", { name: "Sign in" }).click();
+    await page.waitForURL("/dashboard");
 
     // Visit invite page
     await page.goto(`/invite/${token}`, { waitUntil: "networkidle" });
