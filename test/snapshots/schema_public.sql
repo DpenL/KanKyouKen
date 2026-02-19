@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict gOeufnuIDDuyDRNtaWYEt0Yoe94CoEqJjfOhyzmqLXQwU9HXP49fDUQafjaetGL
+\restrict sgWFT9ikRPcPJvxBjJqzLB0nxytekbfIV5xqyNbaX0kPaBaINYYw2A6Qd1uENed
 
 -- Dumped from database version 17.6
 -- Dumped by pg_dump version 17.6
@@ -551,6 +551,24 @@ CREATE TABLE public.sessions (
 
 
 --
+-- Name: study_invitations; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.study_invitations (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    token text DEFAULT encode(extensions.gen_random_bytes(32), 'hex'::text) NOT NULL,
+    study_id uuid NOT NULL,
+    role text NOT NULL,
+    invited_by uuid NOT NULL,
+    created_at timestamp with time zone DEFAULT now(),
+    expires_at timestamp with time zone DEFAULT (now() + '7 days'::interval),
+    used_by uuid,
+    used_at timestamp with time zone,
+    CONSTRAINT study_invitations_role_check CHECK ((role = ANY (ARRAY['owner'::text, 'supervisor'::text, 'researcher'::text, 'teacher'::text, 'participant'::text])))
+);
+
+
+--
 -- Name: study_roles; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -563,7 +581,7 @@ CREATE TABLE public.study_roles (
     granted_by uuid NOT NULL,
     granted_at timestamp with time zone DEFAULT now(),
     CONSTRAINT project_or_study_exclusive CHECK ((((project_id IS NOT NULL) AND (study_id IS NULL)) OR ((project_id IS NULL) AND (study_id IS NOT NULL)))),
-    CONSTRAINT study_roles_role_check CHECK ((role = ANY (ARRAY['owner'::text, 'researcher'::text, 'supervisor'::text, 'teacher'::text])))
+    CONSTRAINT study_roles_role_check CHECK ((role = ANY (ARRAY['owner'::text, 'supervisor'::text, 'researcher'::text, 'teacher'::text, 'participant'::text])))
 );
 
 
@@ -652,6 +670,22 @@ ALTER TABLE ONLY public.sessions
 
 ALTER TABLE ONLY public.studies
     ADD CONSTRAINT studies_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: study_invitations study_invitations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.study_invitations
+    ADD CONSTRAINT study_invitations_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: study_invitations study_invitations_token_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.study_invitations
+    ADD CONSTRAINT study_invitations_token_key UNIQUE (token);
 
 
 --
@@ -889,6 +923,14 @@ ALTER TABLE ONLY public.sessions
 
 ALTER TABLE ONLY public.studies
     ADD CONSTRAINT studies_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects(id) ON DELETE CASCADE;
+
+
+--
+-- Name: study_invitations study_invitations_study_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.study_invitations
+    ADD CONSTRAINT study_invitations_study_id_fkey FOREIGN KEY (study_id) REFERENCES public.studies(id) ON DELETE CASCADE;
 
 
 --
@@ -1160,5 +1202,5 @@ CREATE POLICY study_roles_self_read ON public.study_roles FOR SELECT USING (((au
 -- PostgreSQL database dump complete
 --
 
-\unrestrict gOeufnuIDDuyDRNtaWYEt0Yoe94CoEqJjfOhyzmqLXQwU9HXP49fDUQafjaetGL
+\unrestrict sgWFT9ikRPcPJvxBjJqzLB0nxytekbfIV5xqyNbaX0kPaBaINYYw2A6Qd1uENed
 

@@ -29,6 +29,8 @@ scripts/schema_public_remote.sql
 # Test artifacts
 *.log
 *.tmp
+test_output.txt
+logs_*.zip
 .coverage
 .pytest_cache/
 temp/*
