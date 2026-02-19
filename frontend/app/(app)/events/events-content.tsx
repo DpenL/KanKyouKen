@@ -23,15 +23,16 @@ export function EventsContent({ studies }: EventsContentProps) {
     searchParams.get("study_id") ?? studies[0].id
   );
   const [definition, setDefinition] = useState<SchemaDefinition | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Derive loading from which study we last completed a fetch for.
+  // This avoids synchronous setState at the top of the effect.
+  const [fetchedFor, setFetchedFor] = useState<string | null>(null);
+  const loading = fetchedFor !== selectedStudyId;
 
   const selectedStudy = studies.find((s) => s.id === selectedStudyId) ?? studies[0];
   const canWrite = WRITE_ROLES.has(selectedStudy.role);
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setDefinition(null);
 
     const supabase = createClient();
     supabase
@@ -44,7 +45,7 @@ export function EventsContent({ studies }: EventsContentProps) {
       .then(({ data }) => {
         if (!cancelled) {
           setDefinition(data ? (data.definition as SchemaDefinition) : null);
-          setLoading(false);
+          setFetchedFor(selectedStudyId);
         }
       });
 
