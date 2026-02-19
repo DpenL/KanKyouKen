@@ -15,15 +15,23 @@ export async function createStudy(projectId: string, formData: FormData) {
 
   const name = (formData.get("name") as string).trim();
 
-  const { error } = await supabase.from("studies").insert({
-    name,
-    project_id: projectId,
-    owner_id: user.id,
-  });
+  const { data: study, error } = await supabase
+    .from("studies")
+    .insert({ name, project_id: projectId, owner_id: user.id })
+    .select("id")
+    .single();
 
-  if (error) {
-    redirect(`/projects/${projectId}?error=` + encodeURIComponent(error.message));
+  if (error || !study) {
+    redirect(`/projects/${projectId}?error=` + encodeURIComponent(error?.message ?? "Failed to create study"));
   }
+
+  // Grant the creator an explicit owner role so study_roles queries find this study
+  await supabase.from("study_roles").insert({
+    user_id: user.id,
+    study_id: study.id,
+    role: "owner",
+    granted_by: user.id,
+  });
 
   revalidatePath(`/projects/${projectId}`);
   revalidatePath("/dashboard");
