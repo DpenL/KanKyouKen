@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict sgWFT9ikRPcPJvxBjJqzLB0nxytekbfIV5xqyNbaX0kPaBaINYYw2A6Qd1uENed
+\restrict WLUBwkblgA25dgNP2oVtbEaio7dicod72dhuIZR6FNY2nxbRLO1hDj4ItKMTtwd
 
 -- Dumped from database version 17.6
 -- Dumped by pg_dump version 17.6
@@ -48,6 +48,22 @@ begin
   values (who, tg_op, tg_table_name);
   return new;
 end;
+$$;
+
+
+--
+-- Name: create_study_owner_role(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.create_study_owner_role() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+BEGIN
+  INSERT INTO public.study_roles (user_id, study_id, role, granted_by)
+  VALUES (NEW.owner_id, NEW.id, 'owner', NEW.owner_id);
+  RETURN NEW;
+END;
 $$;
 
 
@@ -818,6 +834,13 @@ CREATE INDEX sessions_participant_id_study_id_idx ON public.sessions USING btree
 
 
 --
+-- Name: studies study_owner_role_on_insert; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER study_owner_role_on_insert AFTER INSERT ON public.studies FOR EACH ROW EXECUTE FUNCTION public.create_study_owner_role();
+
+
+--
 -- Name: consent_records sync_participant_consent_trigger; Type: TRIGGER; Schema: public; Owner: -
 --
 
@@ -1202,5 +1225,5 @@ CREATE POLICY study_roles_self_read ON public.study_roles FOR SELECT USING (((au
 -- PostgreSQL database dump complete
 --
 
-\unrestrict sgWFT9ikRPcPJvxBjJqzLB0nxytekbfIV5xqyNbaX0kPaBaINYYw2A6Qd1uENed
+\unrestrict WLUBwkblgA25dgNP2oVtbEaio7dicod72dhuIZR6FNY2nxbRLO1hDj4ItKMTtwd
 
