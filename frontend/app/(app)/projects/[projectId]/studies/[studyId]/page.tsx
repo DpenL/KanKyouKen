@@ -10,6 +10,13 @@ type ParticipantStat = {
   last_event: string | null;
 };
 
+type RecentEvent = {
+  id: string;
+  ts: string;
+  event_type: string;
+  participants: { pseudonym: string | null } | null;
+};
+
 interface Props {
   params: Promise<{ projectId: string; studyId: string }>;
 }
@@ -32,7 +39,8 @@ export default async function StudyPage({ params }: Props) {
     { count: eventCount },
     { data: firstEvent },
     { data: lastEvent },
-    { data: participants },
+    { data: participantStats },
+    { data: recentEvents },
     { data: members },
   ] = await Promise.all([
     supabase.from("projects").select("id, name").eq("id", projectId).single(),
@@ -40,10 +48,11 @@ export default async function StudyPage({ params }: Props) {
     supabase.from("events").select("ts").eq("study_id", studyId).order("ts", { ascending: true }).limit(1).maybeSingle(),
     supabase.from("events").select("ts").eq("study_id", studyId).order("ts", { ascending: false }).limit(1).maybeSingle(),
     supabase.rpc("get_study_participant_stats", { p_study_id: studyId }),
+    supabase.from("events").select("id, ts, event_type, participants(pseudonym)").eq("study_id", studyId).order("ts", { ascending: false }).limit(10),
     supabase.from("study_roles").select("id, user_id, role, granted_at").eq("study_id", studyId).order("granted_at", { ascending: true }),
   ]);
 
-  const participantCount = participants?.length ?? 0;
+  const participantCount = (participantStats as ParticipantStat[] | null)?.length ?? 0;
 
   return (
     <div className="space-y-8">
@@ -92,28 +101,30 @@ export default async function StudyPage({ params }: Props) {
         </div>
       </div>
 
-      {/* Participants */}
+      {/* Recent activity — answers "is data flowing?" */}
       <div>
-        <h2 className="text-lg font-medium mb-3">Participants</h2>
-        {!participants?.length ? (
+        <h2 className="text-lg font-medium mb-3">Recent activity</h2>
+        {!recentEvents?.length ? (
           <p className="text-sm text-muted-foreground">No data collected yet.</p>
         ) : (
           <div className="rounded-md border">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-muted/30">
-                  <th className="px-4 py-2 text-left font-medium text-muted-foreground">Pseudonym</th>
-                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Events</th>
-                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Last active</th>
+                  <th className="px-4 py-2 text-left font-medium text-muted-foreground">Participant</th>
+                  <th className="px-4 py-2 text-left font-medium text-muted-foreground">Event type</th>
+                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Time</th>
                 </tr>
               </thead>
               <tbody>
-                {(participants as ParticipantStat[]).map((p) => (
-                  <tr key={p.participant_id} className="border-b last:border-0">
-                    <td className="px-4 py-2.5 font-mono text-xs">{p.pseudonym ?? p.participant_id}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">{Number(p.event_count).toLocaleString()}</td>
-                    <td className="px-4 py-2.5 text-right text-muted-foreground">
-                      {p.last_event ? new Date(p.last_event).toLocaleDateString() : "—"}
+                {(recentEvents as RecentEvent[]).map((e) => (
+                  <tr key={e.id} className="border-b last:border-0">
+                    <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">
+                      {e.participants?.pseudonym ?? "—"}
+                    </td>
+                    <td className="px-4 py-2.5 font-mono text-xs">{e.event_type}</td>
+                    <td className="px-4 py-2.5 text-right text-xs text-muted-foreground tabular-nums">
+                      {new Date(e.ts).toLocaleString()}
                     </td>
                   </tr>
                 ))}
