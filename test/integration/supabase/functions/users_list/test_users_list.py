@@ -159,9 +159,10 @@ def test_list_study_users_successfully(function_base_url, function_runtime, test
     data = response.json()
 
     assert "users" in data
-    assert len(data["users"]) == 2  # researcher2 + teacher
+    assert len(data["users"]) == 3  # owner (auto-granted by trigger) + researcher2 + teacher
 
     user_ids = [u["user_id"] for u in data["users"]]
+    assert test_data["owner_id"] in user_ids
     assert test_data["researcher2_id"] in user_ids
     assert test_data["teacher_id"] in user_ids
 

@@ -5,6 +5,10 @@ import subprocess
 from pathlib import Path
 from datetime import datetime, timezone
 
+# Add parent directory to path for pg_dump_wrapper
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from pg_dump_wrapper import run_pg_dump
+
 import psycopg2
 
 
@@ -28,21 +32,12 @@ def log(message: str):
 # Run pg_dump for backup
 # ==============================================================================
 def run_pg_dump_to_file(db_url: str, outfile: Path) -> None:
-    result = subprocess.run(
-        [
-            "pg_dump",
-            "--schema-only",
-            "--no-owner",
-            "--no-privileges",
-            "--schema=public",
-            db_url,
-        ],
-        text=True,
-        capture_output=True,
-        check=True,
+    output = run_pg_dump(
+        db_url,
+        extra_args=["--schema-only", "--no-owner", "--no-privileges", "--schema=public"]
     )
     outfile.parent.mkdir(parents=True, exist_ok=True)
-    outfile.write_text(result.stdout)
+    outfile.write_text(output)
 
 
 # ==============================================================================
@@ -236,6 +231,9 @@ def main():
 
         log("Dropping all public objects …")
         drop_all_public_objects(cur)
+
+        log("Ensuring required extensions are enabled …")
+        cur.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;")
 
         log("Applying schema …")
         cur.execute("SET check_function_bodies = false;")

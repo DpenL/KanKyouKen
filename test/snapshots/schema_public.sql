@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict gOeufnuIDDuyDRNtaWYEt0Yoe94CoEqJjfOhyzmqLXQwU9HXP49fDUQafjaetGL
+\restrict WLUBwkblgA25dgNP2oVtbEaio7dicod72dhuIZR6FNY2nxbRLO1hDj4ItKMTtwd
 
 -- Dumped from database version 17.6
 -- Dumped by pg_dump version 17.6
@@ -48,6 +48,22 @@ begin
   values (who, tg_op, tg_table_name);
   return new;
 end;
+$$;
+
+
+--
+-- Name: create_study_owner_role(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.create_study_owner_role() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+BEGIN
+  INSERT INTO public.study_roles (user_id, study_id, role, granted_by)
+  VALUES (NEW.owner_id, NEW.id, 'owner', NEW.owner_id);
+  RETURN NEW;
+END;
 $$;
 
 
@@ -551,6 +567,24 @@ CREATE TABLE public.sessions (
 
 
 --
+-- Name: study_invitations; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.study_invitations (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    token text DEFAULT encode(extensions.gen_random_bytes(32), 'hex'::text) NOT NULL,
+    study_id uuid NOT NULL,
+    role text NOT NULL,
+    invited_by uuid NOT NULL,
+    created_at timestamp with time zone DEFAULT now(),
+    expires_at timestamp with time zone DEFAULT (now() + '7 days'::interval),
+    used_by uuid,
+    used_at timestamp with time zone,
+    CONSTRAINT study_invitations_role_check CHECK ((role = ANY (ARRAY['owner'::text, 'supervisor'::text, 'researcher'::text, 'teacher'::text, 'participant'::text])))
+);
+
+
+--
 -- Name: study_roles; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -563,7 +597,7 @@ CREATE TABLE public.study_roles (
     granted_by uuid NOT NULL,
     granted_at timestamp with time zone DEFAULT now(),
     CONSTRAINT project_or_study_exclusive CHECK ((((project_id IS NOT NULL) AND (study_id IS NULL)) OR ((project_id IS NULL) AND (study_id IS NOT NULL)))),
-    CONSTRAINT study_roles_role_check CHECK ((role = ANY (ARRAY['owner'::text, 'researcher'::text, 'supervisor'::text, 'teacher'::text])))
+    CONSTRAINT study_roles_role_check CHECK ((role = ANY (ARRAY['owner'::text, 'supervisor'::text, 'researcher'::text, 'teacher'::text, 'participant'::text])))
 );
 
 
@@ -652,6 +686,22 @@ ALTER TABLE ONLY public.sessions
 
 ALTER TABLE ONLY public.studies
     ADD CONSTRAINT studies_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: study_invitations study_invitations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.study_invitations
+    ADD CONSTRAINT study_invitations_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: study_invitations study_invitations_token_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.study_invitations
+    ADD CONSTRAINT study_invitations_token_key UNIQUE (token);
 
 
 --
@@ -784,6 +834,13 @@ CREATE INDEX sessions_participant_id_study_id_idx ON public.sessions USING btree
 
 
 --
+-- Name: studies study_owner_role_on_insert; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER study_owner_role_on_insert AFTER INSERT ON public.studies FOR EACH ROW EXECUTE FUNCTION public.create_study_owner_role();
+
+
+--
 -- Name: consent_records sync_participant_consent_trigger; Type: TRIGGER; Schema: public; Owner: -
 --
 
@@ -889,6 +946,14 @@ ALTER TABLE ONLY public.sessions
 
 ALTER TABLE ONLY public.studies
     ADD CONSTRAINT studies_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects(id) ON DELETE CASCADE;
+
+
+--
+-- Name: study_invitations study_invitations_study_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.study_invitations
+    ADD CONSTRAINT study_invitations_study_id_fkey FOREIGN KEY (study_id) REFERENCES public.studies(id) ON DELETE CASCADE;
 
 
 --
@@ -1160,5 +1225,5 @@ CREATE POLICY study_roles_self_read ON public.study_roles FOR SELECT USING (((au
 -- PostgreSQL database dump complete
 --
 
-\unrestrict gOeufnuIDDuyDRNtaWYEt0Yoe94CoEqJjfOhyzmqLXQwU9HXP49fDUQafjaetGL
+\unrestrict WLUBwkblgA25dgNP2oVtbEaio7dicod72dhuIZR6FNY2nxbRLO1hDj4ItKMTtwd
 

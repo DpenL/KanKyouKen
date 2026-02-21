@@ -1,4 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
+import { config } from "dotenv";
+
+// Make .env.local vars available to test files (NEXT_PUBLIC_*, SUPABASE_SERVICE_ROLE_KEY, etc.)
+config({ path: ".env.local" });
 
 export default defineConfig({
   testDir: "./e2e",
