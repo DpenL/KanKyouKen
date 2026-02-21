@@ -33,6 +33,9 @@ test.describe.serial("Event Schema Management", () => {
     await page.getByLabel("Name").fill("Schema Test Study");
     await page.getByRole("button", { name: "Create", exact: true }).click();
     await page.getByRole("link", { name: "Schema Test Study" }).click();
+    // Wait for the study detail page to load before reading the URL,
+    // otherwise page.url() may still reflect the project page (race with client-side navigation)
+    await page.waitForURL(/\/projects\/.*\/studies\/.*/);
 
     studyId = new URL(page.url()).pathname.split("/").pop()!;
     expect(studyId).toBeTruthy();
