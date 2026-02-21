@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict WLUBwkblgA25dgNP2oVtbEaio7dicod72dhuIZR6FNY2nxbRLO1hDj4ItKMTtwd
+\restrict EaFjqABaLdv8DvZ4RrUCeNaBrQgn38CqYSzT50aPaLRCHZUku1kPhWmfP0IDd6E
 
 -- Dumped from database version 17.6
 -- Dumped by pg_dump version 17.6
@@ -129,6 +129,27 @@ $$;
 --
 
 COMMENT ON FUNCTION public.get_accessible_study_ids(uid uuid) IS 'Get array of all study IDs user can access (for query filtering)';
+
+
+--
+-- Name: get_study_participant_stats(uuid); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.get_study_participant_stats(p_study_id uuid) RETURNS TABLE(participant_id uuid, pseudonym text, event_count bigint, last_event timestamp with time zone)
+    LANGUAGE sql STABLE
+    SET search_path TO 'public'
+    AS $$
+  SELECT
+    p.id          AS participant_id,
+    p.pseudonym,
+    COUNT(e.id)   AS event_count,
+    MAX(e.ts)     AS last_event
+  FROM events e
+  JOIN participants p ON p.id = e.participant_id
+  WHERE e.study_id = p_study_id
+  GROUP BY p.id, p.pseudonym
+  ORDER BY MAX(e.ts) DESC NULLS LAST;
+$$;
 
 
 --
@@ -1225,5 +1246,5 @@ CREATE POLICY study_roles_self_read ON public.study_roles FOR SELECT USING (((au
 -- PostgreSQL database dump complete
 --
 
-\unrestrict WLUBwkblgA25dgNP2oVtbEaio7dicod72dhuIZR6FNY2nxbRLO1hDj4ItKMTtwd
+\unrestrict EaFjqABaLdv8DvZ4RrUCeNaBrQgn38CqYSzT50aPaLRCHZUku1kPhWmfP0IDd6E
 
