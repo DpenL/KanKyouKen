@@ -10,7 +10,7 @@ const duplicateEmail = `duplicate-${timestamp}@example.com`;
 
 // Tests must run sequentially - they share the same admin user/project/study
 test.describe.serial("Study Invites", () => {
-  test("shows empty members list on new study", async ({ page }) => {
+  test("shows creator as initial member on new study", async ({ page }) => {
     // Register new admin user
     await page.goto("/register");
     await page.getByLabel("Email").fill(adminEmail);
@@ -30,7 +30,8 @@ test.describe.serial("Study Invites", () => {
 
     await page.getByRole("link", { name: "Invite Test Study" }).click();
     await expect(page.getByRole("heading", { name: "Members" })).toBeVisible();
-    await expect(page.getByText("No members yet")).toBeVisible();
+    // Creator is auto-granted owner role via DB trigger on study creation
+    await expect(page.getByText("Owner")).toBeVisible();
   });
 
   test("generates invite link for researcher role", async ({ page }) => {
