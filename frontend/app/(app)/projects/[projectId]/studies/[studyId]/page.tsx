@@ -3,6 +3,13 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { GenerateInviteDialog } from "@/components/generate-invite-dialog";
 
+type ParticipantStat = {
+  participant_id: string;
+  pseudonym: string | null;
+  event_count: number;
+  last_event: string | null;
+};
+
 interface Props {
   params: Promise<{ projectId: string; studyId: string }>;
 }
@@ -101,7 +108,7 @@ export default async function StudyPage({ params }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {participants.map((p) => (
+                {(participants as ParticipantStat[]).map((p) => (
                   <tr key={p.participant_id} className="border-b last:border-0">
                     <td className="px-4 py-2.5 font-mono text-xs">{p.pseudonym ?? p.participant_id}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums">{Number(p.event_count).toLocaleString()}</td>

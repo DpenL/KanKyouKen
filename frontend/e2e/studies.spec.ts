@@ -49,7 +49,7 @@ test("study detail page shows overview and empty participants state", async ({ p
   await page.waitForURL(/\/projects\/.*\/studies\/.*/);
 
   // Overview section: 3 stat cards visible
-  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Overview", exact: true })).toBeVisible();
   await expect(page.getByText("Total events")).toBeVisible();
   await expect(page.getByText("Last event")).toBeVisible();
 
