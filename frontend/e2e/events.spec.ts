@@ -104,8 +104,8 @@ test.describe.serial("Event Schema Management", () => {
     // Expand inline field editor
     await page.getByRole("button", { name: "Add fields" }).click();
 
-    // Add one field
-    await page.getByRole("button", { name: "Add field" }).click();
+    // Add one field — use regex anchor to avoid matching the "Add fields" toggle (substring issue)
+    await page.getByRole("button", { name: /^Add field$/ }).click();
     await page.getByPlaceholder("field_name").fill("correct");
 
     // Save
