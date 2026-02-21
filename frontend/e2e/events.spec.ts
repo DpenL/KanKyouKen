@@ -83,8 +83,8 @@ test.describe.serial("Event Schema Management", () => {
     // Reload to confirm persistence via fresh useEffect fetch
     await page.goto(`/events?study_id=${studyId}`);
     await expect(page.getByText("button_clicked")).toBeVisible();
-    // Description is rendered as an editable <Input> for owners, so use getByDisplayValue
-    await expect(page.getByDisplayValue("User clicked a button")).toBeVisible();
+    // Description is an editable <Input> for owners — check its value not text content
+    await expect(page.locator('input[placeholder="Description…"]').first()).toHaveValue("User clicked a button");
     await expect(page.getByText("1 event type defined")).toBeVisible();
   });
 
