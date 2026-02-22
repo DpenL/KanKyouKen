@@ -48,10 +48,12 @@ test("study detail page shows overview and empty participants state", async ({ p
   await page.getByText("Overview test study").click();
   await page.waitForURL(/\/projects\/.*\/studies\/.*/);
 
-  // Overview section: 3 stat cards visible
+  // Overview section: 4 monitoring stat cards
   await expect(page.getByRole("heading", { name: "Overview", exact: true })).toBeVisible();
   await expect(page.getByText("Total events")).toBeVisible();
-  await expect(page.getByText("Last event")).toBeVisible();
+  await expect(page.getByText("Avg events / day")).toBeVisible();
+  await expect(page.getByText("Active last 7 days")).toBeVisible();
+  await expect(page.getByText("Median events / participant")).toBeVisible();
 
   // Event breakdown section: empty state for a fresh study
   await expect(page.getByRole("heading", { name: "Event breakdown", exact: true })).toBeVisible();
