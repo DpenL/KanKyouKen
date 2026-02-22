@@ -53,8 +53,8 @@ test("study detail page shows overview and empty participants state", async ({ p
   await expect(page.getByText("Total events")).toBeVisible();
   await expect(page.getByText("Last event")).toBeVisible();
 
-  // Recent activity section: empty state for a fresh study
-  await expect(page.getByRole("heading", { name: "Recent activity", exact: true })).toBeVisible();
+  // Event breakdown section: empty state for a fresh study
+  await expect(page.getByRole("heading", { name: "Event breakdown", exact: true })).toBeVisible();
   await expect(page.getByText("No data collected yet.")).toBeVisible();
 
   // Members section present (content covered by invites.spec.ts)

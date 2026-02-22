@@ -10,15 +10,23 @@ type ParticipantStat = {
   last_event: string | null;
 };
 
-type RecentEvent = {
-  id: string;
-  ts: string;
+type EventBreakdown = {
   event_type: string;
-  participants: { pseudonym: string | null } | null;
+  event_count: number;
+  pct: number;
 };
 
 interface Props {
   params: Promise<{ projectId: string; studyId: string }>;
+}
+
+function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[mid - 1] + sorted[mid]) / 2
+    : sorted[mid];
 }
 
 export default async function StudyPage({ params }: Props) {
@@ -40,7 +48,7 @@ export default async function StudyPage({ params }: Props) {
     { data: firstEvent },
     { data: lastEvent },
     { data: participantStats },
-    { data: recentEvents },
+    { data: eventBreakdown },
     { data: members },
   ] = await Promise.all([
     supabase.from("projects").select("id, name").eq("id", projectId).single(),
@@ -48,14 +56,30 @@ export default async function StudyPage({ params }: Props) {
     supabase.from("events").select("ts").eq("study_id", studyId).order("ts", { ascending: true }).limit(1).maybeSingle(),
     supabase.from("events").select("ts").eq("study_id", studyId).order("ts", { ascending: false }).limit(1).maybeSingle(),
     supabase.rpc("get_study_participant_stats", { p_study_id: studyId }),
-    supabase.from("events").select("id, ts, event_type, participants(pseudonym)").eq("study_id", studyId).order("ts", { ascending: false }).limit(10),
+    supabase.rpc("get_study_event_breakdown", { p_study_id: studyId }),
     supabase.from("study_roles").select("id, user_id, role, granted_at").eq("study_id", studyId).order("granted_at", { ascending: true }),
   ]);
 
-  const participantCount = (participantStats as ParticipantStat[] | null)?.length ?? 0;
+  const stats = (participantStats as ParticipantStat[] | null) ?? [];
+  const breakdown = (eventBreakdown as EventBreakdown[] | null) ?? [];
+
+  // Derived monitoring metrics — all computed from data already fetched
+  const participantCount = stats.length;
+
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const activeCount = stats.filter((p) => p.last_event && p.last_event > sevenDaysAgo).length;
+
+  const medianEvents = median(stats.map((p) => Number(p.event_count)));
+
+  const daySpan =
+    firstEvent?.ts && lastEvent?.ts
+      ? Math.max(1, (new Date(lastEvent.ts).getTime() - new Date(firstEvent.ts).getTime()) / 86_400_000)
+      : null;
+  const avgPerDay = daySpan && eventCount ? (eventCount / daySpan).toFixed(1) : null;
 
   return (
     <div className="space-y-8">
+      {/* Header + breadcrumb */}
       <div>
         <nav className="text-sm text-muted-foreground mb-4 flex items-center gap-1">
           <Link href="/projects" className="hover:text-foreground transition-colors">Projects</Link>
@@ -73,58 +97,72 @@ export default async function StudyPage({ params }: Props) {
         </p>
       </div>
 
-      {/* Overview stats */}
+      {/* Monitoring overview — 4 population-level stats */}
       <div>
         <h2 className="text-lg font-medium mb-3">Overview</h2>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div className="rounded-md border px-4 py-3">
             <p className="text-xs text-muted-foreground">Total events</p>
             <p className="text-2xl font-semibold mt-1">{(eventCount ?? 0).toLocaleString()}</p>
-          </div>
-          <div className="rounded-md border px-4 py-3">
-            <p className="text-xs text-muted-foreground">Participants</p>
-            <p className="text-2xl font-semibold mt-1">{participantCount.toLocaleString()}</p>
-          </div>
-          <div className="rounded-md border px-4 py-3">
-            <p className="text-xs text-muted-foreground">Last event</p>
-            <p className="text-lg font-semibold mt-1">
-              {lastEvent?.ts
-                ? new Date(lastEvent.ts).toLocaleDateString()
-                : <span className="text-muted-foreground text-sm">—</span>}
-            </p>
-            {firstEvent?.ts && lastEvent?.ts && (
+            {firstEvent?.ts && (
               <p className="text-xs text-muted-foreground mt-0.5">
                 since {new Date(firstEvent.ts).toLocaleDateString()}
               </p>
             )}
           </div>
+
+          <div className="rounded-md border px-4 py-3">
+            <p className="text-xs text-muted-foreground">Avg events / day</p>
+            <p className="text-2xl font-semibold mt-1">{avgPerDay ?? "—"}</p>
+            {lastEvent?.ts && (
+              <p className="text-xs text-muted-foreground mt-0.5">
+                last {new Date(lastEvent.ts).toLocaleDateString()}
+              </p>
+            )}
+          </div>
+
+          <div className="rounded-md border px-4 py-3">
+            <p className="text-xs text-muted-foreground">Active last 7 days</p>
+            <p className="text-2xl font-semibold mt-1">
+              {participantCount > 0 ? `${activeCount} / ${participantCount}` : "—"}
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">participants</p>
+          </div>
+
+          <div className="rounded-md border px-4 py-3">
+            <p className="text-xs text-muted-foreground">Median events / participant</p>
+            <p className="text-2xl font-semibold mt-1">
+              {participantCount > 0 ? medianEvents.toLocaleString() : "—"}
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">coverage proxy</p>
+          </div>
         </div>
       </div>
 
-      {/* Recent activity — answers "is data flowing?" */}
+      {/* Event type breakdown — what is being collected */}
       <div>
-        <h2 className="text-lg font-medium mb-3">Recent activity</h2>
-        {!recentEvents?.length ? (
+        <h2 className="text-lg font-medium mb-3">Event breakdown</h2>
+        {breakdown.length === 0 ? (
           <p className="text-sm text-muted-foreground">No data collected yet.</p>
         ) : (
           <div className="rounded-md border">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-muted/30">
-                  <th className="px-4 py-2 text-left font-medium text-muted-foreground">Participant</th>
                   <th className="px-4 py-2 text-left font-medium text-muted-foreground">Event type</th>
-                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Time</th>
+                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Count</th>
+                  <th className="px-4 py-2 text-right font-medium text-muted-foreground">Share</th>
                 </tr>
               </thead>
               <tbody>
-                {(recentEvents as RecentEvent[]).map((e) => (
-                  <tr key={e.id} className="border-b last:border-0">
-                    <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">
-                      {e.participants?.pseudonym ?? "—"}
+                {breakdown.map((row) => (
+                  <tr key={row.event_type} className="border-b last:border-0">
+                    <td className="px-4 py-2.5 font-mono text-xs">{row.event_type}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">
+                      {Number(row.event_count).toLocaleString()}
                     </td>
-                    <td className="px-4 py-2.5 font-mono text-xs">{e.event_type}</td>
-                    <td className="px-4 py-2.5 text-right text-xs text-muted-foreground tabular-nums">
-                      {new Date(e.ts).toLocaleString()}
+                    <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">
+                      {Number(row.pct).toFixed(1)}%
                     </td>
                   </tr>
                 ))}
