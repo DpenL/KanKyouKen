@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict hnmIk3f8ZvuMt9HhicHoc7uyiZVOpJGhXbF7m0gb37wdsLaI781SjCTvZfTZ3bV
+\restrict 7geGsthlHhGP5dguQYpXJyGJfZniVsbXEv5Y03J8J8gvlK13BsaQRSyzdhsEOlg
 
 -- Dumped from database version 17.6
 -- Dumped by pg_dump version 17.6
@@ -154,15 +154,16 @@ $$;
 -- Name: get_study_participant_stats(uuid); Type: FUNCTION; Schema: public; Owner: -
 --
 
-CREATE FUNCTION public.get_study_participant_stats(p_study_id uuid) RETURNS TABLE(participant_id uuid, pseudonym text, event_count bigint, last_event timestamp with time zone)
+CREATE FUNCTION public.get_study_participant_stats(p_study_id uuid) RETURNS TABLE(participant_id uuid, pseudonym text, event_count bigint, last_event timestamp with time zone, is_active boolean)
     LANGUAGE sql STABLE
     SET search_path TO 'public'
     AS $$
   SELECT
-    p.id          AS participant_id,
+    p.id                                          AS participant_id,
     p.pseudonym,
-    COUNT(e.id)   AS event_count,
-    MAX(e.ts)     AS last_event
+    COUNT(e.id)                                   AS event_count,
+    MAX(e.ts)                                     AS last_event,
+    MAX(e.ts) > now() - interval '7 days'         AS is_active
   FROM events e
   JOIN participants p ON p.id = e.participant_id
   WHERE e.study_id = p_study_id
@@ -1265,5 +1266,5 @@ CREATE POLICY study_roles_self_read ON public.study_roles FOR SELECT USING (((au
 -- PostgreSQL database dump complete
 --
 
-\unrestrict hnmIk3f8ZvuMt9HhicHoc7uyiZVOpJGhXbF7m0gb37wdsLaI781SjCTvZfTZ3bV
+\unrestrict 7geGsthlHhGP5dguQYpXJyGJfZniVsbXEv5Y03J8J8gvlK13BsaQRSyzdhsEOlg
 

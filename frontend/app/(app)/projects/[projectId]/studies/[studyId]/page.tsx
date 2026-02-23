@@ -8,6 +8,7 @@ type ParticipantStat = {
   pseudonym: string | null;
   event_count: number;
   last_event: string | null;
+  is_active: boolean;
 };
 
 type EventBreakdown = {
@@ -66,9 +67,7 @@ export default async function StudyPage({ params }: Props) {
   // Derived monitoring metrics — all computed from data already fetched
   const participantCount = stats.length;
 
-  // eslint-disable-next-line react-hooks/purity -- server component: Date.now() is stable per request
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  const activeCount = stats.filter((p) => p.last_event && p.last_event > sevenDaysAgo).length;
+  const activeCount = stats.filter((p) => p.is_active).length;
 
   const medianEvents = median(stats.map((p) => Number(p.event_count)));
 

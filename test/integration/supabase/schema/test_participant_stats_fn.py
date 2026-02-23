@@ -4,6 +4,7 @@ Integration tests for the get_study_participant_stats() RPC function.
 Verifies:
 - Empty study returns an empty list
 - Events are correctly aggregated per participant
+- is_active flag is true for recent events, false for old ones
 - Multiple participants are returned ordered by last_event DESC
 - RLS prevents access by users without study membership
 """
@@ -73,6 +74,7 @@ def test_participant_stats_counts_events_per_participant(
     assert row["participant_id"] == participant_id
     assert row["event_count"] == 3
     assert row["last_event"] is not None
+    assert row["is_active"] is True, "Events within 7 days should mark participant as active"
     cur.close()
 
 
@@ -121,8 +123,38 @@ def test_participant_stats_multiple_participants_ordered(
     # Ordered by last_event DESC — second participant (more recent) first
     assert rows[0]["participant_id"] == second_participant_id
     assert rows[0]["event_count"] == 1
+    assert rows[0]["is_active"] is True
     assert rows[1]["participant_id"] == first_participant_id
     assert rows[1]["event_count"] == 2
+    assert rows[1]["is_active"] is True  # 1 day old — still within 7-day window
+    cur.close()
+
+
+@pytest.mark.integration
+def test_participant_stats_is_active_false_for_old_events(
+    authenticated_user_with_study, db_conn, supabase_ready
+):
+    """is_active is False when the participant's last event is older than 7 days."""
+    cur = db_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    study_id = uuid.UUID(authenticated_user_with_study["study_id"])
+    participant_id = uuid.UUID(authenticated_user_with_study["participant_id"])
+    user_id = uuid.UUID(authenticated_user_with_study["user_id"])
+
+    cur.execute(
+        """
+        INSERT INTO public.events (id, study_id, participant_id, ts, event_type, payload)
+        VALUES (gen_random_uuid(), %s, %s, now() - interval '8 days', 'old_event', '{}')
+        """,
+        (study_id, participant_id),
+    )
+    db_conn.commit()
+
+    _as_user(cur, user_id)
+    cur.execute("SELECT * FROM get_study_participant_stats(%s)", (study_id,))
+    rows = cur.fetchall()
+
+    assert len(rows) == 1
+    assert rows[0]["is_active"] is False, "Event 8 days ago should not mark participant as active"
     cur.close()
 
 
