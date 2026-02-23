@@ -66,6 +66,7 @@ export default async function StudyPage({ params }: Props) {
   // Derived monitoring metrics — all computed from data already fetched
   const participantCount = stats.length;
 
+  // eslint-disable-next-line react-hooks/purity -- server component: Date.now() is stable per request
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const activeCount = stats.filter((p) => p.last_event && p.last_event > sevenDaysAgo).length;
 
