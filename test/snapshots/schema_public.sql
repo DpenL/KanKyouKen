@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict WLUBwkblgA25dgNP2oVtbEaio7dicod72dhuIZR6FNY2nxbRLO1hDj4ItKMTtwd
+\restrict 7geGsthlHhGP5dguQYpXJyGJfZniVsbXEv5Y03J8J8gvlK13BsaQRSyzdhsEOlg
 
 -- Dumped from database version 17.6
 -- Dumped by pg_dump version 17.6
@@ -129,6 +129,47 @@ $$;
 --
 
 COMMENT ON FUNCTION public.get_accessible_study_ids(uid uuid) IS 'Get array of all study IDs user can access (for query filtering)';
+
+
+--
+-- Name: get_study_event_breakdown(uuid); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.get_study_event_breakdown(p_study_id uuid) RETURNS TABLE(event_type text, event_count bigint, pct numeric)
+    LANGUAGE sql STABLE
+    SET search_path TO 'public'
+    AS $$
+  SELECT
+    event_type,
+    COUNT(*)                                                          AS event_count,
+    ROUND(100.0 * COUNT(*) / NULLIF(SUM(COUNT(*)) OVER (), 0), 1)   AS pct
+  FROM events
+  WHERE study_id = p_study_id
+  GROUP BY event_type
+  ORDER BY event_count DESC;
+$$;
+
+
+--
+-- Name: get_study_participant_stats(uuid); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.get_study_participant_stats(p_study_id uuid) RETURNS TABLE(participant_id uuid, pseudonym text, event_count bigint, last_event timestamp with time zone, is_active boolean)
+    LANGUAGE sql STABLE
+    SET search_path TO 'public'
+    AS $$
+  SELECT
+    p.id                                          AS participant_id,
+    p.pseudonym,
+    COUNT(e.id)                                   AS event_count,
+    MAX(e.ts)                                     AS last_event,
+    MAX(e.ts) > now() - interval '7 days'         AS is_active
+  FROM events e
+  JOIN participants p ON p.id = e.participant_id
+  WHERE e.study_id = p_study_id
+  GROUP BY p.id, p.pseudonym
+  ORDER BY MAX(e.ts) DESC NULLS LAST;
+$$;
 
 
 --
@@ -1225,5 +1266,5 @@ CREATE POLICY study_roles_self_read ON public.study_roles FOR SELECT USING (((au
 -- PostgreSQL database dump complete
 --
 
-\unrestrict WLUBwkblgA25dgNP2oVtbEaio7dicod72dhuIZR6FNY2nxbRLO1hDj4ItKMTtwd
+\unrestrict 7geGsthlHhGP5dguQYpXJyGJfZniVsbXEv5Y03J8J8gvlK13BsaQRSyzdhsEOlg
 

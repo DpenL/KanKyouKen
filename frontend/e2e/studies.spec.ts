@@ -41,6 +41,28 @@ test("clicking a study navigates to its detail page", async ({ page }) => {
   await expect(page.getByText("Study test project")).toBeVisible();
 });
 
+test("study detail page shows overview and empty participants state", async ({ page }) => {
+  await page.getByRole("button", { name: "New study" }).click();
+  await page.getByLabel("Name").fill("Overview test study");
+  await page.getByRole("button", { name: "Create" }).click();
+  await page.getByText("Overview test study").click();
+  await page.waitForURL(/\/projects\/.*\/studies\/.*/);
+
+  // Overview section: 4 monitoring stat cards
+  await expect(page.getByRole("heading", { name: "Overview", exact: true })).toBeVisible();
+  await expect(page.getByText("Total events")).toBeVisible();
+  await expect(page.getByText("Avg events / day")).toBeVisible();
+  await expect(page.getByText("Active last 7 days")).toBeVisible();
+  await expect(page.getByText("Median events / participant")).toBeVisible();
+
+  // Event breakdown section: empty state for a fresh study
+  await expect(page.getByRole("heading", { name: "Event breakdown", exact: true })).toBeVisible();
+  await expect(page.getByText("No data collected yet.")).toBeVisible();
+
+  // Members section present (content covered by invites.spec.ts)
+  await expect(page.getByRole("heading", { name: "Members" })).toBeVisible();
+});
+
 test("dashboard study count increments after creating a study", async ({ page }) => {
   await page.goto("/dashboard");
   await expect(page.getByTestId("study-count")).toHaveText("0");
