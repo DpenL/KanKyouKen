@@ -1,15 +1,7 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { GenerateInviteDialog } from "@/components/generate-invite-dialog";
-
-type ParticipantStat = {
-  participant_id: string;
-  pseudonym: string | null;
-  event_count: number;
-  last_event: string | null;
-  is_active: boolean;
-};
+import { LiveAnalytics } from "@/components/study/live-analytics";
 
 type EventBreakdown = {
   event_type: string;
@@ -21,22 +13,13 @@ interface Props {
   params: Promise<{ projectId: string; studyId: string }>;
 }
 
-function median(values: number[]): number {
-  if (values.length === 0) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0
-    ? (sorted[mid - 1] + sorted[mid]) / 2
-    : sorted[mid];
-}
-
 export default async function StudyPage({ params }: Props) {
   const { projectId, studyId } = await params;
   const supabase = await createClient();
 
   const { data: study } = await supabase
     .from("studies")
-    .select("id, name, status, created_at, project_id")
+    .select("id")
     .eq("id", studyId)
     .eq("project_id", projectId)
     .single();
@@ -44,102 +27,26 @@ export default async function StudyPage({ params }: Props) {
   if (!study) notFound();
 
   const [
-    { data: project },
-    { count: eventCount },
-    { data: firstEvent },
-    { data: lastEvent },
-    { data: participantStats },
+    { data: studyMetrics },
     { data: eventBreakdown },
     { data: members },
   ] = await Promise.all([
-    supabase.from("projects").select("id, name").eq("id", projectId).single(),
-    supabase.from("events").select("*", { count: "exact", head: true }).eq("study_id", studyId),
-    supabase.from("events").select("ts").eq("study_id", studyId).order("ts", { ascending: true }).limit(1).maybeSingle(),
-    supabase.from("events").select("ts").eq("study_id", studyId).order("ts", { ascending: false }).limit(1).maybeSingle(),
-    supabase.rpc("get_study_participant_stats", { p_study_id: studyId }),
+    supabase.from("study_metrics").select("*").eq("study_id", studyId).maybeSingle(),
     supabase.rpc("get_study_event_breakdown", { p_study_id: studyId }),
     supabase.from("study_roles").select("id, user_id, role, granted_at").eq("study_id", studyId).order("granted_at", { ascending: true }),
   ]);
 
-  const stats = (participantStats as ParticipantStat[] | null) ?? [];
   const breakdown = (eventBreakdown as EventBreakdown[] | null) ?? [];
-
-  // Derived monitoring metrics — all computed from data already fetched
-  const participantCount = stats.length;
-
-  const activeCount = stats.filter((p) => p.is_active).length;
-
-  const medianEvents = median(stats.map((p) => Number(p.event_count)));
-
-  const daySpan =
-    firstEvent?.ts && lastEvent?.ts
-      ? Math.max(1, (new Date(lastEvent.ts).getTime() - new Date(firstEvent.ts).getTime()) / 86_400_000)
-      : null;
-  const avgPerDay = daySpan && eventCount ? (eventCount / daySpan).toFixed(1) : null;
 
   return (
     <div className="space-y-8">
-      {/* Header + breadcrumb */}
-      <div>
-        <nav className="text-sm text-muted-foreground mb-4 flex items-center gap-1">
-          <Link href="/projects" className="hover:text-foreground transition-colors">Projects</Link>
-          <span>/</span>
-          <Link href={`/projects/${projectId}`} className="hover:text-foreground transition-colors">
-            {project?.name ?? projectId}
-          </Link>
-          <span>/</span>
-          <span className="text-foreground">{study.name}</span>
-        </nav>
-
-        <h1 className="text-2xl font-semibold">{study.name}</h1>
-        <p className="text-xs text-muted-foreground mt-1">
-          {study.status} · created {new Date(study.created_at).toLocaleDateString()}
-        </p>
-      </div>
-
-      {/* Monitoring overview — 4 population-level stats */}
+      {/* Live analytics — subscribes to study_metrics and script_outputs via Realtime */}
       <div>
         <h2 className="text-lg font-medium mb-3">Overview</h2>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <div className="rounded-md border px-4 py-3">
-            <p className="text-xs text-muted-foreground">Total events</p>
-            <p className="text-2xl font-semibold mt-1">{(eventCount ?? 0).toLocaleString()}</p>
-            {firstEvent?.ts && (
-              <p className="text-xs text-muted-foreground mt-0.5">
-                since {new Date(firstEvent.ts).toLocaleDateString()}
-              </p>
-            )}
-          </div>
-
-          <div className="rounded-md border px-4 py-3">
-            <p className="text-xs text-muted-foreground">Avg events / day</p>
-            <p className="text-2xl font-semibold mt-1">{avgPerDay ?? "—"}</p>
-            {lastEvent?.ts && (
-              <p className="text-xs text-muted-foreground mt-0.5">
-                last {new Date(lastEvent.ts).toLocaleDateString()}
-              </p>
-            )}
-          </div>
-
-          <div className="rounded-md border px-4 py-3">
-            <p className="text-xs text-muted-foreground">Active last 7 days</p>
-            <p className="text-2xl font-semibold mt-1">
-              {participantCount > 0 ? `${activeCount} / ${participantCount}` : "—"}
-            </p>
-            <p className="text-xs text-muted-foreground mt-0.5">participants</p>
-          </div>
-
-          <div className="rounded-md border px-4 py-3">
-            <p className="text-xs text-muted-foreground">Median events / participant</p>
-            <p className="text-2xl font-semibold mt-1">
-              {participantCount > 0 ? medianEvents.toLocaleString() : "—"}
-            </p>
-            <p className="text-xs text-muted-foreground mt-0.5">coverage proxy</p>
-          </div>
-        </div>
+        <LiveAnalytics studyId={studyId} initialMetrics={studyMetrics} />
       </div>
 
-      {/* Event type breakdown — what is being collected */}
+      {/* Event type breakdown */}
       <div>
         <h2 className="text-lg font-medium mb-3">Event breakdown</h2>
         {breakdown.length === 0 ? (

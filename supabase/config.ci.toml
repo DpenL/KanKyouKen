@@ -16,3 +16,6 @@ port = 54330
 
 [api]
 port = 54331
+
+[realtime]
+enabled = true

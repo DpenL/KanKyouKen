@@ -49,6 +49,15 @@ jobs:
           supabase start --ignore-health-check
         timeout-minutes: 5
 
+      - name: Write .env.local
+        run: |
+          # Read the live keys from the running Supabase instance.
+          # This is correct regardless of CLI version or jwt_secret configuration.
+          eval "$(supabase status --output env)"
+          echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL" > frontend/.env.local
+          echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY" >> frontend/.env.local
+          echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY" >> frontend/.env.local
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -62,15 +71,6 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install chromium --with-deps
         working-directory: frontend
-
-      - name: Write .env.local
-        run: |
-          # URL comes from config.ci.toml [api] port = 54331
-          # Anon key is the well-known JWT for jwt_secret = "super-secret-jwt-token-with-at-least-32-characters-long"
-          # Service role key is the well-known service_role JWT for the same secret
-          echo "NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54331" > frontend/.env.local
-          echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.27VtTI_rRir39XilYeLGD1oRk66qLkHy-5qhp7kNQaA" >> frontend/.env.local
-          echo "SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU" >> frontend/.env.local
 
       - name: Run Playwright E2E tests
         run: npx playwright test

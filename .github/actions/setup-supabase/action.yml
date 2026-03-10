@@ -6,4 +6,8 @@ runs:
   steps:
     - uses: supabase/setup-cli@v1
       with:
-        version: latest
+        # Pinned to match local dev. Newer versions ship a Realtime container
+        # that dropped the cainophile WAL slot for postgres_changes, breaking
+        # E2E Realtime delivery. Upgrade together with a migration for the new
+        # Realtime architecture (realtime.send() triggers).
+        version: 2.75.0
