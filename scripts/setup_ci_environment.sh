@@ -28,6 +28,9 @@ $PYTHON -m pip install -r requirements.txt
 echo "[ci-setup] Installing KanKyouKen SDK..."
 $PYTHON -m pip install -e sdk/
 
+echo "[ci-setup] Installing fsrs..."
+$PYTHON -m pip install "fsrs>=1.0.0"
+
 echo "[ci-setup] Applying Supabase CI config..."
 cp supabase/config.ci.toml supabase/config.toml
 

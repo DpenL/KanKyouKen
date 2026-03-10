@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import os
+import re
 import sys
 import subprocess
 from pathlib import Path
@@ -51,10 +52,13 @@ def drop_all_public_objects(cur) -> None:
         DECLARE r RECORD;
         BEGIN
             FOR r IN (
-                SELECT tgname, tgrelid::regclass AS rel
-                FROM pg_trigger
-                WHERE NOT tgisinternal
-                  AND tgrelid::regclass::text LIKE 'public.%'
+                SELECT t.tgname, t.tgrelid::regclass AS rel
+                FROM pg_trigger t
+                JOIN pg_proc p ON p.oid = t.tgfoid
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+                WHERE NOT t.tgisinternal
+                  AND t.tgrelid::regclass::text LIKE 'public.%'
+                  AND n.nspname = 'public'
             )
             LOOP
                 EXECUTE 'DROP TRIGGER IF EXISTS ' || quote_ident(r.tgname)
@@ -189,7 +193,20 @@ def filter_raw_for_apply(raw: str) -> str:
     if not cleaned:
         raise ValueError("filter_raw_for_apply: result SQL is empty — refusing to apply!")
 
-    return "\n".join(cleaned) + "\n"
+    sql = "\n".join(cleaned) + "\n"
+
+    # Triggers that call supabase_functions.* are managed by Supabase infrastructure
+    # and are environment-specific (local uses kong URL, hosted uses HTTPS URL).
+    # Strip them from the canonical SQL so we don't try to recreate them here;
+    # the drop step above also preserves them untouched on the remote side.
+    sql = re.sub(
+        r'CREATE TRIGGER\b[^;]*?EXECUTE FUNCTION\s+"?supabase_functions"?\s*\.\s*"?\w+"?\s*\([^;]*\)\s*;',
+        "",
+        sql,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+
+    return sql
 
 
 # ==============================================================================
