@@ -7,6 +7,8 @@ Safe pg_dump normalizer for schema parity.
 - Removes pg_dump metadata (Dumped from..., Dumped by...).
 - Removes SET/config lines and pg_dump backslash meta-commands.
 - Removes CREATE/COMMENT for the public schema (Supabase owns it).
+- Normalizes environment-specific URLs in supabase_functions.http_request calls
+  so local (kong) and remote (HTTPS) triggers compare equal structurally.
 - PRESERVES all DDL: tables, indexes, functions, triggers, policies, RLS, etc.
 - Does NOT touch function bodies or reorder statements.
 """
@@ -71,7 +73,15 @@ def normalize(sql: str) -> str:
         stripped = line.strip()
         if should_strip_for_parity(stripped):
             continue
-        out.append(line.rstrip())
+        # Normalize environment-specific URLs inside supabase_functions.http_request(...)
+        # so local (kong) and remote (HTTPS) triggers compare as structurally identical.
+        # All other arguments (method, headers, body, timeout) are still compared.
+        line = re.sub(
+            r"(supabase_functions\.http_request\()'[^']*'",
+            r"\1'<edge-function-url>'",
+            line.rstrip(),
+        )
+        out.append(line)
 
     # Collapse multiple blank lines (cosmetic)
     cleaned = []
