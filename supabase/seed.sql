@@ -12,3 +12,8 @@ on conflict do nothing;
 insert into public.participants (pseudonym, consent_status, consent_timestamp)
 values ('demo_participant', true, now())
 on conflict do nothing;
+
+-- Register generic pipeline scripts (global, apply to all studies)
+insert into public.pipeline_scripts (name, script_type, endpoint_url, trigger_tables, writes_to_table)
+values ('Response Time Stats', 'analytics', '/functions/v1/rt-stats', ARRAY['events'], 'study_metrics')
+on conflict do nothing;

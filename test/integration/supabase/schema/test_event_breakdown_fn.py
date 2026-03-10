@@ -152,8 +152,8 @@ def test_event_breakdown_rls_blocks_unauthorized(db_conn, supabase_ready):
         (study_id, project_id, other_owner_id),
     )
     cur.execute(
-        "INSERT INTO public.participants (id, pseudonym) VALUES (%s, 'hidden_p')",
-        (participant_id,),
+        "INSERT INTO public.participants (id, pseudonym) VALUES (%s, %s)",
+        (participant_id, f"hidden_p_{participant_id.hex[:8]}"),
     )
     cur.execute(
         "INSERT INTO public.events (id, study_id, participant_id, ts, event_type, payload) VALUES (gen_random_uuid(), %s, %s, now(), 'secret_event', '{}')",

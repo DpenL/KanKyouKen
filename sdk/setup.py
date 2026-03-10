@@ -38,6 +38,7 @@ setup(
     ],
     extras_require={
         "pandas": ["pandas>=1.3.0"],
+        "scheduling": ["fsrs>=1.0.0"],
         "dev": [
             "pytest>=7.0.0",
             "pytest-mock>=3.10.0",

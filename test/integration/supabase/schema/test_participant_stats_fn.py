@@ -91,8 +91,8 @@ def test_participant_stats_multiple_participants_ordered(
     # Create a second participant
     second_participant_id = uuid.uuid4()
     cur.execute(
-        "INSERT INTO public.participants (id, pseudonym) VALUES (%s, 'second_participant')",
-        (second_participant_id,),
+        "INSERT INTO public.participants (id, pseudonym) VALUES (%s, %s)",
+        (second_participant_id, f"second_participant_{second_participant_id.hex[:8]}"),
     )
 
     # First participant: 2 events, older
@@ -181,8 +181,8 @@ def test_participant_stats_rls_blocks_unauthorized(db_conn, supabase_ready):
         (study_id, project_id, other_owner_id),
     )
     cur.execute(
-        "INSERT INTO public.participants (id, pseudonym) VALUES (%s, 'hidden_participant')",
-        (participant_id,),
+        "INSERT INTO public.participants (id, pseudonym) VALUES (%s, %s)",
+        (participant_id, f"hidden_participant_{participant_id.hex[:8]}"),
     )
     cur.execute(
         """

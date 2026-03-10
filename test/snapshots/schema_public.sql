@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict 7geGsthlHhGP5dguQYpXJyGJfZniVsbXEv5Y03J8J8gvlK13BsaQRSyzdhsEOlg
+\restrict jelPQnMPlHLxugRUnHMwL1gm1A4sSGBpixSLiMRlRvGuotYqFLUZ743dOCQveJY
 
 -- Dumped from database version 17.6
 -- Dumped by pg_dump version 17.6
@@ -592,6 +592,68 @@ CREATE TABLE public.participants (
 
 
 --
+-- Name: pipeline_scripts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.pipeline_scripts (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    study_id uuid,
+    name text NOT NULL,
+    description text,
+    script_type text NOT NULL,
+    endpoint_url text NOT NULL,
+    trigger_tables text[] NOT NULL,
+    trigger_event_types text[],
+    trigger_output_types text[],
+    writes_to_table text NOT NULL,
+    output_type text,
+    config jsonb DEFAULT '{}'::jsonb,
+    enabled boolean DEFAULT true,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT pipeline_scripts_script_type_check CHECK ((script_type = ANY (ARRAY['analytics'::text, 'ml'::text, 'visualization'::text])))
+);
+
+
+--
+-- Name: script_outputs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.script_outputs (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    study_id uuid NOT NULL,
+    output_type text NOT NULL,
+    scope text NOT NULL,
+    scope_id text,
+    data jsonb NOT NULL,
+    script_id uuid,
+    computed_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT script_outputs_scope_check CHECK ((scope = ANY (ARRAY['study'::text, 'participant'::text, 'session'::text, 'item'::text])))
+);
+
+
+--
+-- Name: session_metrics; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.session_metrics (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    study_id uuid NOT NULL,
+    participant_id text NOT NULL,
+    session_id text,
+    session_start timestamp with time zone,
+    session_end timestamp with time zone,
+    duration_ms integer,
+    event_count integer DEFAULT 0,
+    valid_response_count integer DEFAULT 0,
+    aberrant_count integer DEFAULT 0,
+    avg_rt_ms integer,
+    extra jsonb DEFAULT '{}'::jsonb,
+    computed_at timestamp with time zone DEFAULT now()
+);
+
+
+--
 -- Name: sessions; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -622,6 +684,29 @@ CREATE TABLE public.study_invitations (
     used_by uuid,
     used_at timestamp with time zone,
     CONSTRAINT study_invitations_role_check CHECK ((role = ANY (ARRAY['owner'::text, 'supervisor'::text, 'researcher'::text, 'teacher'::text, 'participant'::text])))
+);
+
+
+--
+-- Name: study_metrics; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.study_metrics (
+    study_id uuid NOT NULL,
+    computed_at timestamp with time zone DEFAULT now(),
+    total_events integer DEFAULT 0,
+    total_participants integer DEFAULT 0,
+    active_participants integer DEFAULT 0,
+    first_event_at timestamp with time zone,
+    last_event_at timestamp with time zone,
+    avg_events_per_day numeric,
+    rt_median_ms integer,
+    rt_mean_ms integer,
+    rt_std_ms integer,
+    aberrant_pct numeric,
+    rapid_guess_count integer DEFAULT 0,
+    disengaged_count integer DEFAULT 0,
+    extra jsonb DEFAULT '{}'::jsonb
 );
 
 
@@ -706,11 +791,51 @@ ALTER TABLE ONLY public.participants
 
 
 --
+-- Name: pipeline_scripts pipeline_scripts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pipeline_scripts
+    ADD CONSTRAINT pipeline_scripts_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: projects projects_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.projects
     ADD CONSTRAINT projects_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: script_outputs script_outputs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.script_outputs
+    ADD CONSTRAINT script_outputs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: script_outputs script_outputs_study_id_output_type_scope_scope_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.script_outputs
+    ADD CONSTRAINT script_outputs_study_id_output_type_scope_scope_id_key UNIQUE (study_id, output_type, scope, scope_id);
+
+
+--
+-- Name: session_metrics session_metrics_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.session_metrics
+    ADD CONSTRAINT session_metrics_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: session_metrics session_metrics_study_id_participant_id_session_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.session_metrics
+    ADD CONSTRAINT session_metrics_study_id_participant_id_session_id_key UNIQUE (study_id, participant_id, session_id);
 
 
 --
@@ -743,6 +868,14 @@ ALTER TABLE ONLY public.study_invitations
 
 ALTER TABLE ONLY public.study_invitations
     ADD CONSTRAINT study_invitations_token_key UNIQUE (token);
+
+
+--
+-- Name: study_metrics study_metrics_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.study_metrics
+    ADD CONSTRAINT study_metrics_pkey PRIMARY KEY (study_id);
 
 
 --
@@ -840,6 +973,62 @@ CREATE INDEX idx_consent_study ON public.consent_records USING btree (study_id);
 
 
 --
+-- Name: idx_pipeline_scripts_study; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_pipeline_scripts_study ON public.pipeline_scripts USING btree (study_id);
+
+
+--
+-- Name: idx_pipeline_scripts_triggers; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_pipeline_scripts_triggers ON public.pipeline_scripts USING gin (trigger_tables);
+
+
+--
+-- Name: idx_script_outputs_scope; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_script_outputs_scope ON public.script_outputs USING btree (study_id, output_type, scope, scope_id);
+
+
+--
+-- Name: idx_script_outputs_study; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_script_outputs_study ON public.script_outputs USING btree (study_id);
+
+
+--
+-- Name: idx_script_outputs_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_script_outputs_type ON public.script_outputs USING btree (study_id, output_type);
+
+
+--
+-- Name: idx_session_metrics_participant; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_session_metrics_participant ON public.session_metrics USING btree (study_id, participant_id);
+
+
+--
+-- Name: idx_session_metrics_study; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_session_metrics_study ON public.session_metrics USING btree (study_id);
+
+
+--
+-- Name: idx_study_metrics_computed; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_study_metrics_computed ON public.study_metrics USING btree (computed_at);
+
+
+--
 -- Name: idx_study_roles_project; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -872,6 +1061,13 @@ CREATE INDEX idx_study_roles_user ON public.study_roles USING btree (user_id);
 --
 
 CREATE INDEX sessions_participant_id_study_id_idx ON public.sessions USING btree (participant_id, study_id);
+
+
+--
+-- Name: events events_router; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER events_router AFTER INSERT ON public.events FOR EACH ROW EXECUTE FUNCTION supabase_functions.http_request('http://kong:8000/functions/v1/event-router', 'POST', '{"Content-Type":"application/json"}', '{}', '5000');
 
 
 --
@@ -966,6 +1162,38 @@ ALTER TABLE ONLY public.events
 
 
 --
+-- Name: pipeline_scripts pipeline_scripts_study_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pipeline_scripts
+    ADD CONSTRAINT pipeline_scripts_study_id_fkey FOREIGN KEY (study_id) REFERENCES public.studies(id) ON DELETE CASCADE;
+
+
+--
+-- Name: script_outputs script_outputs_script_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.script_outputs
+    ADD CONSTRAINT script_outputs_script_id_fkey FOREIGN KEY (script_id) REFERENCES public.pipeline_scripts(id);
+
+
+--
+-- Name: script_outputs script_outputs_study_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.script_outputs
+    ADD CONSTRAINT script_outputs_study_id_fkey FOREIGN KEY (study_id) REFERENCES public.studies(id) ON DELETE CASCADE;
+
+
+--
+-- Name: session_metrics session_metrics_study_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.session_metrics
+    ADD CONSTRAINT session_metrics_study_id_fkey FOREIGN KEY (study_id) REFERENCES public.studies(id) ON DELETE CASCADE;
+
+
+--
 -- Name: sessions sessions_participant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -995,6 +1223,14 @@ ALTER TABLE ONLY public.studies
 
 ALTER TABLE ONLY public.study_invitations
     ADD CONSTRAINT study_invitations_study_id_fkey FOREIGN KEY (study_id) REFERENCES public.studies(id) ON DELETE CASCADE;
+
+
+--
+-- Name: study_metrics study_metrics_study_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.study_metrics
+    ADD CONSTRAINT study_metrics_study_id_fkey FOREIGN KEY (study_id) REFERENCES public.studies(id) ON DELETE CASCADE;
 
 
 --
@@ -1134,6 +1370,28 @@ CREATE POLICY participants_service_create ON public.participants FOR INSERT WITH
 
 
 --
+-- Name: pipeline_scripts; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.pipeline_scripts ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: pipeline_scripts pipeline_scripts_read; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY pipeline_scripts_read ON public.pipeline_scripts FOR SELECT USING (((study_id IS NULL) OR (EXISTS ( SELECT 1
+   FROM public.study_roles
+  WHERE ((study_roles.study_id = pipeline_scripts.study_id) AND (study_roles.user_id = auth.uid()))))));
+
+
+--
+-- Name: pipeline_scripts pipeline_scripts_service_read; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY pipeline_scripts_service_read ON public.pipeline_scripts FOR SELECT USING (true);
+
+
+--
 -- Name: projects; Type: ROW SECURITY; Schema: public; Owner: -
 --
 
@@ -1165,6 +1423,43 @@ CREATE POLICY projects_owner_update ON public.projects FOR UPDATE USING ((auth.u
 --
 
 CREATE POLICY projects_role_read ON public.projects FOR SELECT USING (public.has_project_access(auth.uid(), id));
+
+
+--
+-- Name: script_outputs; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.script_outputs ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: script_outputs script_outputs_read; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY script_outputs_read ON public.script_outputs FOR SELECT USING ((EXISTS ( SELECT 1
+   FROM public.study_roles
+  WHERE ((study_roles.study_id = script_outputs.study_id) AND (study_roles.user_id = auth.uid())))));
+
+
+--
+-- Name: script_outputs script_outputs_write; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY script_outputs_write ON public.script_outputs USING (true) WITH CHECK (true);
+
+
+--
+-- Name: session_metrics; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.session_metrics ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: session_metrics session_metrics_read; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY session_metrics_read ON public.session_metrics FOR SELECT USING ((EXISTS ( SELECT 1
+   FROM public.study_roles
+  WHERE ((study_roles.study_id = session_metrics.study_id) AND (study_roles.user_id = auth.uid())))));
 
 
 --
@@ -1224,6 +1519,21 @@ CREATE POLICY studies_supervisor_update ON public.studies FOR UPDATE USING (((au
 
 
 --
+-- Name: study_metrics; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.study_metrics ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: study_metrics study_metrics_read; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY study_metrics_read ON public.study_metrics FOR SELECT USING ((EXISTS ( SELECT 1
+   FROM public.study_roles
+  WHERE ((study_roles.study_id = study_metrics.study_id) AND (study_roles.user_id = auth.uid())))));
+
+
+--
 -- Name: study_roles; Type: ROW SECURITY; Schema: public; Owner: -
 --
 
@@ -1266,5 +1576,5 @@ CREATE POLICY study_roles_self_read ON public.study_roles FOR SELECT USING (((au
 -- PostgreSQL database dump complete
 --
 
-\unrestrict 7geGsthlHhGP5dguQYpXJyGJfZniVsbXEv5Y03J8J8gvlK13BsaQRSyzdhsEOlg
+\unrestrict jelPQnMPlHLxugRUnHMwL1gm1A4sSGBpixSLiMRlRvGuotYqFLUZ743dOCQveJY
 
