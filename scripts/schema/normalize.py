@@ -7,8 +7,8 @@ Safe pg_dump normalizer for schema parity.
 - Removes pg_dump metadata (Dumped from..., Dumped by...).
 - Removes SET/config lines and pg_dump backslash meta-commands.
 - Removes CREATE/COMMENT for the public schema (Supabase owns it).
-- Normalizes environment-specific URLs in supabase_functions.http_request calls
-  so local (kong) and remote (HTTPS) triggers compare equal structurally.
+- Normalizes supabase_functions.http_request(...) argument lists (URL, headers,
+  auth) so local (kong, no auth) and remote (HTTPS, dashboard auth) compare equal.
 - PRESERVES all DDL: tables, indexes, functions, triggers, policies, RLS, etc.
 - Does NOT touch function bodies or reorder statements.
 """
@@ -73,12 +73,13 @@ def normalize(sql: str) -> str:
         stripped = line.strip()
         if should_strip_for_parity(stripped):
             continue
-        # Normalize environment-specific URLs inside supabase_functions.http_request(...)
-        # so local (kong) and remote (HTTPS) triggers compare as structurally identical.
-        # All other arguments (method, headers, body, timeout) are still compared.
+        # Normalize the full argument list of supabase_functions.http_request(...):
+        # URL, headers (incl. Authorization), and other args are all environment-specific
+        # (local uses kong + no auth; dashboard-created webhook uses HTTPS + auth header).
+        # The trigger name, timing, table, and function name are still compared.
         line = re.sub(
-            r"(supabase_functions\.http_request\()'[^']*'",
-            r"\1'<edge-function-url>'",
+            r"(EXECUTE FUNCTION supabase_functions\.http_request\()[^)]*\)",
+            r"\1<env-specific-args>)",
             line.rstrip(),
         )
         out.append(line)
