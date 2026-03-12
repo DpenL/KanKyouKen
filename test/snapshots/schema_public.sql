@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict BySrQYhge1kAEV6QQnpAxvv1c0ZtS91FPxNLsOY8cLHuuL2He1uq9vqNITUQPrS
+\restrict ymdl22zBoiU5VzbZtglMPdcF7o71BDyuDot0Md7zC7PwoJF0KCtdf4TTOBJA0Tx
 
 -- Dumped from database version 17.6
 -- Dumped by pg_dump version 17.6
@@ -435,6 +435,21 @@ CREATE TABLE public.consent_records (
 
 
 --
+-- Name: consent_templates; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.consent_templates (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    name text NOT NULL,
+    content_md text NOT NULL,
+    version text NOT NULL,
+    is_base boolean DEFAULT false,
+    language text DEFAULT 'en'::text,
+    created_at timestamp with time zone DEFAULT now()
+);
+
+
+--
 -- Name: event_schemas; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -670,6 +685,19 @@ CREATE TABLE public.sessions (
 
 
 --
+-- Name: study_consent_config; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.study_consent_config (
+    study_id uuid NOT NULL,
+    base_template_id uuid,
+    custom_content_md text,
+    requires_scroll boolean DEFAULT true,
+    updated_at timestamp with time zone DEFAULT now()
+);
+
+
+--
 -- Name: study_invitations; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -728,6 +756,18 @@ CREATE TABLE public.study_roles (
 
 
 --
+-- Name: study_script_config; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.study_script_config (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    study_id uuid NOT NULL,
+    script_id uuid NOT NULL,
+    enabled boolean DEFAULT true
+);
+
+
+--
 -- Name: audit_log id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -743,11 +783,35 @@ ALTER TABLE ONLY public.audit_log
 
 
 --
+-- Name: consent_records consent_records_participant_study_unique; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.consent_records
+    ADD CONSTRAINT consent_records_participant_study_unique UNIQUE (participant_id, study_id);
+
+
+--
 -- Name: consent_records consent_records_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.consent_records
     ADD CONSTRAINT consent_records_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: consent_templates consent_templates_name_version_language_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.consent_templates
+    ADD CONSTRAINT consent_templates_name_version_language_key UNIQUE (name, version, language);
+
+
+--
+-- Name: consent_templates consent_templates_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.consent_templates
+    ADD CONSTRAINT consent_templates_pkey PRIMARY KEY (id);
 
 
 --
@@ -855,6 +919,14 @@ ALTER TABLE ONLY public.studies
 
 
 --
+-- Name: study_consent_config study_consent_config_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.study_consent_config
+    ADD CONSTRAINT study_consent_config_pkey PRIMARY KEY (study_id);
+
+
+--
 -- Name: study_invitations study_invitations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -884,6 +956,22 @@ ALTER TABLE ONLY public.study_metrics
 
 ALTER TABLE ONLY public.study_roles
     ADD CONSTRAINT study_roles_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: study_script_config study_script_config_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.study_script_config
+    ADD CONSTRAINT study_script_config_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: study_script_config study_script_config_study_id_script_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.study_script_config
+    ADD CONSTRAINT study_script_config_study_id_script_id_key UNIQUE (study_id, script_id);
 
 
 --
@@ -1057,6 +1145,13 @@ CREATE INDEX idx_study_roles_user ON public.study_roles USING btree (user_id);
 
 
 --
+-- Name: idx_study_script_config_study; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_study_script_config_study ON public.study_script_config USING btree (study_id);
+
+
+--
 -- Name: sessions_participant_id_study_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1218,6 +1313,22 @@ ALTER TABLE ONLY public.studies
 
 
 --
+-- Name: study_consent_config study_consent_config_base_template_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.study_consent_config
+    ADD CONSTRAINT study_consent_config_base_template_id_fkey FOREIGN KEY (base_template_id) REFERENCES public.consent_templates(id);
+
+
+--
+-- Name: study_consent_config study_consent_config_study_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.study_consent_config
+    ADD CONSTRAINT study_consent_config_study_id_fkey FOREIGN KEY (study_id) REFERENCES public.studies(id) ON DELETE CASCADE;
+
+
+--
 -- Name: study_invitations study_invitations_study_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1247,6 +1358,22 @@ ALTER TABLE ONLY public.study_roles
 
 ALTER TABLE ONLY public.study_roles
     ADD CONSTRAINT study_roles_study_id_fkey FOREIGN KEY (study_id) REFERENCES public.studies(id) ON DELETE CASCADE;
+
+
+--
+-- Name: study_script_config study_script_config_script_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.study_script_config
+    ADD CONSTRAINT study_script_config_script_id_fkey FOREIGN KEY (script_id) REFERENCES public.pipeline_scripts(id) ON DELETE CASCADE;
+
+
+--
+-- Name: study_script_config study_script_config_study_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.study_script_config
+    ADD CONSTRAINT study_script_config_study_id_fkey FOREIGN KEY (study_id) REFERENCES public.studies(id) ON DELETE CASCADE;
 
 
 --
@@ -1295,6 +1422,26 @@ CREATE POLICY consent_self_read ON public.consent_records FOR SELECT USING ((tru
 --
 
 CREATE POLICY consent_system_insert ON public.consent_records FOR INSERT WITH CHECK ((auth.role() = 'service_role'::text));
+
+
+--
+-- Name: consent_templates; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.consent_templates ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: consent_templates consent_templates_read; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY consent_templates_read ON public.consent_templates FOR SELECT USING (true);
+
+
+--
+-- Name: consent_templates consent_templates_service_write; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY consent_templates_service_write ON public.consent_templates USING ((auth.role() = 'service_role'::text));
 
 
 --
@@ -1519,6 +1666,30 @@ CREATE POLICY studies_supervisor_update ON public.studies FOR UPDATE USING (((au
 
 
 --
+-- Name: study_consent_config; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.study_consent_config ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: study_consent_config study_consent_config_read; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY study_consent_config_read ON public.study_consent_config FOR SELECT USING ((EXISTS ( SELECT 1
+   FROM public.study_roles
+  WHERE ((study_roles.study_id = study_consent_config.study_id) AND (study_roles.user_id = auth.uid())))));
+
+
+--
+-- Name: study_consent_config study_consent_config_write; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY study_consent_config_write ON public.study_consent_config USING ((EXISTS ( SELECT 1
+   FROM public.study_roles
+  WHERE ((study_roles.study_id = study_consent_config.study_id) AND (study_roles.user_id = auth.uid()) AND (study_roles.role = ANY (ARRAY['owner'::text, 'supervisor'::text]))))));
+
+
+--
 -- Name: study_metrics; Type: ROW SECURITY; Schema: public; Owner: -
 --
 
@@ -1573,8 +1744,39 @@ CREATE POLICY study_roles_self_read ON public.study_roles FOR SELECT USING (((au
 
 
 --
+-- Name: study_script_config; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.study_script_config ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: study_script_config study_script_config_read; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY study_script_config_read ON public.study_script_config FOR SELECT USING ((EXISTS ( SELECT 1
+   FROM public.study_roles
+  WHERE ((study_roles.study_id = study_script_config.study_id) AND (study_roles.user_id = auth.uid())))));
+
+
+--
+-- Name: study_script_config study_script_config_service_read; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY study_script_config_service_read ON public.study_script_config FOR SELECT USING ((auth.role() = 'service_role'::text));
+
+
+--
+-- Name: study_script_config study_script_config_write; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY study_script_config_write ON public.study_script_config USING ((EXISTS ( SELECT 1
+   FROM public.study_roles
+  WHERE ((study_roles.study_id = study_script_config.study_id) AND (study_roles.user_id = auth.uid()) AND (study_roles.role = ANY (ARRAY['owner'::text, 'supervisor'::text]))))));
+
+
+--
 -- PostgreSQL database dump complete
 --
 
-\unrestrict BySrQYhge1kAEV6QQnpAxvv1c0ZtS91FPxNLsOY8cLHuuL2He1uq9vqNITUQPrS
+\unrestrict ymdl22zBoiU5VzbZtglMPdcF7o71BDyuDot0Md7zC7PwoJF0KCtdf4TTOBJA0Tx
 
