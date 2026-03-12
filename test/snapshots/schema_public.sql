@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict ymdl22zBoiU5VzbZtglMPdcF7o71BDyuDot0Md7zC7PwoJF0KCtdf4TTOBJA0Tx
+\restrict F6dpxhXed1iUXaMdPCpOYrnbXF2PdNKs2nRpdYnLcWg0lsj8QBSCgjmatg6dD3B
 
 -- Dumped from database version 17.6
 -- Dumped by pg_dump version 17.6
@@ -602,7 +602,7 @@ CREATE TABLE public.participants (
     consent_timestamp timestamp with time zone,
     metadata jsonb DEFAULT '{}'::jsonb,
     created_at timestamp with time zone DEFAULT now(),
-    CONSTRAINT pseudonym_format CHECK ((pseudonym ~ '^[A-Za-z0-9_\\-\\.]{3,64}$'::text))
+    CONSTRAINT pseudonym_format CHECK ((pseudonym ~ '^[A-Za-z0-9_.-]{3,64}$'::text))
 );
 
 
@@ -1778,5 +1778,5 @@ CREATE POLICY study_script_config_write ON public.study_script_config USING ((EX
 -- PostgreSQL database dump complete
 --
 
-\unrestrict ymdl22zBoiU5VzbZtglMPdcF7o71BDyuDot0Md7zC7PwoJF0KCtdf4TTOBJA0Tx
+\unrestrict F6dpxhXed1iUXaMdPCpOYrnbXF2PdNKs2nRpdYnLcWg0lsj8QBSCgjmatg6dD3B
 
