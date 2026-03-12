@@ -69,118 +69,130 @@ test.describe.serial("Consent flow", () => {
   test("participant consent page loads with custom text", async ({ page }) => {
     // Seed a participant directly via service role
     const supabase = serviceClient();
-    const { data: participant } = await supabase
+    const { data: participant, error: insertError } = await supabase
       .from("participants")
       .insert({ pseudonym: `e2e-participant-${timestamp}` })
       .select("id")
       .single();
+    expect(insertError).toBeNull();
     expect(participant).toBeTruthy();
 
-    await page.goto(
-      `/study/${studyId}/consent?participant_id=${participant!.id}`,
-      { waitUntil: "networkidle" },
-    );
+    try {
+      await page.goto(
+        `/study/${studyId}/consent?participant_id=${participant!.id}`,
+        { waitUntil: "networkidle" },
+      );
 
-    await expect(page.getByText("Consent Test Study")).toBeVisible();
-    await expect(page.getByText("kanji response times")).toBeVisible();
-
-    // Cleanup
-    await supabase.from("participants").delete().eq("id", participant!.id);
+      await expect(page.getByText("Consent Test Study")).toBeVisible();
+      await expect(page.getByText("kanji response times")).toBeVisible();
+    } finally {
+      await supabase.from("participants").delete().eq("id", participant!.id);
+    }
   });
 
   test("participant must scroll before checkbox is enabled", async ({ page }) => {
     const supabase = serviceClient();
-    const { data: participant } = await supabase
+    const { data: participant, error: insertError } = await supabase
       .from("participants")
       .insert({ pseudonym: `e2e-scroll-${timestamp}` })
       .select("id")
       .single();
+    expect(insertError).toBeNull();
+    expect(participant).toBeTruthy();
 
-    await page.goto(`/study/${studyId}/consent?participant_id=${participant!.id}`);
+    try {
+      await page.goto(`/study/${studyId}/consent?participant_id=${participant!.id}`);
 
-    // Checkbox should be disabled until scrolled
-    const checkbox = page.getByRole("checkbox", { name: /I have read/ });
-    await expect(checkbox).toBeDisabled();
+      // Checkbox should be disabled until scrolled
+      const checkbox = page.getByRole("checkbox", { name: /I have read/ });
+      await expect(checkbox).toBeDisabled();
 
-    // Scroll the consent content area to the bottom
-    await page.evaluate(() => {
-      const el = document.querySelector("[data-testid=consent-scroll]") ??
-        document.querySelector(".overflow-y-auto");
-      if (el) el.scrollTop = el.scrollHeight;
-    });
+      // Scroll the consent content area to the bottom
+      await page.evaluate(() => {
+        const el = document.querySelector("[data-testid=consent-scroll]") ??
+          document.querySelector(".overflow-y-auto");
+        if (el) el.scrollTop = el.scrollHeight;
+      });
 
-    await expect(checkbox).toBeEnabled({ timeout: 2000 });
-
-    await supabase.from("participants").delete().eq("id", participant!.id);
+      await expect(checkbox).toBeEnabled({ timeout: 2000 });
+    } finally {
+      await supabase.from("participants").delete().eq("id", participant!.id);
+    }
   });
 
   test("participant can submit consent", async ({ page }) => {
     const supabase = serviceClient();
-    const { data: participant } = await supabase
+    const { data: participant, error: insertError } = await supabase
       .from("participants")
       .insert({ pseudonym: `e2e-submit-${timestamp}` })
       .select("id")
       .single();
+    expect(insertError).toBeNull();
+    expect(participant).toBeTruthy();
 
-    await page.goto(`/study/${studyId}/consent?participant_id=${participant!.id}`);
+    try {
+      await page.goto(`/study/${studyId}/consent?participant_id=${participant!.id}`);
 
-    // Scroll to bottom to enable checkbox
-    await page.evaluate(() => {
-      const el = document.querySelector(".overflow-y-auto");
-      if (el) el.scrollTop = el.scrollHeight;
-    });
+      // Scroll to bottom to enable checkbox
+      await page.evaluate(() => {
+        const el = document.querySelector(".overflow-y-auto");
+        if (el) el.scrollTop = el.scrollHeight;
+      });
 
-    await page.getByRole("checkbox", { name: /I have read/ }).check();
-    await page.getByRole("button", { name: "Submit consent" }).click();
+      await page.getByRole("checkbox", { name: /I have read/ }).check();
+      await page.getByRole("button", { name: "Submit consent" }).click();
 
-    await expect(page.getByText("Consent recorded")).toBeVisible({ timeout: 5000 });
+      await expect(page.getByText("Consent recorded")).toBeVisible({ timeout: 5000 });
 
-    // Verify in DB
-    const { data: record } = await supabase
-      .from("consent_records")
-      .select("consent_status")
-      .eq("participant_id", participant!.id)
-      .eq("study_id", studyId)
-      .single();
-    expect(record?.consent_status).toBe("granted");
-
-    // Cleanup
-    await supabase.from("consent_records").delete().eq("participant_id", participant!.id);
-    await supabase.from("participants").delete().eq("id", participant!.id);
+      // Verify in DB
+      const { data: record } = await supabase
+        .from("consent_records")
+        .select("consent_status")
+        .eq("participant_id", participant!.id)
+        .eq("study_id", studyId)
+        .single();
+      expect(record?.consent_status).toBe("granted");
+    } finally {
+      await supabase.from("consent_records").delete().eq("participant_id", participant!.id);
+      await supabase.from("participants").delete().eq("id", participant!.id);
+    }
   });
 
   test("duplicate consent submission shows conflict message", async ({ page }) => {
     const supabase = serviceClient();
-    const { data: participant } = await supabase
+    const { data: participant, error: insertError } = await supabase
       .from("participants")
       .insert({ pseudonym: `e2e-dup-${timestamp}` })
       .select("id")
       .single();
+    expect(insertError).toBeNull();
+    expect(participant).toBeTruthy();
 
-    // Pre-insert a granted consent
-    await supabase.from("consent_records").insert({
-      participant_id: participant!.id,
-      study_id: studyId,
-      consent_version: "1.0",
-      consent_status: "granted",
-      granted_at: new Date().toISOString(),
-    });
+    try {
+      // Pre-insert a granted consent
+      await supabase.from("consent_records").insert({
+        participant_id: participant!.id,
+        study_id: studyId,
+        consent_version: "1.0",
+        consent_status: "granted",
+        granted_at: new Date().toISOString(),
+      });
 
-    await page.goto(`/study/${studyId}/consent?participant_id=${participant!.id}`);
+      await page.goto(`/study/${studyId}/consent?participant_id=${participant!.id}`);
 
-    await page.evaluate(() => {
-      const el = document.querySelector(".overflow-y-auto");
-      if (el) el.scrollTop = el.scrollHeight;
-    });
+      await page.evaluate(() => {
+        const el = document.querySelector(".overflow-y-auto");
+        if (el) el.scrollTop = el.scrollHeight;
+      });
 
-    await page.getByRole("checkbox", { name: /I have read/ }).check();
-    await page.getByRole("button", { name: "Submit consent" }).click();
+      await page.getByRole("checkbox", { name: /I have read/ }).check();
+      await page.getByRole("button", { name: "Submit consent" }).click();
 
-    await expect(page.getByText(/already/i)).toBeVisible({ timeout: 5000 });
-
-    // Cleanup
-    await supabase.from("consent_records").delete().eq("participant_id", participant!.id);
-    await supabase.from("participants").delete().eq("id", participant!.id);
+      await expect(page.getByText(/already/i)).toBeVisible({ timeout: 5000 });
+    } finally {
+      await supabase.from("consent_records").delete().eq("participant_id", participant!.id);
+      await supabase.from("participants").delete().eq("id", participant!.id);
+    }
   });
 
   test("invalid study ID shows not found message", async ({ page }) => {
