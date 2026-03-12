@@ -197,21 +197,39 @@ test.describe.serial("Consent flow", () => {
   });
 });
 
+const pipelineEmail = `researcher-pipeline-${timestamp}@example.com`;
+
 test.describe.serial("Pipeline settings", () => {
   let studyUrl: string;
 
-  test("pipeline settings page is reachable", async ({ page }) => {
-    await page.goto("/login");
-    await page.getByLabel("Email").fill(researcherEmail);
+  test("researcher registers and creates a study for pipeline tests", async ({ page }) => {
+    await page.goto("/register");
+    await page.getByLabel("Email").fill(pipelineEmail);
     await page.getByLabel("Password").fill(password);
-    await page.getByRole("button", { name: "Sign in" }).click();
+    await page.getByRole("button", { name: "Register" }).click();
     await page.waitForURL("/dashboard");
 
     await page.getByRole("link", { name: "Projects", exact: true }).click();
-    await page.getByRole("link", { name: "Consent Test Project" }).click();
-    await page.getByRole("link", { name: "Consent Test Study" }).click();
+    await page.getByRole("button", { name: "New project" }).click();
+    await page.getByLabel("Name").fill("Pipeline Test Project");
+    await page.getByRole("button", { name: "Create", exact: true }).click();
+
+    await page.getByRole("link", { name: "Pipeline Test Project" }).click();
+    await page.getByRole("button", { name: "New study" }).click();
+    await page.getByLabel("Name").fill("Pipeline Test Study");
+    await page.getByRole("button", { name: "Create", exact: true }).click();
+
+    await page.getByRole("link", { name: "Pipeline Test Study" }).click();
     await page.waitForURL(/\/projects\/.*\/studies\/.*/);
     studyUrl = page.url();
+  });
+
+  test("pipeline settings page is reachable", async ({ page }) => {
+    await page.goto("/login");
+    await page.getByLabel("Email").fill(pipelineEmail);
+    await page.getByLabel("Password").fill(password);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await page.waitForURL("/dashboard");
 
     await page.goto(`${studyUrl}/settings/pipeline`);
     await expect(page.getByRole("heading", { name: "Pipeline Scripts" })).toBeVisible();
@@ -219,13 +237,12 @@ test.describe.serial("Pipeline settings", () => {
 
   test("shows empty state when no scripts are registered", async ({ page }) => {
     await page.goto("/login");
-    await page.getByLabel("Email").fill(researcherEmail);
+    await page.getByLabel("Email").fill(pipelineEmail);
     await page.getByLabel("Password").fill(password);
     await page.getByRole("button", { name: "Sign in" }).click();
     await page.waitForURL("/dashboard");
 
     await page.goto(`${studyUrl}/settings/pipeline`);
-    // Either shows scripts or the empty state message
     const hasScripts = await page.getByRole("switch").count() > 0;
     if (!hasScripts) {
       await expect(page.getByText(/No pipeline scripts/i)).toBeVisible();
