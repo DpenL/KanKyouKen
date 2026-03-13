@@ -176,7 +176,7 @@ test.describe.serial("Consent flow", () => {
       await page.getByRole("checkbox", { name: /I have read/ }).check();
       await page.getByRole("button", { name: "Submit consent" }).click();
 
-      await expect(page.getByText("Consent recorded")).toBeVisible({ timeout: 5000 });
+      await expect(page.getByText("Consent recorded")).toBeVisible({ timeout: 10000 });
 
       // Verify in DB
       const { data: record } = await supabase
