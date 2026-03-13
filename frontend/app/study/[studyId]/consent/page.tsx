@@ -1,6 +1,8 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { ConsentForm } from "@/components/consent/consent-form";
 
+export const dynamic = "force-dynamic";
+
 interface Props {
   params: Promise<{ studyId: string }>;
   searchParams: Promise<{ participant_id?: string; redirect?: string }>;
