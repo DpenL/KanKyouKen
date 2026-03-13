@@ -176,6 +176,13 @@ test.describe.serial("Consent flow", () => {
       await page.getByRole("checkbox", { name: /I have read/ }).check();
       await page.getByRole("button", { name: "Submit consent" }).click();
 
+      // Log visible error text to help diagnose CI failures
+      await page.waitForTimeout(3000);
+      const errorText = await page.locator("p.text-destructive").textContent().catch(() => null);
+      const bodyText = await page.locator("body").textContent().catch(() => null);
+      if (errorText) console.error("[consent-submit] form error:", errorText);
+      else console.log("[consent-submit] page body:", bodyText?.slice(0, 500));
+
       await expect(page.getByText("Consent recorded")).toBeVisible({ timeout: 10000 });
 
       // Verify in DB
