@@ -162,7 +162,7 @@ test.describe.serial("Consent flow", () => {
     expect(participant).toBeTruthy();
 
     try {
-      await page.goto(`/study/${studyId}/consent?participant_id=${participant!.id}`);
+      await page.goto(`/study/${studyId}/consent?participant_id=${participant!.id}`, { waitUntil: "networkidle" });
 
       // Scroll to bottom to enable checkbox
       await page.evaluate(() => {
@@ -218,7 +218,7 @@ test.describe.serial("Consent flow", () => {
         granted_at: new Date().toISOString(),
       });
 
-      await page.goto(`/study/${studyId}/consent?participant_id=${participant!.id}`);
+      await page.goto(`/study/${studyId}/consent?participant_id=${participant!.id}`, { waitUntil: "networkidle" });
 
       await page.evaluate(() => {
         const el = document.querySelector(".overflow-y-auto");
