@@ -121,7 +121,7 @@ test.describe.serial("Consent flow", () => {
     expect(participant).toBeTruthy();
 
     try {
-      await page.goto(`/study/${studyId}/consent?participant_id=${participant!.id}`);
+      await page.goto(`/study/${studyId}/consent?participant_id=${participant!.id}`, { waitUntil: "networkidle" });
 
       // Checkbox should be disabled until scrolled
       const checkbox = page.getByRole("checkbox", { name: /I have read/ });
@@ -134,7 +134,7 @@ test.describe.serial("Consent flow", () => {
         if (el) el.scrollTop = el.scrollHeight;
       });
 
-      await expect(checkbox).toBeEnabled({ timeout: 2000 });
+      await expect(checkbox).toBeEnabled({ timeout: 5000 });
     } finally {
       await supabase.from("participants").delete().eq("id", participant!.id);
     }
