@@ -83,6 +83,12 @@ test.describe.serial("Consent flow", () => {
         { waitUntil: "networkidle" },
       );
 
+      // --- temporary diagnostics (remove once root cause is found) ---
+      console.error("[e2e debug] studyId:", studyId);
+      console.error("[e2e debug] url after goto:", page.url());
+      console.error("[e2e debug] page html:", (await page.content()).slice(0, 4000));
+      // ----------------------------------------------------------------
+
       await expect(page.getByText("Consent Test Study")).toBeVisible();
       await expect(page.getByText("kanji response times")).toBeVisible();
     } finally {
