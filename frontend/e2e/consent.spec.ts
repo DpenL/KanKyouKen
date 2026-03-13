@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 
 const timestamp = Date.now();
 const researcherEmail = `researcher-consent-${timestamp}@example.com`;
+const participantEmail = `participant-consent-${timestamp}@example.com`;
 const password = "password123";
 
 // Service client for direct DB setup (bypasses RLS)
@@ -67,8 +68,15 @@ test.describe.serial("Consent flow", () => {
   });
 
   test("participant consent page loads with custom text", async ({ page }) => {
-    // Seed a participant directly via service role
+    // Seed the participant auth user directly — no UI registration needed
     const supabase = serviceClient();
+    const { error: authError } = await supabase.auth.admin.createUser({
+      email: participantEmail,
+      password,
+      email_confirm: true,
+    });
+    expect(authError).toBeNull();
+
     const { data: participant, error: insertError } = await supabase
       .from("participants")
       .insert({ pseudonym: `e2e-participant-${timestamp}` })
@@ -77,17 +85,17 @@ test.describe.serial("Consent flow", () => {
     expect(insertError).toBeNull();
     expect(participant).toBeTruthy();
 
+    await page.goto("/login");
+    await page.getByLabel("Email").fill(participantEmail);
+    await page.getByLabel("Password").fill(password);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await page.waitForURL("/dashboard");
+
     try {
       await page.goto(
         `/study/${studyId}/consent?participant_id=${participant!.id}`,
         { waitUntil: "networkidle" },
       );
-
-      // --- temporary diagnostics (remove once root cause is found) ---
-      console.error("[e2e debug] studyId:", studyId);
-      console.error("[e2e debug] url after goto:", page.url());
-      console.error("[e2e debug] page html:", (await page.content()).slice(0, 4000));
-      // ----------------------------------------------------------------
 
       await expect(page.getByText("Consent Test Study")).toBeVisible();
       await expect(page.getByText("kanji response times")).toBeVisible();
@@ -97,6 +105,12 @@ test.describe.serial("Consent flow", () => {
   });
 
   test("participant must scroll before checkbox is enabled", async ({ page }) => {
+    await page.goto("/login");
+    await page.getByLabel("Email").fill(participantEmail);
+    await page.getByLabel("Password").fill(password);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await page.waitForURL("/dashboard");
+
     const supabase = serviceClient();
     const { data: participant, error: insertError } = await supabase
       .from("participants")
@@ -127,6 +141,12 @@ test.describe.serial("Consent flow", () => {
   });
 
   test("participant can submit consent", async ({ page }) => {
+    await page.goto("/login");
+    await page.getByLabel("Email").fill(participantEmail);
+    await page.getByLabel("Password").fill(password);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await page.waitForURL("/dashboard");
+
     const supabase = serviceClient();
     const { data: participant, error: insertError } = await supabase
       .from("participants")
@@ -165,6 +185,12 @@ test.describe.serial("Consent flow", () => {
   });
 
   test("duplicate consent submission shows conflict message", async ({ page }) => {
+    await page.goto("/login");
+    await page.getByLabel("Email").fill(participantEmail);
+    await page.getByLabel("Password").fill(password);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await page.waitForURL("/dashboard");
+
     const supabase = serviceClient();
     const { data: participant, error: insertError } = await supabase
       .from("participants")
@@ -202,6 +228,12 @@ test.describe.serial("Consent flow", () => {
   });
 
   test("invalid study ID shows not found message", async ({ page }) => {
+    await page.goto("/login");
+    await page.getByLabel("Email").fill(participantEmail);
+    await page.getByLabel("Password").fill(password);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await page.waitForURL("/dashboard");
+
     await page.goto(
       "/study/00000000-0000-0000-0000-000000000000/consent?participant_id=00000000-0000-0000-0000-000000000001",
       { waitUntil: "networkidle" },
@@ -210,6 +242,12 @@ test.describe.serial("Consent flow", () => {
   });
 
   test("missing participant_id shows error message", async ({ page }) => {
+    await page.goto("/login");
+    await page.getByLabel("Email").fill(participantEmail);
+    await page.getByLabel("Password").fill(password);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await page.waitForURL("/dashboard");
+
     await page.goto(`/study/${studyId}/consent`, { waitUntil: "networkidle" });
     await expect(page.getByText(/missing participant/i)).toBeVisible();
   });
