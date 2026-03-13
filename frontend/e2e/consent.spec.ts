@@ -127,11 +127,16 @@ test.describe.serial("Consent flow", () => {
       const checkbox = page.getByRole("checkbox", { name: /I have read/ });
       await expect(checkbox).toBeDisabled();
 
-      // Scroll the consent content area to the bottom
+      // Scroll the consent content area to the bottom and fire the scroll event.
+      // Dispatch is needed because when content is short (no overflow) the browser
+      // clamps scrollTop to 0 and never emits a scroll event natively.
       await page.evaluate(() => {
         const el = document.querySelector("[data-testid=consent-scroll]") ??
           document.querySelector(".overflow-y-auto");
-        if (el) el.scrollTop = el.scrollHeight;
+        if (el) {
+          el.scrollTop = el.scrollHeight;
+          el.dispatchEvent(new Event("scroll"));
+        }
       });
 
       await expect(checkbox).toBeEnabled({ timeout: 5000 });
@@ -162,7 +167,10 @@ test.describe.serial("Consent flow", () => {
       // Scroll to bottom to enable checkbox
       await page.evaluate(() => {
         const el = document.querySelector(".overflow-y-auto");
-        if (el) el.scrollTop = el.scrollHeight;
+        if (el) {
+          el.scrollTop = el.scrollHeight;
+          el.dispatchEvent(new Event("scroll"));
+        }
       });
 
       await page.getByRole("checkbox", { name: /I have read/ }).check();
@@ -214,7 +222,10 @@ test.describe.serial("Consent flow", () => {
 
       await page.evaluate(() => {
         const el = document.querySelector(".overflow-y-auto");
-        if (el) el.scrollTop = el.scrollHeight;
+        if (el) {
+          el.scrollTop = el.scrollHeight;
+          el.dispatchEvent(new Event("scroll"));
+        }
       });
 
       await page.getByRole("checkbox", { name: /I have read/ }).check();
