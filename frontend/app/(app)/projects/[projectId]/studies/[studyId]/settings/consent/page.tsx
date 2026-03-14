@@ -50,7 +50,7 @@ export default async function ConsentSettingsPage({ params }: Props) {
       <div className="rounded border bg-muted/40 p-4 text-sm text-muted-foreground">
         <p className="font-medium text-foreground mb-1">Participant link</p>
         <p>
-          Share this URL with participants. They can consent without creating an account.
+          Share this URL with participants after they have registered via an invite link.
         </p>
         <code className="mt-2 block text-xs break-all">
           {process.env.NEXT_PUBLIC_APP_URL}/study/{studyId}/consent?participant_id=PARTICIPANT_ID

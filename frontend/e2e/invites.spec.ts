@@ -322,4 +322,41 @@ test.describe.serial("Study Invites", () => {
     await expect(page).toHaveURL(/\/study\/.*\/consent\?participant_id=.+/);
     await expect(page.getByText("Invite Test Study")).toBeVisible();
   });
+
+  test("returning participant signs in via invite and lands on consent form", async ({ page }) => {
+    // Admin generates a second participant invite (for a new study invite, reuses existing account)
+    await page.goto("/login");
+    await page.getByLabel("Email").fill(adminEmail);
+    await page.getByLabel("Password").fill("password123");
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await page.waitForURL("/dashboard");
+
+    await page.getByRole("link", { name: "Projects", exact: true }).click();
+    await page.getByRole("link", { name: "Invite Test Project" }).first().click();
+    await page.getByRole("link", { name: "Invite Test Study" }).first().click();
+
+    await page.getByRole("button", { name: "Invite member" }).click();
+    await page.getByRole("combobox", { name: "Role" }).selectOption("participant");
+    await page.getByRole("button", { name: "Generate link" }).click();
+
+    const linkInput = page.getByLabel("Invite link");
+    const link = await linkInput.inputValue();
+    const token = link.split("/invite/")[1];
+
+    await page.goto("/dashboard");
+    await page.getByRole("button", { name: "Sign out" }).click();
+
+    // Visit invite page and sign in with the existing participant account
+    await page.goto(`/invite/${token}`, { waitUntil: "networkidle" });
+    await page.getByRole("link", { name: /Sign in/i }).click();
+
+    await expect(page).toHaveURL(`/login?invite=${token}`);
+    await page.getByLabel("Email").fill(participantEmail);
+    await page.getByLabel("Password").fill("password123");
+    await page.getByRole("button", { name: "Sign in" }).click();
+
+    // Should land on the consent form (reusing existing participant record)
+    await expect(page).toHaveURL(/\/study\/.*\/consent\?participant_id=.+/);
+    await expect(page.getByText("Invite Test Study")).toBeVisible();
+  });
 });
