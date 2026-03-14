@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict SabiFV2ZxiYSwECV3DN7ggG1OPPO8bJVh55VDTvnKbnacnaDL6y9aDDHmaBf5oz
+\restrict s1vuRNKzVtdgP5OOQTjEZb7lWBlVIF8uQehxFReNsognPY2Y9jOP5P9pVed2A54
 
 -- Dumped from database version 17.6
 -- Dumped by pg_dump version 17.6
@@ -59,11 +59,11 @@ CREATE FUNCTION public.create_study_owner_role() RETURNS trigger
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'public'
     AS $$
-BEGIN
-  INSERT INTO public.study_roles (user_id, study_id, role, granted_by)
-  VALUES (NEW.owner_id, NEW.id, 'owner', NEW.owner_id);
-  RETURN NEW;
-END;
+begin
+  insert into public.study_roles (user_id, study_id, role, granted_by)
+  values (new.owner_id, new.id, 'owner', new.owner_id);
+  return new;
+end;
 $$;
 
 
@@ -76,13 +76,10 @@ CREATE FUNCTION public.get_accessible_project_ids(uid uuid) RETURNS uuid[]
     AS $$
   select array_agg(distinct project_id)
   from (
-    -- Projects where user is owner
     select id as project_id from public.projects where owner_id = uid
     union
-    -- Projects where user has role
     select project_id from public.study_roles where user_id = uid and project_id is not null
     union
-    -- Projects containing studies where user has role
     select s.project_id
     from public.studies s
     join public.study_roles sr on sr.study_id = s.id
@@ -108,13 +105,10 @@ CREATE FUNCTION public.get_accessible_study_ids(uid uuid) RETURNS uuid[]
     AS $$
   select array_agg(distinct study_id)
   from (
-    -- Studies where user is owner
     select id as study_id from public.studies where owner_id = uid
     union
-    -- Studies where user has direct role
     select study_id from public.study_roles where user_id = uid and study_id is not null
     union
-    -- Studies in projects where user has project-level role
     select s.id as study_id
     from public.studies s
     join public.study_roles sr on sr.project_id = s.project_id
@@ -139,14 +133,14 @@ CREATE FUNCTION public.get_study_event_breakdown(p_study_id uuid) RETURNS TABLE(
     LANGUAGE sql STABLE
     SET search_path TO 'public'
     AS $$
-  SELECT
+  select
     event_type,
-    COUNT(*)                                                          AS event_count,
-    ROUND(100.0 * COUNT(*) / NULLIF(SUM(COUNT(*)) OVER (), 0), 1)   AS pct
-  FROM events
-  WHERE study_id = p_study_id
-  GROUP BY event_type
-  ORDER BY event_count DESC;
+    COUNT(*)                                                          as event_count,
+    ROUND(100.0 * COUNT(*) / NULLIF(SUM(COUNT(*)) OVER (), 0), 1)   as pct
+  from events
+  where study_id = p_study_id
+  group by event_type
+  order by event_count desc;
 $$;
 
 
@@ -158,17 +152,17 @@ CREATE FUNCTION public.get_study_participant_stats(p_study_id uuid) RETURNS TABL
     LANGUAGE sql STABLE
     SET search_path TO 'public'
     AS $$
-  SELECT
-    p.id                                          AS participant_id,
+  select
+    p.id                                        as participant_id,
     p.pseudonym,
-    COUNT(e.id)                                   AS event_count,
-    MAX(e.ts)                                     AS last_event,
-    MAX(e.ts) > now() - interval '7 days'         AS is_active
-  FROM events e
-  JOIN participants p ON p.id = e.participant_id
-  WHERE e.study_id = p_study_id
-  GROUP BY p.id, p.pseudonym
-  ORDER BY MAX(e.ts) DESC NULLS LAST;
+    COUNT(e.id)                                 as event_count,
+    MAX(e.ts)                                   as last_event,
+    MAX(e.ts) > now() - interval '7 days'       as is_active
+  from events e
+  join participants p on p.id = e.participant_id
+  where e.study_id = p_study_id
+  group by p.id, p.pseudonym
+  order by MAX(e.ts) desc nulls last;
 $$;
 
 
@@ -179,15 +173,8 @@ $$;
 CREATE FUNCTION public.has_project_access(uid uuid, proj_id uuid) RETURNS boolean
     LANGUAGE sql STABLE SECURITY DEFINER
     AS $$
-  select exists(
-    -- User is project owner
-    select 1 from public.projects
-    where id = proj_id and owner_id = uid
-  ) or exists(
-    -- User has a role in the project
-    select 1 from public.study_roles
-    where user_id = uid and project_id = proj_id
-  );
+  select exists(select 1 from public.projects where id = proj_id and owner_id = uid)
+      or exists(select 1 from public.study_roles where user_id = uid and project_id = proj_id);
 $$;
 
 
@@ -206,8 +193,7 @@ CREATE FUNCTION public.has_role_in_project(uid uuid, proj_id uuid, required_role
     LANGUAGE sql STABLE SECURITY DEFINER
     AS $$
   select exists(
-    select 1 from public.study_roles
-    where user_id = uid and project_id = proj_id and role = required_role
+    select 1 from public.study_roles where user_id = uid and project_id = proj_id and role = required_role
   );
 $$;
 
@@ -227,11 +213,8 @@ CREATE FUNCTION public.has_role_in_study(uid uuid, stud_id uuid, required_role t
     LANGUAGE sql STABLE SECURITY DEFINER
     AS $$
   select exists(
-    -- User has direct role in study
-    select 1 from public.study_roles
-    where user_id = uid and study_id = stud_id and role = required_role
+    select 1 from public.study_roles where user_id = uid and study_id = stud_id and role = required_role
   ) or exists(
-    -- User has role in parent project
     select 1 from public.studies s
     join public.study_roles sr on sr.project_id = s.project_id
     where s.id = stud_id and sr.user_id = uid and sr.role = required_role
@@ -253,7 +236,6 @@ COMMENT ON FUNCTION public.has_role_in_study(uid uuid, stud_id uuid, required_ro
 CREATE FUNCTION public.has_role_level(uid uuid, stud_id uuid, min_role text) RETURNS boolean
     LANGUAGE sql STABLE SECURITY DEFINER
     AS $$
-  -- Get user's highest role in study (directly or via project)
   with user_roles as (
     select sr.role
     from public.study_roles sr
@@ -261,10 +243,7 @@ CREATE FUNCTION public.has_role_level(uid uuid, stud_id uuid, min_role text) RET
       and (sr.study_id = stud_id
            or sr.project_id = (select project_id from public.studies where id = stud_id))
     union
-    -- Study/project owners implicitly have 'owner' role
-    select 'owner' as role
-    from public.studies s
-    where s.id = stud_id and s.owner_id = uid
+    select 'owner' as role from public.studies where id = stud_id and owner_id = uid
     union
     select 'owner' as role
     from public.studies s
@@ -272,15 +251,15 @@ CREATE FUNCTION public.has_role_level(uid uuid, stud_id uuid, min_role text) RET
     where s.id = stud_id and p.owner_id = uid
   ),
   role_levels as (
-    select 'owner' as role, 4 as level
-    union all select 'supervisor', 3
-    union all select 'researcher', 2
-    union all select 'teacher', 1
+    select 'owner'      as role, 4 as level union all
+    select 'supervisor',          3          union all
+    select 'researcher',          2          union all
+    select 'teacher',             1
   )
   select exists(
     select 1
     from user_roles ur
-    join role_levels ur_level on ur_level.role = ur.role
+    join role_levels ur_level  on ur_level.role  = ur.role
     join role_levels min_level on min_level.role = min_role
     where ur_level.level >= min_level.level
   );
@@ -301,20 +280,13 @@ COMMENT ON FUNCTION public.has_role_level(uid uuid, stud_id uuid, min_role text)
 CREATE FUNCTION public.has_study_access(uid uuid, stud_id uuid) RETURNS boolean
     LANGUAGE sql STABLE SECURITY DEFINER
     AS $$
-  select exists(
-    -- User is study owner
-    select 1 from public.studies
-    where id = stud_id and owner_id = uid
-  ) or exists(
-    -- User has a direct role in the study
-    select 1 from public.study_roles
-    where user_id = uid and study_id = stud_id
-  ) or exists(
-    -- User has a role in the parent project
-    select 1 from public.studies s
-    join public.study_roles sr on sr.project_id = s.project_id
-    where s.id = stud_id and sr.user_id = uid
-  );
+  select exists(select 1 from public.studies where id = stud_id and owner_id = uid)
+      or exists(select 1 from public.study_roles where user_id = uid and study_id = stud_id)
+      or exists(
+        select 1 from public.studies s
+        join public.study_roles sr on sr.project_id = s.project_id
+        where s.id = stud_id and sr.user_id = uid
+      );
 $$;
 
 
@@ -367,10 +339,9 @@ CREATE FUNCTION public.sync_participant_consent() RETURNS trigger
 begin
   update public.participants
   set
-    consent_status = (new.consent_status = 'granted'),
+    consent_status    = (new.consent_status = 'granted'),
     consent_timestamp = coalesce(new.granted_at, new.withdrawn_at, new.created_at)
   where id = new.participant_id;
-
   return new;
 end;
 $$;
@@ -602,7 +573,8 @@ CREATE TABLE public.participants (
     consent_timestamp timestamp with time zone,
     metadata jsonb DEFAULT '{}'::jsonb,
     created_at timestamp with time zone DEFAULT now(),
-    CONSTRAINT pseudonym_format CHECK ((pseudonym ~ '^[A-Za-z0-9_\\-\\.]{3,64}$'::text))
+    user_id uuid,
+    CONSTRAINT pseudonym_format CHECK ((pseudonym ~ '^[A-Za-z0-9_.-]{3,64}$'::text))
 );
 
 
@@ -852,6 +824,14 @@ ALTER TABLE ONLY public.participants
 
 ALTER TABLE ONLY public.participants
     ADD CONSTRAINT participants_pseudonym_key UNIQUE (pseudonym);
+
+
+--
+-- Name: participants participants_user_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.participants
+    ADD CONSTRAINT participants_user_id_key UNIQUE (user_id);
 
 
 --
@@ -1257,6 +1237,14 @@ ALTER TABLE ONLY public.events
 
 
 --
+-- Name: participants participants_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.participants
+    ADD CONSTRAINT participants_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE SET NULL;
+
+
+--
 -- Name: pipeline_scripts pipeline_scripts_study_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1410,7 +1398,7 @@ ALTER TABLE public.consent_records ENABLE ROW LEVEL SECURITY;
 -- Name: consent_records consent_self_read; Type: POLICY; Schema: public; Owner: -
 --
 
-CREATE POLICY consent_self_read ON public.consent_records FOR SELECT USING ((true OR (EXISTS ( SELECT 1
+CREATE POLICY consent_self_read ON public.consent_records FOR SELECT USING (((EXISTS ( SELECT 1
    FROM public.studies s
   WHERE ((s.id = consent_records.study_id) AND (s.owner_id = auth.uid())))) OR (EXISTS ( SELECT 1
    FROM public.study_roles sr
@@ -1778,5 +1766,5 @@ CREATE POLICY study_script_config_write ON public.study_script_config USING ((EX
 -- PostgreSQL database dump complete
 --
 
-\unrestrict SabiFV2ZxiYSwECV3DN7ggG1OPPO8bJVh55VDTvnKbnacnaDL6y9aDDHmaBf5oz
+\unrestrict s1vuRNKzVtdgP5OOQTjEZb7lWBlVIF8uQehxFReNsognPY2Y9jOP5P9pVed2A54
 

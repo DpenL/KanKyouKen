@@ -75,133 +75,133 @@ CREATE TABLE public.study_invitations (
 
 -- === HELPER FUNCTIONS ===
 
-CREATE OR REPLACE FUNCTION public.is_owner(uid uuid, proj_id uuid)
-RETURNS BOOLEAN LANGUAGE sql STABLE AS $$
-  SELECT EXISTS(SELECT 1 FROM public.projects WHERE id = proj_id AND owner_id = uid);
+create or replace function public.is_owner(uid uuid, proj_id uuid)
+returns boolean language sql stable as $$
+  select exists(select 1 from public.projects where id = proj_id and owner_id = uid);
 $$;
 
-CREATE OR REPLACE FUNCTION public.has_project_access(uid uuid, proj_id uuid)
-RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER AS $$
-  SELECT EXISTS(SELECT 1 FROM public.projects WHERE id = proj_id AND owner_id = uid)
-      OR EXISTS(SELECT 1 FROM public.study_roles WHERE user_id = uid AND project_id = proj_id);
+create or replace function public.has_project_access(uid uuid, proj_id uuid)
+returns boolean language sql stable security definer as $$
+  select exists(select 1 from public.projects where id = proj_id and owner_id = uid)
+      or exists(select 1 from public.study_roles where user_id = uid and project_id = proj_id);
 $$;
 
-CREATE OR REPLACE FUNCTION public.has_study_access(uid uuid, stud_id uuid)
-RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER AS $$
-  SELECT EXISTS(SELECT 1 FROM public.studies WHERE id = stud_id AND owner_id = uid)
-      OR EXISTS(SELECT 1 FROM public.study_roles WHERE user_id = uid AND study_id = stud_id)
-      OR EXISTS(
-        SELECT 1 FROM public.studies s
-        JOIN public.study_roles sr ON sr.project_id = s.project_id
-        WHERE s.id = stud_id AND sr.user_id = uid
+create or replace function public.has_study_access(uid uuid, stud_id uuid)
+returns boolean language sql stable security definer as $$
+  select exists(select 1 from public.studies where id = stud_id and owner_id = uid)
+      or exists(select 1 from public.study_roles where user_id = uid and study_id = stud_id)
+      or exists(
+        select 1 from public.studies s
+        join public.study_roles sr on sr.project_id = s.project_id
+        where s.id = stud_id and sr.user_id = uid
       );
 $$;
 
-CREATE OR REPLACE FUNCTION public.has_role_in_study(uid uuid, stud_id uuid, required_role text)
-RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER AS $$
-  SELECT EXISTS(
-    SELECT 1 FROM public.study_roles WHERE user_id = uid AND study_id = stud_id AND role = required_role
-  ) OR EXISTS(
-    SELECT 1 FROM public.studies s
-    JOIN public.study_roles sr ON sr.project_id = s.project_id
-    WHERE s.id = stud_id AND sr.user_id = uid AND sr.role = required_role
+create or replace function public.has_role_in_study(uid uuid, stud_id uuid, required_role text)
+returns boolean language sql stable security definer as $$
+  select exists(
+    select 1 from public.study_roles where user_id = uid and study_id = stud_id and role = required_role
+  ) or exists(
+    select 1 from public.studies s
+    join public.study_roles sr on sr.project_id = s.project_id
+    where s.id = stud_id and sr.user_id = uid and sr.role = required_role
   );
 $$;
 
-CREATE OR REPLACE FUNCTION public.has_role_in_project(uid uuid, proj_id uuid, required_role text)
-RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER AS $$
-  SELECT EXISTS(
-    SELECT 1 FROM public.study_roles WHERE user_id = uid AND project_id = proj_id AND role = required_role
+create or replace function public.has_role_in_project(uid uuid, proj_id uuid, required_role text)
+returns boolean language sql stable security definer as $$
+  select exists(
+    select 1 from public.study_roles where user_id = uid and project_id = proj_id and role = required_role
   );
 $$;
 
-CREATE OR REPLACE FUNCTION public.get_accessible_study_ids(uid uuid)
-RETURNS uuid[] LANGUAGE sql STABLE SECURITY DEFINER AS $$
-  SELECT array_agg(DISTINCT study_id)
-  FROM (
-    SELECT id AS study_id FROM public.studies WHERE owner_id = uid
-    UNION
-    SELECT study_id FROM public.study_roles WHERE user_id = uid AND study_id IS NOT NULL
-    UNION
-    SELECT s.id AS study_id
-    FROM public.studies s
-    JOIN public.study_roles sr ON sr.project_id = s.project_id
-    WHERE sr.user_id = uid
+create or replace function public.get_accessible_study_ids(uid uuid)
+returns uuid[] language sql stable security definer as $$
+  select array_agg(distinct study_id)
+  from (
+    select id as study_id from public.studies where owner_id = uid
+    union
+    select study_id from public.study_roles where user_id = uid and study_id is not null
+    union
+    select s.id as study_id
+    from public.studies s
+    join public.study_roles sr on sr.project_id = s.project_id
+    where sr.user_id = uid
   ) accessible_studies
-  WHERE study_id IS NOT NULL;
+  where study_id is not null;
 $$;
 
-CREATE OR REPLACE FUNCTION public.get_accessible_project_ids(uid uuid)
-RETURNS uuid[] LANGUAGE sql STABLE SECURITY DEFINER AS $$
-  SELECT array_agg(DISTINCT project_id)
-  FROM (
-    SELECT id AS project_id FROM public.projects WHERE owner_id = uid
-    UNION
-    SELECT project_id FROM public.study_roles WHERE user_id = uid AND project_id IS NOT NULL
-    UNION
-    SELECT s.project_id
-    FROM public.studies s
-    JOIN public.study_roles sr ON sr.study_id = s.id
-    WHERE sr.user_id = uid
+create or replace function public.get_accessible_project_ids(uid uuid)
+returns uuid[] language sql stable security definer as $$
+  select array_agg(distinct project_id)
+  from (
+    select id as project_id from public.projects where owner_id = uid
+    union
+    select project_id from public.study_roles where user_id = uid and project_id is not null
+    union
+    select s.project_id
+    from public.studies s
+    join public.study_roles sr on sr.study_id = s.id
+    where sr.user_id = uid
   ) accessible_projects
-  WHERE project_id IS NOT NULL;
+  where project_id is not null;
 $$;
 
 -- Role hierarchy: owner(4) > supervisor(3) > researcher(2) > teacher(1)
-CREATE OR REPLACE FUNCTION public.has_role_level(uid uuid, stud_id uuid, min_role text)
-RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER AS $$
-  WITH user_roles AS (
-    SELECT sr.role
-    FROM public.study_roles sr
-    WHERE sr.user_id = uid
-      AND (sr.study_id = stud_id
-           OR sr.project_id = (SELECT project_id FROM public.studies WHERE id = stud_id))
-    UNION
-    SELECT 'owner' AS role FROM public.studies WHERE id = stud_id AND owner_id = uid
-    UNION
-    SELECT 'owner' AS role
-    FROM public.studies s
-    JOIN public.projects p ON p.id = s.project_id
-    WHERE s.id = stud_id AND p.owner_id = uid
+create or replace function public.has_role_level(uid uuid, stud_id uuid, min_role text)
+returns boolean language sql stable security definer as $$
+  with user_roles as (
+    select sr.role
+    from public.study_roles sr
+    where sr.user_id = uid
+      and (sr.study_id = stud_id
+           or sr.project_id = (select project_id from public.studies where id = stud_id))
+    union
+    select 'owner' as role from public.studies where id = stud_id and owner_id = uid
+    union
+    select 'owner' as role
+    from public.studies s
+    join public.projects p on p.id = s.project_id
+    where s.id = stud_id and p.owner_id = uid
   ),
-  role_levels AS (
-    SELECT 'owner'      AS role, 4 AS level UNION ALL
-    SELECT 'supervisor',          3          UNION ALL
-    SELECT 'researcher',          2          UNION ALL
-    SELECT 'teacher',             1
+  role_levels as (
+    select 'owner'      as role, 4 as level union all
+    select 'supervisor',          3          union all
+    select 'researcher',          2          union all
+    select 'teacher',             1
   )
-  SELECT EXISTS(
-    SELECT 1
-    FROM user_roles ur
-    JOIN role_levels ur_level  ON ur_level.role  = ur.role
-    JOIN role_levels min_level ON min_level.role = min_role
-    WHERE ur_level.level >= min_level.level
+  select exists(
+    select 1
+    from user_roles ur
+    join role_levels ur_level  on ur_level.role  = ur.role
+    join role_levels min_level on min_level.role = min_role
+    where ur_level.level >= min_level.level
   );
 $$;
 
-CREATE OR REPLACE FUNCTION public.log_role_access(uid uuid, target_type text, target_id uuid, action text)
-RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$
-BEGIN
-  INSERT INTO public.audit_log (user_id, action, target, timestamp)
-  VALUES (uid, action, target_type || ':' || target_id::text, now());
-END;
+create or replace function public.log_role_access(uid uuid, target_type text, target_id uuid, action text)
+returns void language plpgsql security definer as $$
+begin
+  insert into public.audit_log (user_id, action, target, timestamp)
+  values (uid, action, target_type || ':' || target_id::text, now());
+end;
 $$;
 
 -- === AUDIT TRIGGER ===
 -- SECURITY DEFINER so RLS on audit_log does not block inserts from authenticated sessions.
 -- auth.uid() still resolves correctly across SECURITY DEFINER boundaries.
-CREATE OR REPLACE FUNCTION public.audit_row()
-RETURNS trigger LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  who UUID := auth.uid();
-BEGIN
-  INSERT INTO public.audit_log(user_id, action, target)
-  VALUES (who, tg_op, tg_table_name);
-  RETURN new;
-END;
+create or replace function public.audit_row()
+returns trigger language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  who uuid := auth.uid();
+begin
+  insert into public.audit_log(user_id, action, target)
+  values (who, tg_op, tg_table_name);
+  return new;
+end;
 $$;
 
 CREATE TRIGGER trg_audit_projects
@@ -218,16 +218,16 @@ CREATE TRIGGER trg_audit_participants
 
 -- === CONSENT SYNC TRIGGER ===
 -- Keeps participants.consent_status in sync whenever a consent_record changes.
-CREATE OR REPLACE FUNCTION public.sync_participant_consent()
-RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER AS $$
-BEGIN
-  UPDATE public.participants
-  SET
+create or replace function public.sync_participant_consent()
+returns trigger language plpgsql security definer as $$
+begin
+  update public.participants
+  set
     consent_status    = (new.consent_status = 'granted'),
-    consent_timestamp = COALESCE(new.granted_at, new.withdrawn_at, new.created_at)
-  WHERE id = new.participant_id;
-  RETURN new;
-END;
+    consent_timestamp = coalesce(new.granted_at, new.withdrawn_at, new.created_at)
+  where id = new.participant_id;
+  return new;
+end;
 $$;
 
 CREATE TRIGGER sync_participant_consent_trigger
@@ -237,16 +237,16 @@ CREATE TRIGGER sync_participant_consent_trigger
 -- === AUTO-OWNER TRIGGER ===
 -- Grants the study creator an explicit 'owner' study_role on insert so that
 -- study_roles-based queries (event schema page, member list) can find them.
-CREATE OR REPLACE FUNCTION public.create_study_owner_role()
-RETURNS trigger LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-BEGIN
-  INSERT INTO public.study_roles (user_id, study_id, role, granted_by)
-  VALUES (NEW.owner_id, NEW.id, 'owner', NEW.owner_id);
-  RETURN NEW;
-END;
+create or replace function public.create_study_owner_role()
+returns trigger language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.study_roles (user_id, study_id, role, granted_by)
+  values (new.owner_id, new.id, 'owner', new.owner_id);
+  return new;
+end;
 $$;
 
 CREATE TRIGGER study_owner_role_on_insert

@@ -9,24 +9,24 @@
 -- SECURITY INVOKER: RLS on events and participants applies.
 CREATE FUNCTION public.get_study_participant_stats(p_study_id uuid)
 RETURNS TABLE (
-  participant_id UUID,
-  pseudonym      TEXT,
-  event_count    BIGINT,
-  last_event     TIMESTAMPTZ,
-  is_active      BOOLEAN
+  participant_id uuid,
+  pseudonym      text,
+  event_count    bigint,
+  last_event     timestamptz,
+  is_active      boolean
 )
 LANGUAGE sql STABLE SET search_path = public AS $$
-  SELECT
-    p.id                                        AS participant_id,
+  select
+    p.id                                        as participant_id,
     p.pseudonym,
-    COUNT(e.id)                                 AS event_count,
-    MAX(e.ts)                                   AS last_event,
-    MAX(e.ts) > now() - INTERVAL '7 days'       AS is_active
-  FROM events e
-  JOIN participants p ON p.id = e.participant_id
-  WHERE e.study_id = p_study_id
-  GROUP BY p.id, p.pseudonym
-  ORDER BY MAX(e.ts) DESC NULLS LAST;
+    COUNT(e.id)                                 as event_count,
+    MAX(e.ts)                                   as last_event,
+    MAX(e.ts) > now() - interval '7 days'       as is_active
+  from events e
+  join participants p on p.id = e.participant_id
+  where e.study_id = p_study_id
+  group by p.id, p.pseudonym
+  order by MAX(e.ts) desc nulls last;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.get_study_participant_stats(uuid) TO authenticated;
@@ -35,19 +35,19 @@ GRANT EXECUTE ON FUNCTION public.get_study_participant_stats(uuid) TO authentica
 -- SECURITY INVOKER: RLS on events applies.
 CREATE OR REPLACE FUNCTION public.get_study_event_breakdown(p_study_id uuid)
 RETURNS TABLE (
-  event_type  TEXT,
-  event_count BIGINT,
-  pct         NUMERIC
+  event_type  text,
+  event_count bigint,
+  pct         numeric
 )
 LANGUAGE sql STABLE SET search_path = public AS $$
-  SELECT
+  select
     event_type,
-    COUNT(*)                                                        AS event_count,
-    ROUND(100.0 * COUNT(*) / NULLIF(SUM(COUNT(*)) OVER (), 0), 1) AS pct
-  FROM events
-  WHERE study_id = p_study_id
-  GROUP BY event_type
-  ORDER BY event_count DESC;
+    COUNT(*)                                                          as event_count,
+    ROUND(100.0 * COUNT(*) / NULLIF(SUM(COUNT(*)) OVER (), 0), 1)   as pct
+  from events
+  where study_id = p_study_id
+  group by event_type
+  order by event_count desc;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.get_study_event_breakdown(uuid) TO authenticated;
