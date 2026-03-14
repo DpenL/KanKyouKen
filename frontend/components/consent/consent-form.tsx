@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { submitConsent } from "@/app/study/[studyId]/consent/actions";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -50,24 +50,9 @@ export function ConsentForm({
     setSubmitting(true);
     setError(null);
     try {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-      const res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/consent`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          participant_id: participantId,
-          study_id: studyId,
-          consent_version: consentVersion,
-        }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setError(data.detail ?? "Failed to submit consent. Please try again.");
+      const { error } = await submitConsent(participantId, studyId, consentVersion);
+      if (error) {
+        setError(error);
         return;
       }
       setDone(true);
@@ -75,7 +60,7 @@ export function ConsentForm({
         window.location.href = redirectUrl;
       }
     } catch {
-      setError("Network error. Please check your connection and try again.");
+      setError("Failed to submit consent. Please try again.");
     } finally {
       setSubmitting(false);
     }

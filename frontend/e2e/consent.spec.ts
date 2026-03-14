@@ -173,24 +173,8 @@ test.describe.serial("Consent flow", () => {
         }
       });
 
-      // Intercept the edge function response before clicking submit
-      const consentResponsePromise = page.waitForResponse(
-        (r) => r.url().includes("functions/v1/consent") && r.request().method() === "POST",
-        { timeout: 15000 },
-      ).catch(() => null);
-
       await page.getByRole("checkbox", { name: /I have read/ }).check();
       await page.getByRole("button", { name: "Submit consent" }).click();
-
-      // Log the raw edge function response to diagnose CI failures
-      const consentResponse = await consentResponsePromise;
-      if (consentResponse) {
-        const status = consentResponse.status();
-        const body = await consentResponse.text().catch(() => "(unreadable)");
-        console.log(`[consent-submit] edge fn status=${status} body=${body}`);
-      } else {
-        console.error("[consent-submit] no edge function response captured");
-      }
 
       await expect(page.getByText("Consent recorded")).toBeVisible({ timeout: 10000 });
 
