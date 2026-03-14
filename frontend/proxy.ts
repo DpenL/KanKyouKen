@@ -31,8 +31,16 @@ export async function proxy(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const { pathname } = request.nextUrl;
+
+  // Routes that don't require authentication — add a line here to make a new path public
+  const publicPrefixes = [
+    "/login",
+    "/register",
+    "/invite",
+  ];
+
+  const isPublicRoute = publicPrefixes.some((prefix) => pathname.startsWith(prefix));
   const isAuthRoute = pathname.startsWith("/login") || pathname.startsWith("/register");
-  const isPublicRoute = isAuthRoute || pathname.startsWith("/invite");
 
   if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone();

@@ -78,7 +78,7 @@ export async function acceptInvite(token: string): Promise<void> {
   });
 
   if (insertError) {
-    // Duplicate role assignment — user already has access, still redirect to study
+    // Duplicate role assignment — user already has access, still continue
     if (!insertError.message.includes("duplicate key")) {
       redirect("/invite-error?reason=server_error");
     }
@@ -90,7 +90,32 @@ export async function acceptInvite(token: string): Promise<void> {
     .update({ used_by: user.id, used_at: new Date().toISOString() })
     .eq("token", token);
 
-  // Look up project_id to build the redirect URL
+  // Participants get a participants record and land on the consent form
+  if (invite.role === "participant") {
+    // Upsert: if the user already has a participant record (e.g. double-click), reuse it
+    let participantId: string;
+    const { data: existing } = await service
+      .from("participants")
+      .select("id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (existing) {
+      participantId = existing.id;
+    } else {
+      const { data: created, error: createErr } = await service
+        .from("participants")
+        .insert({ user_id: user.id })
+        .select("id")
+        .single();
+      if (createErr || !created) redirect("/invite-error?reason=server_error");
+      participantId = created!.id;
+    }
+
+    redirect(`/study/${invite.study_id}/consent?participant_id=${participantId}`);
+  }
+
+  // Researchers/supervisors/teachers land on the study dashboard
   const { data: study } = await service
     .from("studies")
     .select("project_id")
