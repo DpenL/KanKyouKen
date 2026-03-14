@@ -7,9 +7,10 @@ Safe pg_dump normalizer for schema parity.
 - Removes pg_dump metadata (Dumped from..., Dumped by...).
 - Removes SET/config lines and pg_dump backslash meta-commands.
 - Removes CREATE/COMMENT for the public schema (Supabase owns it).
-- Normalizes supabase_functions.http_request(...) argument lists (URL, headers,
-  auth) so local (kong, no auth) and remote (HTTPS, dashboard auth) compare equal.
-- PRESERVES all DDL: tables, indexes, functions, triggers, policies, RLS, etc.
+- Strips triggers that call supabase_functions.* entirely: they are
+  env-specific (local uses kong URL, hosted uses HTTPS URL) and are
+  excluded from remote pushes by apply_schema_to_remote.py as well.
+- PRESERVES all other DDL: tables, indexes, functions, triggers, policies, RLS, etc.
 - Does NOT touch function bodies or reorder statements.
 """
 
@@ -65,24 +66,25 @@ def normalize(sql: str) -> str:
     Normalize pg_dump output for stable diffing:
 
     - Removes pg_dump metadata noise.
-    - Keeps all DDL intact (tables, FKs, functions, triggers, policies, etc.).
+    - Strips supabase_functions.* triggers (env-specific, omitted from remote push).
+    - Keeps all other DDL intact (tables, FKs, functions, triggers, policies, etc.).
     - Preserves blank lines but collapses long runs to a single blank.
     """
+    # Strip supabase_functions.* triggers before line-by-line processing
+    # (multi-line statements must be handled on the full string)
+    sql = re.sub(
+        r'CREATE TRIGGER\b[^;]*?EXECUTE FUNCTION\s+"?supabase_functions"?\s*\.\s*"?\w+"?\s*\([^;]*\)\s*;',
+        "",
+        sql,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+
     out = []
     for line in sql.splitlines():
         stripped = line.strip()
         if should_strip_for_parity(stripped):
             continue
-        # Normalize the full argument list of supabase_functions.http_request(...):
-        # URL, headers (incl. Authorization), and other args are all environment-specific
-        # (local uses kong + no auth; dashboard-created webhook uses HTTPS + auth header).
-        # The trigger name, timing, table, and function name are still compared.
-        line = re.sub(
-            r"(EXECUTE FUNCTION supabase_functions\.http_request\()[^)]*\)",
-            r"\1<env-specific-args>)",
-            line.rstrip(),
-        )
-        out.append(line)
+        out.append(line.rstrip())
 
     # Collapse multiple blank lines (cosmetic)
     cleaned = []

@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict s1vuRNKzVtdgP5OOQTjEZb7lWBlVIF8uQehxFReNsognPY2Y9jOP5P9pVed2A54
+\restrict Rh9AI5L9tRaLMph4NHxOyrIZghVEyEBey4BimdHDdgjVWcyazy76AVXgA23iV2h
 
 -- Dumped from database version 17.6
 -- Dumped by pg_dump version 17.6
@@ -1766,5 +1766,5 @@ CREATE POLICY study_script_config_write ON public.study_script_config USING ((EX
 -- PostgreSQL database dump complete
 --
 
-\unrestrict s1vuRNKzVtdgP5OOQTjEZb7lWBlVIF8uQehxFReNsognPY2Y9jOP5P9pVed2A54
+\unrestrict Rh9AI5L9tRaLMph4NHxOyrIZghVEyEBey4BimdHDdgjVWcyazy76AVXgA23iV2h
 
