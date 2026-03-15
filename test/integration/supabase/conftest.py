@@ -1,6 +1,7 @@
 import os
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import psycopg2
 import pytest
@@ -315,21 +316,28 @@ def edge_functions_runtime(request, function_base_url, jwt_token, supabase_ready
         print(f"STDERR: {stderr[:500]}")
         raise RuntimeError(f"Edge Functions runtime failed to start (exit code {retcode})")
 
-    print("   Process running, warming up functions...")
+    print("   Process running, warming up functions in parallel...")
 
-    # Warm up all functions
+    # Warm up all functions in parallel to reduce startup time
     failed_functions = []
-    for func_name in functions_list:
-        try:
-            _warm_up_function(
+    with ThreadPoolExecutor(max_workers=len(functions_list)) as executor:
+        future_to_name = {
+            executor.submit(
+                _warm_up_function,
                 url=f"{function_base_url}{func_name}",
                 token=jwt_token,
                 timeout=90,
-            )
-            print(f"   ✅ {func_name} ready")
-        except Exception as e:
-            print(f"   ❌ {func_name} failed: {e}")
-            failed_functions.append(func_name)
+            ): func_name
+            for func_name in functions_list
+        }
+        for future in as_completed(future_to_name):
+            func_name = future_to_name[future]
+            try:
+                future.result()
+                print(f"   ✅ {func_name} ready")
+            except Exception as e:
+                print(f"   ❌ {func_name} failed: {e}")
+                failed_functions.append(func_name)
 
     if failed_functions:
         proc.terminate()
