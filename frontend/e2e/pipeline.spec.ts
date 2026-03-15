@@ -62,7 +62,7 @@ test.describe.serial("Pipeline script management", () => {
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page.getByRole("dialog")).not.toBeVisible();
 
-    await expect(page.getByText("my-analytics-script")).toBeVisible();
+    await expect(page.getByText("my-analytics-script", { exact: true })).toBeVisible();
   });
 
   test("researcher can edit a custom script", async ({ page }) => {
@@ -84,7 +84,7 @@ test.describe.serial("Pipeline script management", () => {
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page.getByRole("dialog")).not.toBeVisible();
 
-    await expect(page.getByText("my-analytics-script-v2")).toBeVisible();
+    await expect(page.getByText("my-analytics-script-v2", { exact: true })).toBeVisible();
   });
 
   test("researcher can delete a custom script", async ({ page }) => {
@@ -95,11 +95,11 @@ test.describe.serial("Pipeline script management", () => {
     await page.waitForURL("/dashboard");
 
     await page.goto(`${studyUrl}/settings/pipeline`);
-    await expect(page.getByText("my-analytics-script-v2")).toBeVisible();
+    await expect(page.getByText("my-analytics-script-v2", { exact: true })).toBeVisible();
 
     await page.getByRole("button", { name: "Delete" }).first().click();
 
-    await expect(page.getByText("my-analytics-script-v2")).not.toBeVisible();
+    await expect(page.getByText("my-analytics-script-v2", { exact: true })).not.toBeVisible();
     await expect(
       page.getByText("No custom scripts yet.", { exact: false }),
     ).toBeVisible();
