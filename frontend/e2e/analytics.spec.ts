@@ -38,8 +38,8 @@ test.describe.serial("Analytics dashboard", () => {
     await page.waitForURL("/dashboard");
 
     await page.goto(studyUrl);
-    await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Event breakdown" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Overview", level: 2 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Event breakdown", level: 2 })).toBeVisible();
     await expect(page.getByText("No data collected yet.")).toBeVisible();
   });
 
@@ -51,8 +51,8 @@ test.describe.serial("Analytics dashboard", () => {
     await page.waitForURL("/dashboard");
 
     await page.goto(studyUrl);
-    // Analytics section only renders when script_outputs exist
-    await expect(page.getByRole("heading", { name: "Analytics" })).not.toBeVisible();
+    // Analytics section only renders when script_outputs exist — check h2 specifically
+    await expect(page.getByRole("heading", { name: "Analytics", level: 2 })).not.toBeVisible();
   });
 
   test("pipeline settings shows built-in participant-progress script", async ({ page }) => {
