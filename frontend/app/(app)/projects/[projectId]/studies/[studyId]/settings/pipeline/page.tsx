@@ -22,26 +22,32 @@ export default async function PipelineSettingsPage({ params }: Props) {
 
   const service = createServiceClient();
 
-  // Load global scripts (study_id IS NULL) — built-in scripts available to all studies
-  const { data: scripts } = await service
-    .from("pipeline_scripts")
-    .select("id, name, description, script_type, trigger_tables, writes_to_table, enabled")
-    .is("study_id", null)
-    .order("name");
-
-  // Load per-study overrides
-  const { data: overrides } = await service
-    .from("study_script_config")
-    .select("script_id, enabled")
-    .eq("study_id", studyId);
+  const [
+    { data: builtinScripts },
+    { data: customScripts },
+    { data: overrides },
+  ] = await Promise.all([
+    service
+      .from("pipeline_scripts")
+      .select("id, name, description, script_type, trigger_tables, writes_to_table, enabled")
+      .is("study_id", null)
+      .order("name"),
+    service
+      .from("pipeline_scripts")
+      .select(
+        "id, name, description, script_type, endpoint_url, trigger_tables, trigger_event_types, trigger_output_types, writes_to_table, output_type, config, enabled",
+      )
+      .eq("study_id", studyId)
+      .order("name"),
+    service.from("study_script_config").select("script_id, enabled").eq("study_id", studyId),
+  ]);
 
   const overrideMap = Object.fromEntries(
     (overrides ?? []).map((o) => [o.script_id, o.enabled]),
   );
 
-  const scriptsWithState = (scripts ?? []).map((s) => ({
+  const builtinWithState = (builtinScripts ?? []).map((s) => ({
     ...s,
-    // Per-study override takes precedence over the script's own enabled flag
     effectivelyEnabled: overrideMap[s.id] ?? s.enabled,
     hasOverride: s.id in overrideMap,
   }));
@@ -51,13 +57,16 @@ export default async function PipelineSettingsPage({ params }: Props) {
       <div>
         <h1 className="text-2xl font-semibold">Pipeline Scripts</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Built-in analytics scripts for{" "}
+          Manage analytics scripts for{" "}
           <span className="font-medium text-foreground">{study.name}</span>.
-          Disable a script to stop it from running when new events arrive.
         </p>
       </div>
 
-      <ScriptList studyId={studyId} scripts={scriptsWithState} />
+      <ScriptList
+        studyId={studyId}
+        builtinScripts={builtinWithState}
+        customScripts={customScripts ?? []}
+      />
     </div>
   );
 }
