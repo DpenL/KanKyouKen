@@ -1,12 +1,6 @@
 "use client";
 
-import dynamic from "next/dynamic";
-
-// VegaLite uses canvas — must be loaded client-side only
-const VegaLite = dynamic(() => import("react-vega").then((m) => m.VegaLite), {
-  ssr: false,
-  loading: () => <div className="h-40 animate-pulse rounded bg-muted" />,
-});
+import { useEffect, useRef } from "react";
 
 interface ScriptOutput {
   output_type: string;
@@ -15,9 +9,6 @@ interface ScriptOutput {
 
 interface Spec {
   $schema?: string;
-  type?: string;
-  data?: unknown;
-  layout?: unknown;
 }
 
 export function ScriptOutputViewer({ output }: { output: ScriptOutput }) {
@@ -28,14 +19,32 @@ export function ScriptOutputViewer({ output }: { output: ScriptOutput }) {
   }
 
   if (typeof spec.$schema === "string" && spec.$schema.includes("vega-lite")) {
-    return (
-      <div className="overflow-x-auto">
-        <VegaLite spec={spec as never} actions={false} />
-      </div>
-    );
+    return <VegaLiteChart spec={spec} />;
   }
 
   return <JsonViewer data={spec} />;
+}
+
+function VegaLiteChart({ spec }: { spec: unknown }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    let cancelled = false;
+
+    import("vega-embed").then(({ default: embed }) => {
+      if (cancelled || !containerRef.current) return;
+      embed(containerRef.current, spec as never, { actions: false });
+    });
+
+    return () => {
+      cancelled = true;
+      if (el) el.innerHTML = "";
+    };
+  }, [spec]);
+
+  return <div ref={containerRef} className="overflow-x-auto min-h-10" />;
 }
 
 function JsonViewer({ data }: { data: unknown }) {
