@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { GenerateInviteDialog } from "@/components/generate-invite-dialog";
 import { LiveAnalytics } from "@/components/study/live-analytics";
+import { ScriptOutputsPanel } from "@/components/study/script-outputs-panel";
 
 type EventBreakdown = {
   event_type: string;
@@ -30,10 +31,16 @@ export default async function StudyPage({ params }: Props) {
     { data: studyMetrics },
     { data: eventBreakdown },
     { data: members },
+    { data: scriptOutputs },
   ] = await Promise.all([
     supabase.from("study_metrics").select("*").eq("study_id", studyId).maybeSingle(),
     supabase.rpc("get_study_event_breakdown", { p_study_id: studyId }),
     supabase.from("study_roles").select("id, user_id, role, granted_at").eq("study_id", studyId).order("granted_at", { ascending: true }),
+    supabase
+      .from("script_outputs")
+      .select("id, output_type, scope, scope_id, data, computed_at")
+      .eq("study_id", studyId)
+      .order("computed_at", { ascending: false }),
   ]);
 
   const breakdown = (eventBreakdown as EventBreakdown[] | null) ?? [];
@@ -45,6 +52,14 @@ export default async function StudyPage({ params }: Props) {
         <h2 className="text-lg font-medium mb-3">Overview</h2>
         <LiveAnalytics studyId={studyId} initialMetrics={studyMetrics} />
       </div>
+
+      {/* Script outputs */}
+      {(scriptOutputs?.length ?? 0) > 0 && (
+        <div>
+          <h2 className="text-lg font-medium mb-3">Analytics</h2>
+          <ScriptOutputsPanel studyId={studyId} initial={scriptOutputs ?? []} />
+        </div>
+      )}
 
       {/* Event type breakdown */}
       <div>
