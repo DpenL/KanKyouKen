@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -19,10 +20,28 @@ export function HealthWidget() {
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/health`)
-      .then((r) => r.json())
-      .then(setHealth)
-      .catch(() => setFailed(true));
+    const supabase = createClient();
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (cancelled) return;
+
+        const r = await fetch(
+          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/health`,
+          { headers: { Authorization: `Bearer ${session?.access_token}` } },
+        );
+        if (cancelled) return;
+        if (!r.ok) throw new Error(`${r.status}`);
+        const data: HealthResponse = await r.json();
+        if (!cancelled) setHealth(data);
+      } catch {
+        if (!cancelled) setFailed(true);
+      }
+    })();
+
+    return () => { cancelled = true; };
   }, []);
 
   if (failed) return null;
