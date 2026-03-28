@@ -344,6 +344,23 @@ def test_participant_progress_stamps_last_run_at(
     participant_id = uuid.UUID(auth["participant_id"])
 
     cur = db_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    # Ensure the global participant-progress row exists (seed may not run in all environments)
+    cur.execute(
+        """
+        INSERT INTO public.pipeline_scripts
+          (name, description, script_type, endpoint_url,
+           trigger_tables, writes_to_table, output_type, enabled)
+        SELECT 'participant-progress', 'test', 'analytics',
+               '/functions/v1/participant-progress',
+               ARRAY['events'], 'script_outputs', 'participant_progress', true
+        WHERE NOT EXISTS (
+          SELECT 1 FROM public.pipeline_scripts
+          WHERE name = 'participant-progress' AND study_id IS NULL
+        )
+        """,
+    )
+
     _insert_event(cur, study_id, participant_id, correct=True)
     db_conn.commit()
 
@@ -358,6 +375,8 @@ def test_participant_progress_stamps_last_run_at(
         """
         SELECT last_run_at FROM public.pipeline_scripts
         WHERE name = 'participant-progress' AND study_id IS NULL
+        ORDER BY created_at DESC
+        LIMIT 1
         """,
     )
     row = cur.fetchone()
