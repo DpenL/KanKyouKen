@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { GenerateInviteDialog } from "@/components/generate-invite-dialog";
 import { LiveAnalytics } from "@/components/study/live-analytics";
 import { ScriptOutputsPanel } from "@/components/study/script-outputs-panel";
+import { HealthWidget } from "@/components/study/health-widget";
 
 type EventBreakdown = {
   event_type: string;
@@ -47,6 +48,9 @@ export default async function StudyPage({ params }: Props) {
 
   return (
     <div className="space-y-8">
+      {/* Platform health */}
+      <HealthWidget />
+
       {/* Live analytics — subscribes to study_metrics and script_outputs via Realtime */}
       <div>
         <h2 className="text-lg font-medium mb-3">Overview</h2>

@@ -55,6 +55,18 @@ test.describe.serial("Analytics dashboard", () => {
     await expect(page.getByRole("heading", { name: "Analytics", level: 2 })).not.toBeVisible();
   });
 
+  test("study page shows platform health widget", async ({ page }) => {
+    await page.goto("/login");
+    await page.getByLabel("Email").fill(email);
+    await page.getByLabel("Password").fill(password);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await page.waitForURL("/dashboard");
+
+    await page.goto(studyUrl);
+    await expect(page.getByText("Platform Health")).toBeVisible();
+    await expect(page.getByText("Status")).toBeVisible();
+  });
+
   test("pipeline settings shows built-in participant-progress script", async ({ page }) => {
     await page.goto("/login");
     await page.getByLabel("Email").fill(email);
