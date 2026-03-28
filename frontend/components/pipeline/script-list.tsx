@@ -22,6 +22,7 @@ interface BuiltinScript {
   script_type: string;
   trigger_tables: string[];
   writes_to_table: string;
+  last_run_at: string | null;
   effectivelyEnabled: boolean;
   hasOverride: boolean;
 }
@@ -153,6 +154,12 @@ export function ScriptList({ studyId, builtinScripts, customScripts: initialCust
                     </span>
                     {" · "}Writes to:{" "}
                     <span className="font-medium text-foreground">{script.writes_to_table}</span>
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Last run:{" "}
+                    {script.last_run_at
+                      ? new Date(script.last_run_at).toLocaleString()
+                      : "Never"}
                   </p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">

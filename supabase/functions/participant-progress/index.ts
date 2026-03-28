@@ -178,6 +178,13 @@ serve(async (req: Request) => {
       });
     }
 
+    // Stamp last_run_at so the UI can show when this script last ran
+    await supabase
+      .from("pipeline_scripts")
+      .update({ last_run_at: now })
+      .eq("name", "participant-progress")
+      .is("study_id", null);
+
     return new Response(
       JSON.stringify({ success: true, participants: byParticipant.size }),
       { headers: { "Content-Type": "application/json" } },

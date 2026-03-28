@@ -29,7 +29,7 @@ export default async function PipelineSettingsPage({ params }: Props) {
   ] = await Promise.all([
     service
       .from("pipeline_scripts")
-      .select("id, name, description, script_type, trigger_tables, writes_to_table, enabled")
+      .select("id, name, description, script_type, trigger_tables, writes_to_table, enabled, last_run_at")
       .is("study_id", null)
       .order("name"),
     service

@@ -331,3 +331,36 @@ def test_participant_progress_outputs_vegalite_chart(
     assert len(rows) == 1
     assert rows[0]["participant_id"] == str(participant_id)
     assert abs(rows[0]["accuracy"] - 0.5) < 0.001
+
+
+@pytest.mark.integration
+@pytest.mark.usefixtures("function_runtime")
+def test_participant_progress_stamps_last_run_at(
+    function_base_url, jwt_token, db_conn, authenticated_user_with_study
+):
+    """Successful run updates last_run_at on the global pipeline_scripts row."""
+    auth = authenticated_user_with_study
+    study_id = uuid.UUID(auth["study_id"])
+    participant_id = uuid.UUID(auth["participant_id"])
+
+    cur = db_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    _insert_event(cur, study_id, participant_id, correct=True)
+    db_conn.commit()
+
+    # Capture timestamp before the call
+    cur.execute("SELECT now() AS before")
+    before = cur.fetchone()["before"]
+
+    resp = _call(function_base_url, jwt_token, study_id)
+    assert resp.status_code == 200, resp.text
+
+    cur.execute(
+        """
+        SELECT last_run_at FROM public.pipeline_scripts
+        WHERE name = 'participant-progress' AND study_id IS NULL
+        """,
+    )
+    row = cur.fetchone()
+    assert row is not None, "participant-progress script row should exist"
+    assert row["last_run_at"] is not None, "last_run_at should be set after a successful run"
+    assert row["last_run_at"] >= before, "last_run_at should be >= timestamp before the call"
