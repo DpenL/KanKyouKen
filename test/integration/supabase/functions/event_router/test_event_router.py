@@ -337,3 +337,100 @@ def test_router_study_specific_script_only_fires_for_its_study(
     assert data["scripts_triggered"] == 0, (
         "Study-scoped script must not fire for events from a different study"
     )
+
+
+@pytest.mark.integration
+@pytest.mark.usefixtures("function_runtime")
+def test_router_per_study_override_enables_globally_disabled_script(
+    function_base_url, jwt_token, db_conn, authenticated_user_with_study
+):
+    """A study_script_config override with enabled=True fires a globally-disabled script."""
+    auth = authenticated_user_with_study
+    study_id = uuid.UUID(auth["study_id"])
+    participant_id = uuid.UUID(auth["participant_id"])
+
+    cur = db_conn.cursor()
+    # Register a global script that is disabled by default
+    script_id = _register_script(
+        cur,
+        name="rt-stats-override-enable",
+        endpoint_url=RT_STATS_ENDPOINT,
+        trigger_tables=["events"],
+        study_id=None,
+        enabled=False,  # globally OFF
+    )
+    # Per-study override turns it ON for this study
+    cur.execute(
+        """
+        INSERT INTO public.study_script_config (study_id, script_id, enabled)
+        VALUES (%s, %s, TRUE)
+        """,
+        (study_id, script_id),
+    )
+    db_conn.commit()
+
+    payload = _webhook_payload(
+        table="events",
+        record={
+            "id": str(uuid.uuid4()),
+            "study_id": str(study_id),
+            "participant_id": str(participant_id),
+            "event_type": "answer_submitted",
+            "ts": "2026-03-28T10:00:00Z",
+        },
+    )
+
+    resp = _call_event_router(function_base_url, jwt_token, payload)
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["scripts_triggered"] >= 1, (
+        "Per-study override (enabled=True) should fire a globally-disabled script"
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.usefixtures("function_runtime")
+def test_router_per_study_override_disables_globally_enabled_script(
+    function_base_url, jwt_token, db_conn, authenticated_user_with_study
+):
+    """A study_script_config override with enabled=False suppresses a globally-enabled script."""
+    auth = authenticated_user_with_study
+    study_id = uuid.UUID(auth["study_id"])
+    participant_id = uuid.UUID(auth["participant_id"])
+
+    cur = db_conn.cursor()
+    script_id = _register_script(
+        cur,
+        name="rt-stats-override-disable",
+        endpoint_url=RT_STATS_ENDPOINT,
+        trigger_tables=["events"],
+        study_id=None,
+        enabled=True,  # globally ON
+    )
+    # Per-study override turns it OFF for this study
+    cur.execute(
+        """
+        INSERT INTO public.study_script_config (study_id, script_id, enabled)
+        VALUES (%s, %s, FALSE)
+        """,
+        (study_id, script_id),
+    )
+    db_conn.commit()
+
+    payload = _webhook_payload(
+        table="events",
+        record={
+            "id": str(uuid.uuid4()),
+            "study_id": str(study_id),
+            "participant_id": str(participant_id),
+            "event_type": "answer_submitted",
+            "ts": "2026-03-28T10:00:00Z",
+        },
+    )
+
+    resp = _call_event_router(function_base_url, jwt_token, payload)
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["scripts_triggered"] == 0, (
+        "Per-study override (enabled=False) should suppress a globally-enabled script"
+    )

@@ -34,12 +34,12 @@ serve(async (req: Request) => {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Find scripts that trigger on this table (global + study-specific)
+    // Find scripts that trigger on this table (global + study-specific).
+    // JOIN study_script_config so per-study overrides take precedence via COALESCE.
     let query = supabase
       .from("pipeline_scripts")
-      .select("*")
-      .contains("trigger_tables", [table])
-      .eq("enabled", true);
+      .select("*, study_script_config!left(enabled)")
+      .contains("trigger_tables", [table]);
 
     if (studyId) {
       query = query.or(`study_id.is.null,study_id.eq.${studyId}`);
@@ -47,14 +47,20 @@ serve(async (req: Request) => {
       query = query.is("study_id", null);
     }
 
-    const { data: scripts, error } = await query;
+    const { data: rawScripts, error } = await query;
+
+    // COALESCE: use per-study override if a row exists, else fall back to global enabled flag
+    const scripts = rawScripts?.filter((s) => {
+      const override = (s.study_script_config as { enabled: boolean }[] | null)?.[0]?.enabled;
+      return override ?? s.enabled;
+    }) ?? [];
 
     if (error) {
       console.error("Failed to query pipeline_scripts:", error);
       return new Response(JSON.stringify({ error: error.message }), { status: 500 });
     }
 
-    if (!scripts?.length) {
+    if (!scripts.length) {
       return new Response(JSON.stringify({ scripts_triggered: 0 }), {
         headers: { "Content-Type": "application/json" },
       });
