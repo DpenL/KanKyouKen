@@ -63,6 +63,7 @@ test.describe.serial("Analytics dashboard", () => {
     await page.waitForURL("/dashboard");
 
     await page.goto(studyUrl);
+    await page.waitForLoadState("networkidle");
     await expect(page.getByText("Platform Health")).toBeVisible();
     await expect(page.getByText("Status")).toBeVisible();
   });
