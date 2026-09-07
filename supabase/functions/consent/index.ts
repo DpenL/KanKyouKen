@@ -60,6 +60,49 @@ serve(withHandler(async (req, ctx) => {
     const studies = await studyRes.json();
     if (!studies || studies.length === 0) throw Errors.notFound("Study");
 
+    // Make sure the participant row exists before writing consent against it.
+    //
+    // consent_records.participant_id is NOT NULL REFERENCES participants(id), and
+    // events.participant_id references it too — but nothing else in this codebase
+    // ever inserted into public.participants. auth-register only creates a GoTrue
+    // user; the client cannot do it (participants_service_create requires the
+    // service role, and the client holds the anon key). So every real enrolment
+    // failed here with a 23503 foreign-key violation, which the error handling
+    // below turns into an opaque 500 because the message contains neither
+    // "duplicate" nor "unique".
+    //
+    // Consent is the right place for this. The participant id is minted client-side
+    // at consent time precisely so that no identifying data is collected before
+    // consent is on record, and this row carries none: an id, a flag, a timestamp.
+    // pseudonym stays NULL (the format CHECK only constrains non-null values), and
+    // user_id is linked later by auth-register if the participant creates an account.
+    //
+    // resolution=ignore-duplicates makes this idempotent, which matters: a single
+    // act of consent may be recorded against more than one study (prescreening and
+    // pilot), and the second call must find the participant already there rather
+    // than colliding on the primary key.
+    const participantRes = await fetch(
+      `${ctx.supabaseUrl}/rest/v1/participants?on_conflict=id`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": ctx.serviceKey,
+          "Authorization": `Bearer ${ctx.serviceKey}`,
+          "Prefer": "resolution=ignore-duplicates,return=minimal",
+        },
+        body: JSON.stringify({
+          id: participant_id,
+          consent_status: true,
+          consent_timestamp: new Date().toISOString(),
+        }),
+      },
+    );
+    if (!participantRes.ok) {
+      console.error("Failed to ensure participant row:", await participantRes.text());
+      throw Errors.internal();
+    }
+
     // Record IP and user-agent for IRB audit trail
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
     const userAgent = req.headers.get("user-agent") ?? "unknown";

@@ -81,7 +81,11 @@ def test_data(db_conn):
 
 @pytest.fixture
 def fresh_participant(db_conn):
-    """A participant with no consent record yet, for submit tests."""
+    """A participant with no consent record yet, for submit tests.
+
+    Note that this pre-creates the participants row, which the real enrolment
+    client does not — see `unregistered_participant` below.
+    """
     cur = db_conn.cursor()
     participant_id = uuid.uuid4()
     cur.execute("""
@@ -97,6 +101,59 @@ def fresh_participant(db_conn):
     cur = db_conn.cursor()
     cur.execute("DELETE FROM public.consent_records WHERE participant_id = %s", (participant_id,))
     cur.execute("DELETE FROM public.participants WHERE id = %s", (participant_id,))
+    db_conn.commit()
+    cur.close()
+
+
+@pytest.fixture
+def unregistered_participant(db_conn):
+    """A participant id with NO row in public.participants.
+
+    This is what the enrolment client actually sends. It mints the id at consent
+    time — deliberately, so that nothing identifying is collected before consent is
+    on record — and nothing else in the system creates the row: auth-register only
+    creates a GoTrue user, and the client cannot insert one itself because
+    participants_service_create requires the service role it does not hold.
+
+    Every other POST test in this file uses `fresh_participant`, which pre-creates
+    the row. That is precisely why a foreign-key violation on
+    consent_records.participant_id survived into a deployment: the fixture
+    satisfied a precondition the real caller never satisfies.
+    """
+    participant_id = uuid.uuid4()
+
+    yield participant_id
+
+    cur = db_conn.cursor()
+    cur.execute("DELETE FROM public.consent_records WHERE participant_id = %s", (participant_id,))
+    cur.execute("DELETE FROM public.participants WHERE id = %s", (participant_id,))
+    db_conn.commit()
+    cur.close()
+
+
+@pytest.fixture
+def second_study(db_conn, test_data):
+    """A second study in the same project.
+
+    The KN-202 deployment splits one act of consent across two studies —
+    prescreening and pilot — recorded under a single participant_id.
+    """
+    cur = db_conn.cursor()
+    study_id = uuid.uuid4()
+    cur.execute("""
+        INSERT INTO public.studies (id, name, project_id, owner_id)
+        VALUES (%s, 'Second Test Study', %s, %s)
+        RETURNING id
+    """, (study_id, test_data["project_id"], test_data["owner_id"]))
+    study_id = cur.fetchone()[0]
+    db_conn.commit()
+    cur.close()
+
+    yield study_id
+
+    cur = db_conn.cursor()
+    cur.execute("DELETE FROM public.consent_records WHERE study_id = %s", (study_id,))
+    cur.execute("DELETE FROM public.studies WHERE id = %s", (study_id,))
     db_conn.commit()
     cur.close()
 
@@ -214,6 +271,90 @@ def test_consent_submit_duplicate_returns_conflict(test_data, unauthorized_token
         headers={"Authorization": f"Bearer {unauthorized_token}"},
     )
     assert resp.status_code == 409
+
+
+@pytest.mark.integration
+@pytest.mark.usefixtures("function_runtime")
+def test_consent_submit_creates_participant(
+    test_data, unregistered_participant, db_conn, unauthorized_token, function_base_url
+):
+    """POST /consent creates the participants row for an id it has not seen.
+
+    consent_records.participant_id is NOT NULL REFERENCES participants(id), and
+    events.participant_id references it too. Without this, the first genuine
+    enrolment fails with a 23503 foreign-key violation which the function reports
+    as an opaque 500 — the driver's message contains neither "duplicate" nor
+    "unique", so the conflict branch does not catch it.
+    """
+    cur = db_conn.cursor()
+    cur.execute("SELECT 1 FROM public.participants WHERE id = %s", (unregistered_participant,))
+    assert cur.fetchone() is None, "precondition: this participant must not exist yet"
+    cur.close()
+
+    resp = requests.post(
+        f"{function_base_url}{FUNCTION_NAME}",
+        json={
+            "participant_id": str(unregistered_participant),
+            "study_id": str(test_data["study_id"]),
+            "consent_version": "v1.0",
+        },
+        headers={"Authorization": f"Bearer {unauthorized_token}"},
+    )
+    assert resp.status_code == 201, resp.text
+
+    cur = db_conn.cursor()
+    cur.execute(
+        "SELECT consent_status, consent_timestamp, user_id FROM public.participants WHERE id = %s",
+        (unregistered_participant,),
+    )
+    row = cur.fetchone()
+    cur.close()
+    assert row is not None, "consent must create the participant row it references"
+    assert row[0] is True
+    assert row[1] is not None
+    # user_id is linked later, by auth-register, and only if the participant
+    # goes on to create an account. Nothing identifying is stored here.
+    assert row[2] is None
+
+
+@pytest.mark.integration
+@pytest.mark.usefixtures("function_runtime")
+def test_consent_submit_one_participant_two_studies(
+    test_data, second_study, unregistered_participant, db_conn, unauthorized_token, function_base_url
+):
+    """One act of consent, one participant id, one consent record per study.
+
+    The second call must find the participant already there rather than colliding
+    on its primary key. If it does not, the same person becomes two participants
+    and the prescreening-to-pilot link breaks with nothing reporting it.
+    """
+    for study_id in (test_data["study_id"], second_study):
+        resp = requests.post(
+            f"{function_base_url}{FUNCTION_NAME}",
+            json={
+                "participant_id": str(unregistered_participant),
+                "study_id": str(study_id),
+                "consent_version": "v1.0",
+            },
+            headers={"Authorization": f"Bearer {unauthorized_token}"},
+        )
+        assert resp.status_code == 201, f"study {study_id}: {resp.status_code} {resp.text}"
+
+    cur = db_conn.cursor()
+    cur.execute(
+        "SELECT count(*) FROM public.participants WHERE id = %s", (unregistered_participant,)
+    )
+    assert cur.fetchone()[0] == 1, "one person, one participant row"
+    cur.execute(
+        """
+        SELECT count(*), count(DISTINCT study_id)
+        FROM public.consent_records WHERE participant_id = %s
+        """,
+        (unregistered_participant,),
+    )
+    records, studies = cur.fetchone()
+    cur.close()
+    assert (records, studies) == (2, 2), "one record per study, both under the same id"
 
 
 # ── DELETE (withdraw + cascade) ───────────────────────────────────────────────
