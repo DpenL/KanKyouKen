@@ -40,3 +40,9 @@ temp/*
 Thumbs.db
 .idea/
 .vscode/
+
+# Written by kankyouken-deploy/scripts/frontend-vm.ps1 while the frontend is pointed
+# at the VM. Normally restored on exit, but a hard kill can leave it behind - and
+# this repo is public, so it must never be committable.
+.env.local.devbackup
+.env.local.*
