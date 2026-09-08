@@ -17,7 +17,7 @@ interface HealthResponse {
 
 export function HealthWidget() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
 
   useEffect(() => {
     const supabase = createClient();
@@ -36,15 +36,31 @@ export function HealthWidget() {
         if (!r.ok) throw new Error(`${r.status}`);
         const data: HealthResponse = await r.json();
         if (!cancelled) setHealth(data);
-      } catch {
-        if (!cancelled) setFailed(true);
+      } catch (e) {
+        if (!cancelled) setFailed(e instanceof Error ? e.message : String(e));
       }
     })();
 
     return () => { cancelled = true; };
   }, []);
 
-  if (failed) return null;
+  if (failed) {
+    return (
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium">Platform Health</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-6 text-sm">
+          <div className="flex items-center gap-2">
+            <span className="text-muted-foreground">Status</span>
+            <Badge variant="destructive" title={`Health check failed: ${failed}`}>
+              unavailable
+            </Badge>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (!health) {
     return <Skeleton className="h-16 w-full rounded-lg" />;
