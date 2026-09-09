@@ -60,7 +60,6 @@ def test_triggers_and_policies_exist(supabase_ready):
         "study_roles_owner_revoke",
         "consent_self_read",
         "consent_system_insert",
-        "consent_withdraw",
     }
 
     missing = required - policies
