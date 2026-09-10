@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { withHandler } from "../_lib/middleware.ts";
 import { Errors } from "../_lib/errors.ts";
 import { callRpc } from "../_lib/rpc.ts";
+import { verifyJwt } from "../_lib/auth.ts";
 
 /**
  * Query Events
@@ -35,8 +36,14 @@ serve(withHandler(async (req, ctx) => {
   const offset = parseInt(params.get("offset") || "0");
 
   // Access check
-  if (ctx.claims) {
-    const uid = ctx.claims.sub as string;
+  // A valid anon JWT verifies but carries no `sub`, so it is rejected too.
+  const claims = ctx.claims ?? await verifyJwt(
+    (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, ""),
+  );
+  const uid = claims?.sub as string | undefined;
+  if (!uid) throw Errors.unauthorized("A user access token is required");
+
+  {
     const rpcFn = study_id ? "has_study_access" : "has_project_access";
     const rpcArgs = study_id
       ? { uid, stud_id: study_id }
