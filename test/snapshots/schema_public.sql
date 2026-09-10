@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict Rh9AI5L9tRaLMph4NHxOyrIZghVEyEBey4BimdHDdgjVWcyazy76AVXgA23iV2h
+\restrict iDwJlKQG2buidyfxGoozZdc6MWgLFwZ22pvpoKEdwRV6dOVGwajSnhnPc4gd5Pg
 
 -- Dumped from database version 17.6
 -- Dumped by pg_dump version 17.6
@@ -598,6 +598,7 @@ CREATE TABLE public.pipeline_scripts (
     enabled boolean DEFAULT true,
     created_at timestamp with time zone DEFAULT now(),
     updated_at timestamp with time zone DEFAULT now(),
+    last_run_at timestamp with time zone,
     CONSTRAINT pipeline_scripts_script_type_check CHECK ((script_type = ANY (ARRAY['analytics'::text, 'ml'::text, 'visualization'::text])))
 );
 
@@ -1433,13 +1434,6 @@ CREATE POLICY consent_templates_service_write ON public.consent_templates USING 
 
 
 --
--- Name: consent_records consent_withdraw; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY consent_withdraw ON public.consent_records FOR UPDATE USING ((consent_status = 'granted'::text)) WITH CHECK ((consent_status = 'withdrawn'::text));
-
-
---
 -- Name: event_schemas; Type: ROW SECURITY; Schema: public; Owner: -
 --
 
@@ -1520,13 +1514,6 @@ CREATE POLICY pipeline_scripts_read ON public.pipeline_scripts FOR SELECT USING 
 
 
 --
--- Name: pipeline_scripts pipeline_scripts_service_read; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY pipeline_scripts_service_read ON public.pipeline_scripts FOR SELECT USING (true);
-
-
---
 -- Name: projects; Type: ROW SECURITY; Schema: public; Owner: -
 --
 
@@ -1576,10 +1563,10 @@ CREATE POLICY script_outputs_read ON public.script_outputs FOR SELECT USING ((EX
 
 
 --
--- Name: script_outputs script_outputs_write; Type: POLICY; Schema: public; Owner: -
+-- Name: script_outputs script_outputs_researcher_read; Type: POLICY; Schema: public; Owner: -
 --
 
-CREATE POLICY script_outputs_write ON public.script_outputs USING (true) WITH CHECK (true);
+CREATE POLICY script_outputs_researcher_read ON public.script_outputs FOR SELECT USING (public.has_study_access(auth.uid(), study_id));
 
 
 --
@@ -1766,5 +1753,5 @@ CREATE POLICY study_script_config_write ON public.study_script_config USING ((EX
 -- PostgreSQL database dump complete
 --
 
-\unrestrict Rh9AI5L9tRaLMph4NHxOyrIZghVEyEBey4BimdHDdgjVWcyazy76AVXgA23iV2h
+\unrestrict iDwJlKQG2buidyfxGoozZdc6MWgLFwZ22pvpoKEdwRV6dOVGwajSnhnPc4gd5Pg
 

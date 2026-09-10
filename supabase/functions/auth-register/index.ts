@@ -66,18 +66,6 @@ serve(withHandler(async (req, ctx) => {
   const user = await createRes.json();
 
   // Link the account to the participant row that consent created.
-  //
-  // participants.user_id is the only queryable tie between a person's account and
-  // their data. Without it that link exists solely inside GoTrue's user_metadata,
-  // in a schema no join reaches and no data export carries — which matters when a
-  // participant's records have to be produced or erased on request, and when a
-  // deployment is migrated with participants intact. The enrolment client already
-  // sends metadata.participant_id for exactly this purpose.
-  //
-  // Best-effort on purpose. By this point the account exists and works; failing
-  // registration over a link that can be backfilled would strand a participant
-  // mid-enrolment. On failure the id is still in user_metadata, so the row can be
-  // repaired later from the log line below.
   const participantId = (metadata as Record<string, unknown> | undefined)?.participant_id;
   if (typeof participantId === "string" && participantId.length > 0) {
     try {

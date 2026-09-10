@@ -5,8 +5,6 @@
  * middleware.ts can map them to the correct HTTP status codes:
  *   - Missing JWT_SECRET           → 500 Internal Server Error
  *   - Invalid/expired token        → 401 Unauthorized
- *
- * This replaces the previous behaviour where any failure became a 500.
  */
 
 import { jwtVerify, type JWTPayload } from "https://deno.land/x/jose@v4.13.1/jwt/verify.ts";
