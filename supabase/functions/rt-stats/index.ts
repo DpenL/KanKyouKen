@@ -105,15 +105,16 @@ serve(async (req: Request) => {
       (new Date(lastEvent.ts).getTime() - new Date(firstEvent.ts).getTime()) / 86_400_000,
     );
 
-    // RT stats from events that carry response_time_ms in payload
+    // Response time, under either field name. The study clients emit `latency_ms`;
+    // `response_time_ms` is kept for anything that already used it. TODO refactor
     const responseTimes = events
-      .filter(
-        (e) =>
-          e.payload &&
-          typeof e.payload === "object" &&
-          typeof (e.payload as Record<string, unknown>).response_time_ms === "number",
-      )
-      .map((e) => (e.payload as Record<string, unknown>).response_time_ms as number);
+      .map((e) => {
+        if (!e.payload || typeof e.payload !== "object") return null;
+        const p = e.payload as Record<string, unknown>;
+        const rt = typeof p.latency_ms === "number" ? p.latency_ms : p.response_time_ms;
+        return typeof rt === "number" && Number.isFinite(rt) && rt >= 0 ? rt : null;
+      })
+      .filter((rt): rt is number => rt !== null);
 
     const rtStats = computeRTStats(responseTimes);
 
