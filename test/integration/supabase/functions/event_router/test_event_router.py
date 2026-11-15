@@ -434,3 +434,69 @@ def test_router_per_study_override_disables_globally_enabled_script(
     assert data["scripts_triggered"] == 0, (
         "Per-study override (enabled=False) should suppress a globally-enabled script"
     )
+
+
+@pytest.mark.integration
+@pytest.mark.usefixtures("function_runtime")
+@pytest.mark.parametrize(
+    "globally_enabled, override_enabled",
+    [
+        (True, False),   # study A switches a default-on script off
+        (False, True),   # study A switches a default-off script on
+    ],
+)
+def test_router_per_study_override_does_not_apply_to_other_studies(
+    function_base_url, jwt_token, db_conn, authenticated_user_with_study,
+    globally_enabled, override_enabled,
+):
+    """A study_script_config override only affects events of the study it belongs to."""
+    auth = authenticated_user_with_study
+    study_a = uuid.UUID(auth["study_id"])
+    participant_id = uuid.UUID(auth["participant_id"])
+
+    # A second study that has no override of its own
+    study_b = uuid.uuid4()
+    cur = db_conn.cursor()
+    cur.execute(
+        "INSERT INTO public.studies (id, name, project_id, owner_id) VALUES (%s, 'Other Study', %s, %s)",
+        (study_b, uuid.UUID(auth["project_id"]), uuid.UUID(auth["user_id"])),
+    )
+    script_id = _register_script(
+        cur,
+        name="rt-stats-override-scope",
+        endpoint_url=RT_STATS_ENDPOINT,
+        trigger_tables=["events"],
+        study_id=None,
+        enabled=globally_enabled,
+    )
+    cur.execute(
+        """
+        INSERT INTO public.study_script_config (study_id, script_id, enabled)
+        VALUES (%s, %s, %s)
+        """,
+        (study_a, script_id, override_enabled),
+    )
+    db_conn.commit()
+
+    def triggered_for(study_id):
+        payload = _webhook_payload(
+            table="events",
+            record={
+                "id": str(uuid.uuid4()),
+                "study_id": str(study_id),
+                "participant_id": str(participant_id),
+                "event_type": "answer_submitted",
+                "ts": "2026-11-14T10:00:00Z",
+            },
+        )
+        resp = _call_event_router(function_base_url, jwt_token, payload)
+        assert resp.status_code == 200, resp.text
+        return resp.json()["scripts_triggered"]
+
+    assert triggered_for(study_a) == (1 if override_enabled else 0), (
+        "Study A's own override should decide for study A"
+    )
+    assert triggered_for(study_b) == (1 if globally_enabled else 0), (
+        "Study B has no override, so the global default applies; "
+        "study A's override must not leak into it"
+    )

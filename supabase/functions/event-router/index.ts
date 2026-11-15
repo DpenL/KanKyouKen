@@ -64,10 +64,20 @@ serve(async (req: Request) => {
       .select("*, study_script_config!left(enabled)")
       .contains("trigger_tables", [table]);
 
+    // Only this study's override rows are embedded. Without the filter on the
+    // embedded table every study's rows come back and another study's toggle
+    // would decide whether the script runs here. The join stays a LEFT join, so
+    // scripts with no override are still returned.
     if (studyId) {
-      query = query.or(`study_id.is.null,study_id.eq.${studyId}`);
+      query = query
+        .or(`study_id.is.null,study_id.eq.${studyId}`)
+        .eq("study_script_config.study_id", studyId);
     } else {
-      query = query.is("study_id", null);
+      // No study on the record: global scripts only, and no override can apply
+      // (study_script_config.study_id is NOT NULL, so this embeds nothing).
+      query = query
+        .is("study_id", null)
+        .is("study_script_config.study_id", null);
     }
 
     const { data: rawScripts, error } = await query;
