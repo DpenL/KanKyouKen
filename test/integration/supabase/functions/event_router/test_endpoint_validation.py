@@ -296,6 +296,11 @@ def test_router_rejects_study_id_that_is_not_a_uuid(
         {"type": "INSERT", "table": "events", "schema": "public"},
         {"type": "INSERT", "table": "events", "schema": "public", "record": "not-an-object"},
         {"type": "INSERT", "schema": "public", "record": {"study_id": None}},
+        # table goes into an array filter: "" would match every script, and a
+        # comma-separated value would be read as several tables
+        {"type": "INSERT", "table": "", "schema": "public", "record": {"study_id": None}},
+        {"type": "INSERT", "table": "events,script_outputs", "schema": "public", "record": {"study_id": None}},
+        {"type": "INSERT", "table": "events", "schema": "public", "record": ["not", "an", "object"]},
     ],
 )
 def test_router_rejects_malformed_payload(function_base_url, jwt_token, payload):

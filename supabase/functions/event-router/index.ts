@@ -38,7 +38,12 @@ serve(async (req: Request) => {
     const table = payload?.table;
     const record = payload?.record;
 
-    if (typeof table !== "string" || !record || typeof record !== "object") {
+    // `table` must be a plain identifier. It ends up in a PostgREST array filter,
+    // where "" would match every script and "a,b" would be read as two tables.
+    if (
+      typeof table !== "string" || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(table) ||
+      !record || typeof record !== "object" || Array.isArray(record)
+    ) {
       return new Response(JSON.stringify({ error: "Invalid webhook payload" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
@@ -94,7 +99,7 @@ serve(async (req: Request) => {
     }
 
     if (!scripts.length) {
-      return new Response(JSON.stringify({ scripts_triggered: 0 }), {
+      return new Response(JSON.stringify({ scripts_triggered: 0, scripts_rejected: 0 }), {
         headers: { "Content-Type": "application/json" },
       });
     }
@@ -121,7 +126,7 @@ serve(async (req: Request) => {
         if (!url) {
           rejected++;
           console.error(
-            `event-router: not dispatching script ${script.id} (${script.name}): ` +
+            `event-router: not dispatching script ${script.id} (${JSON.stringify(script.name)}): ` +
               "endpoint_url is not a /functions/v1/<function-name> path",
           );
           return { script_id: script.id, name: script.name, skipped: "invalid_endpoint_url" };

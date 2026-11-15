@@ -42,9 +42,16 @@ export function resolveScriptEndpoint(supabaseUrl: string, endpointUrl: unknown)
 
   let base: URL;
   let resolved: URL;
+  let expectedPath: string;
   try {
     base = new URL(supabaseUrl);
-    resolved = new URL(endpointUrl, base);
+    // Keep a path prefix if SUPABASE_URL has one (self-hosted behind a sub-path),
+    // as plain concatenation used to.
+    expectedPath = base.pathname.replace(/\/+$/, "") + endpointUrl;
+    // Start from the origin and set only the path, so nothing in the path can be
+    // re-read as a host.
+    resolved = new URL(base.origin);
+    resolved.pathname = expectedPath;
   } catch {
     return null;
   }
@@ -52,7 +59,7 @@ export function resolveScriptEndpoint(supabaseUrl: string, endpointUrl: unknown)
   // The pattern already rules these out. Checked again on the parsed URL so the
   // guarantee does not rest on the regex alone.
   if (resolved.origin !== base.origin) return null;
-  if (resolved.pathname !== endpointUrl) return null;
+  if (resolved.pathname !== expectedPath) return null;
   if (resolved.username || resolved.password || resolved.search || resolved.hash) return null;
 
   return resolved;
