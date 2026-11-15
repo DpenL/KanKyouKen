@@ -126,6 +126,33 @@ test.describe.serial("Pipeline script management", () => {
     ).toBeVisible();
   });
 
+  test("add script dialog rejects an endpoint that is not an Edge Function path", async ({ page }) => {
+    await page.goto("/login");
+    await page.getByLabel("Email").fill(email);
+    await page.getByLabel("Password").fill(password);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await page.waitForURL("/dashboard");
+
+    await page.goto(`${studyUrl}/settings/pipeline`);
+    await page.getByRole("button", { name: "+ Add script" }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+
+    // The event-router sends the service-role key to this endpoint, so only
+    // /functions/v1/<name> is accepted. Server-side enforcement is covered in
+    // pipeline-authz.spec.ts; this is the form's own feedback.
+    for (const endpoint of ["https://example.com/my-script", "/rest/v1/events"]) {
+      await page.getByLabel("Name").fill("external-script");
+      await page.getByLabel("Endpoint URL").fill(endpoint);
+      await page.getByRole("button", { name: "Save" }).click();
+
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await expect(page.getByText("Invalid endpoint URL.", { exact: false })).toBeVisible();
+    }
+
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await expect(page.getByText("external-script", { exact: true })).not.toBeVisible();
+  });
+
   test("add script dialog rejects invalid config JSON", async ({ page }) => {
     await page.goto("/login");
     await page.getByLabel("Email").fill(email);

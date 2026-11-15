@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { type ScriptFormData } from "./actions";
+import { ENDPOINT_PATH_HINT, isValidEndpointPath } from "@/lib/pipeline/endpoint";
 
 const TRIGGER_TABLE_OPTIONS = ["events", "script_outputs", "sessions"];
 const WRITES_TO_OPTIONS = ["script_outputs", "study_metrics", "session_metrics"];
@@ -91,11 +92,17 @@ export function ScriptFormDialog({ open, onOpenChange, title, initial, onSubmit 
       setError("Name and Endpoint URL are required.");
       return;
     }
+    // Convenience only: the server action and the event-router both enforce this.
+    const endpointUrl = form.endpointUrl.trim();
+    if (!isValidEndpointPath(endpointUrl)) {
+      setError(`Invalid endpoint URL. ${ENDPOINT_PATH_HINT}`);
+      return;
+    }
     if (configError) return;
     setError(null);
 
     startTransition(async () => {
-      const result = await onSubmit(form);
+      const result = await onSubmit({ ...form, endpointUrl });
       if (result.error) {
         setError(result.error);
       } else {
@@ -157,7 +164,8 @@ export function ScriptFormDialog({ open, onOpenChange, title, initial, onSubmit 
               placeholder="/functions/v1/my-script"
             />
             <p className="text-xs text-muted-foreground">
-              Relative paths are resolved against your Supabase URL.
+              An Edge Function of this project, as <code className="font-mono">/functions/v1/&lt;name&gt;</code>.
+              External URLs are not accepted.
             </p>
           </div>
 

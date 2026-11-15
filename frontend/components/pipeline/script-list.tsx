@@ -56,13 +56,20 @@ export function ScriptList({ studyId, builtinScripts, customScripts: initialCust
   const [customScripts, setCustomScripts] = useState<CustomScript[]>(initialCustom);
   const [addOpen, setAddOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<CustomScript | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [_isPending, startTransition] = useTransition();
 
   function handleToggle(scriptId: string, enabled: boolean) {
+    setActionError(null);
     setToggleStates((prev) => ({ ...prev, [scriptId]: enabled }));
     setPending((prev) => ({ ...prev, [scriptId]: true }));
     startTransition(async () => {
-      await setScriptEnabled(studyId, scriptId, enabled);
+      const result = await setScriptEnabled(studyId, scriptId, enabled);
+      if (result.error) {
+        // The server refused (e.g. not a supervisor): put the switch back.
+        setToggleStates((prev) => ({ ...prev, [scriptId]: !enabled }));
+        setActionError(result.error);
+      }
       setPending((prev) => ({ ...prev, [scriptId]: false }));
     });
   }
@@ -73,8 +80,8 @@ export function ScriptList({ studyId, builtinScripts, customScripts: initialCust
       setCustomScripts((prev) => [
         ...prev,
         {
-          id: crypto.randomUUID(),
-          name: data.name,
+          id: result.id ?? crypto.randomUUID(),
+          name: data.name.trim(),
           description: data.description || null,
           script_type: data.scriptType,
           endpoint_url: data.endpointUrl,
@@ -92,7 +99,7 @@ export function ScriptList({ studyId, builtinScripts, customScripts: initialCust
   }
 
   async function handleUpdate(scriptId: string, data: ScriptFormData) {
-    const result = await updateScript(scriptId, data);
+    const result = await updateScript(studyId, scriptId, data);
     if (!result.error) {
       setCustomScripts((prev) =>
         prev.map((s) =>
@@ -100,7 +107,7 @@ export function ScriptList({ studyId, builtinScripts, customScripts: initialCust
             ? s
             : {
                 ...s,
-                name: data.name,
+                name: data.name.trim(),
                 description: data.description || null,
                 script_type: data.scriptType,
                 endpoint_url: data.endpointUrl,
@@ -120,12 +127,23 @@ export function ScriptList({ studyId, builtinScripts, customScripts: initialCust
   }
 
   async function handleDelete(scriptId: string) {
-    await deleteScript(scriptId);
+    setActionError(null);
+    const result = await deleteScript(studyId, scriptId);
+    if (result.error) {
+      setActionError(result.error);
+      return;
+    }
     setCustomScripts((prev) => prev.filter((s) => s.id !== scriptId));
   }
 
   return (
     <div className="space-y-6">
+      {actionError && (
+        <p role="alert" className="text-sm text-destructive">
+          {actionError}
+        </p>
+      )}
+
       {/* Built-in scripts */}
       <div className="space-y-3">
         <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
