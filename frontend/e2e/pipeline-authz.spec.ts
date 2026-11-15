@@ -157,35 +157,44 @@ test.describe.serial("Pipeline and consent actions: authorization", () => {
     }
   }
 
+  // These read the database to decide whether an attack worked. A failed read
+  // must fail the test, not look like "no rows".
   async function scriptRow(id: string) {
-    const { data } = await serviceClient()
+    const { data, error } = await serviceClient()
       .from("pipeline_scripts")
       .select("id, study_id, name, endpoint_url")
       .eq("id", id)
       .maybeSingle();
+    if (error) throw new Error(`scriptRow failed: ${error.message}`);
     return data;
   }
 
   async function scriptsNamed(name: string) {
-    const { data } = await serviceClient().from("pipeline_scripts").select("id, study_id").eq("name", name);
+    const { data, error } = await serviceClient()
+      .from("pipeline_scripts")
+      .select("id, study_id")
+      .eq("name", name);
+    if (error) throw new Error(`scriptsNamed failed: ${error.message}`);
     return data ?? [];
   }
 
   async function overrides(studyId: string, scriptId: string) {
-    const { data } = await serviceClient()
+    const { data, error } = await serviceClient()
       .from("study_script_config")
       .select("enabled")
       .eq("study_id", studyId)
       .eq("script_id", scriptId);
+    if (error) throw new Error(`overrides failed: ${error.message}`);
     return data ?? [];
   }
 
   async function consentConfig(studyId: string) {
-    const { data } = await serviceClient()
+    const { data, error } = await serviceClient()
       .from("study_consent_config")
       .select("custom_content_md")
       .eq("study_id", studyId)
       .maybeSingle();
+    if (error) throw new Error(`consentConfig failed: ${error.message}`);
     return data;
   }
 
@@ -285,7 +294,9 @@ test.describe.serial("Pipeline and consent actions: authorization", () => {
     const supabase = serviceClient();
     await outsider?.context?.close();
     await researcher?.context?.close();
-    if (globalScriptId) await supabase.from("pipeline_scripts").delete().eq("id", globalScriptId);
+    // Global rows are not removed with the projects below. Besides the stand-in,
+    // this catches anything a failing test managed to create as a global row.
+    await supabase.from("pipeline_scripts").delete().is("study_id", null).like("name", `authz-%-${ts}%`);
     for (const study of [V, O]) {
       if (study) await supabase.from("projects").delete().eq("id", study.projectId);
     }
@@ -315,6 +326,25 @@ test.describe.serial("Pipeline and consent actions: authorization", () => {
     const name = `authz-outsider-create-${ts}`;
     await callAction(outsider, pipelineUrl(O), "createScript", [V.studyId, scriptForm(name)]);
     expect(await scriptsNamed(name)).toHaveLength(0);
+  });
+
+  test("a script cannot be created without a study (no new global rows)", async () => {
+    const name = `authz-global-create-${ts}`;
+
+    // null / empty / missing study id, and the form passed where the id belongs.
+    await callAction(outsider, pipelineUrl(O), "createScript", [null, scriptForm(name)]);
+    await callAction(outsider, pipelineUrl(O), "createScript", ["", scriptForm(name)]);
+    await callAction(outsider, pipelineUrl(O), "createScript", [scriptForm(name)]);
+    await callAction(outsider, pipelineUrl(O), "createScript", [
+      O.studyId,
+      { ...scriptForm(name), study_id: null },
+    ]);
+
+    const rows = await scriptsNamed(name);
+    // The last call is a valid create on the caller's own study; the smuggled
+    // study_id must be ignored. Nothing may have landed as a global row.
+    expect(rows.filter((r) => r.study_id === null)).toHaveLength(0);
+    expect(rows.map((r) => r.study_id)).toEqual([O.studyId]);
   });
 
   test("a user with no role on a study cannot update or delete its scripts", async () => {
@@ -353,9 +383,12 @@ test.describe.serial("Pipeline and consent actions: authorization", () => {
     await callAction(outsider, pipelineUrl(O), "setScriptEnabled", [O.studyId, victimScriptId, false]);
     expect(await overrides(O.studyId, victimScriptId)).toHaveLength(0);
 
-    // Their study and a global script: allowed.
+    // Their study and a global script: allowed. Written as true then false, so the
+    // final state cannot be left over from the switch clicked during setup.
     await callAction(outsider, pipelineUrl(O), "setScriptEnabled", [O.studyId, globalScriptId, true]);
     expect(await overrides(O.studyId, globalScriptId)).toEqual([{ enabled: true }]);
+    await callAction(outsider, pipelineUrl(O), "setScriptEnabled", [O.studyId, globalScriptId, false]);
+    expect(await overrides(O.studyId, globalScriptId)).toEqual([{ enabled: false }]);
   });
 
   test("a user with no role on a study cannot write its consent config", async () => {
@@ -392,6 +425,10 @@ test.describe.serial("Pipeline and consent actions: authorization", () => {
     expect(await consentConfig(V.studyId)).toBeNull();
   });
 
+  // This one also passed before the actions checked anything: proxy.ts redirects a
+  // session-less request before an action can run, including when it is posted to
+  // a public route and forwarded. It pins that behaviour; the actions' own
+  // "Not authenticated" branch is a second line that HTTP cannot reach today.
   test("without a session the actions do nothing", async () => {
     const name = `authz-anonymous-create-${ts}`;
 

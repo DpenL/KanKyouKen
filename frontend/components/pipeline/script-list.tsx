@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScriptFormDialog } from "./script-form-dialog";
+import { isValidEndpointPath } from "@/lib/pipeline/endpoint";
 import {
   setScriptEnabled,
   createScript,
@@ -210,7 +211,7 @@ export function ScriptList({ studyId, builtinScripts, customScripts: initialCust
 
         {customScripts.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No custom scripts yet. Add one to hook in your own analytics or ML endpoint.
+            No custom scripts yet. Add one to run your own analytics or ML Edge Function.
           </p>
         ) : (
           customScripts.map((script) => (
@@ -243,6 +244,12 @@ export function ScriptList({ studyId, builtinScripts, customScripts: initialCust
                   <p className="text-xs font-mono text-muted-foreground truncate max-w-xs">
                     {script.endpoint_url}
                   </p>
+                  {!isValidEndpointPath(script.endpoint_url) && (
+                    <p className="text-xs text-destructive">
+                      Not running: the endpoint is not an Edge Function path of this project.
+                      Edit it to <code className="font-mono">/functions/v1/&lt;name&gt;</code>.
+                    </p>
+                  )}
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <Button size="sm" variant="ghost" onClick={() => setEditTarget(script)}>

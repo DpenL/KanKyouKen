@@ -80,6 +80,10 @@ export function ScriptFormDialog({ open, onOpenChange, title, initial, onSubmit 
     }
     try {
       const parsed = JSON.parse(text);
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        setConfigError("Config must be a JSON object");
+        return;
+      }
       set("config", parsed);
       setConfigError(null);
     } catch {

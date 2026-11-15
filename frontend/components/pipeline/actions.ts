@@ -66,7 +66,10 @@ function toScriptRow(
 
   const eventTypes = isStringArray(data.triggerEventTypes) ? data.triggerEventTypes : [];
   const outputTypes = isStringArray(data.triggerOutputTypes) ? data.triggerOutputTypes : [];
-  const config = isPlainObject(data.config) ? data.config : {};
+  if (data.config != null && !isPlainObject(data.config)) {
+    return { error: "Config must be a JSON object." };
+  }
+  const config = data.config ?? {};
 
   return {
     row: {
@@ -178,7 +181,8 @@ export async function setScriptEnabled(
 ): Promise<{ error?: string }> {
   const access = await requireStudyRole(studyId, MANAGE_ROLE);
   if (!access.ok) return { error: access.error };
-  if (!isUuid(scriptId) || typeof enabled !== "boolean") return { error: NOT_FOUND };
+  if (!isUuid(scriptId)) return { error: NOT_FOUND };
+  if (typeof enabled !== "boolean") return { error: "Invalid request." };
 
   const service = createServiceClient();
 
