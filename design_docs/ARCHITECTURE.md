@@ -162,6 +162,43 @@ Game Client → JWT Auth → Edge Function → Validation → Postgres (RLS) →
 3. **Offline**: Queue events locally, retry on connection
 4. **SDK**: Optional - reusable client library (Phase 4+)
 
+### Adding a Pipeline Script
+
+A pipeline script is an Edge Function that the `event-router` function calls when a
+row is inserted into a table it has registered for. The registry is the
+`pipeline_scripts` table.
+
+1. **Function**: Deploy an Edge Function in this project. It receives
+   `{ trigger, record, study_id, script_config }` and writes its results to
+   `study_metrics`, `session_metrics` or `script_outputs`.
+2. **Register**: Platform built-ins are global rows (`study_id IS NULL`) added by
+   migration. Study-specific scripts are added on the study's pipeline settings
+   page in the dashboard (`.../studies/<id>/settings/pipeline`).
+3. **Endpoint**: `endpoint_url` must be exactly `/functions/v1/<function-name>`.
+   Absolute URLs, other API prefixes (`/rest/v1`, `/auth/v1`, ...), sub-paths and
+   query strings are rejected.
+4. **Enable**: A study switches a global script on or off for itself through
+   `study_script_config`; with no row there, `pipeline_scripts.enabled` applies.
+   An override only affects the study it belongs to.
+
+**Who can change what**
+
+- Managing a study's scripts, its script toggles and its consent form requires the
+  `supervisor` or `owner` role on that study. The dashboard's Server Actions check
+  this themselves (`frontend/lib/auth/study-access.ts`), because they write with the
+  service-role client and RLS does not apply to it.
+- Global rows cannot be created, edited or deleted from the dashboard.
+
+**Why the endpoint is restricted**
+
+The router calls each script with `Authorization: Bearer <service-role key>`, and
+that key bypasses RLS on every table. The router therefore validates `endpoint_url`
+on every dispatch (`supabase/functions/_lib/pipeline.ts`), independently of the
+check made when a script is saved: a row with any other value is skipped and
+reported as `skipped: "invalid_endpoint_url"` in the router's response, and no
+request is made for it. Calling a service outside the project from a script is
+done from inside the script's own function, with credentials meant for that service.
+
 ---
 
 ## Design Rationale
@@ -246,6 +283,10 @@ Game Client → JWT Auth → Edge Function → Validation → Postgres (RLS) →
 - Never commit secrets (`.env` gitignored)
 - JWT secrets managed via Supabase dashboard or environment
 - RLS policies enforced at database level
+- Code that uses the service-role key bypasses RLS and must do its own authorization:
+  dashboard Server Actions call `requireStudyRole()` before `createServiceClient()`
+- The service-role key is only ever sent to this project's own Edge Functions
+  (see *Adding a Pipeline Script*)
 
 ### Research Ethics
 - Pseudonymization by default
