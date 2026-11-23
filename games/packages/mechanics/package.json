@@ -1,0 +1,22 @@
+{
+  "name": "@kankyouken/mechanics",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Engine-agnostic mechanics for character-learning games: glyph model, stroke judging, melodic signatures, scaffolding, component play, telemetry",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./glyph": "./src/glyph/index.ts",
+    "./stroke": "./src/stroke/index.ts",
+    "./melody": "./src/melody/index.ts",
+    "./scaffold": "./src/scaffold/index.ts",
+    "./components": "./src/components/index.ts",
+    "./telemetry": "./src/telemetry/index.ts",
+    "./util": "./src/util/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

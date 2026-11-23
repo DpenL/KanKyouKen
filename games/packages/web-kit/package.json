@@ -1,0 +1,22 @@
+{
+  "name": "@kankyouken/web-kit",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Browser adapters for @kankyouken/mechanics: Web Audio voices, pointer capture, SVG glyph rendering, KanKyouKen event sink",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./audio": "./src/audio/index.ts",
+    "./input": "./src/input/index.ts",
+    "./render": "./src/render/index.ts",
+    "./telemetry": "./src/telemetry/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@kankyouken/mechanics": "0.1.0"
+  }
+}
