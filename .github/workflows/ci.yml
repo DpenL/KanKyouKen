@@ -29,3 +29,5 @@ jobs:
     uses: ./.github/workflows/frontend.yml
     secrets: inherit
 
+  games:
+    uses: ./.github/workflows/games.yml
