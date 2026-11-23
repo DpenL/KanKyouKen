@@ -225,8 +225,9 @@ export interface DotTraceStep {
 
 /**
  * Order and direction recovered from a free dot-tracing log, per stroke.
- * A stroke's position is the rank of its first touch; its direction is "forward" when
- * the start-side dots were touched before the end-side dots.
+ * A stroke's position is the rank of the moment most of its touches were in (stray
+ * early touches from a pen crossing it are ignored); its direction is "forward" when
+ * most moves between consecutive touches go towards later dots.
  */
 export interface DotCoverageScore {
   readonly strokeCount: number;
