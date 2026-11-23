@@ -86,13 +86,26 @@ function measure(
   };
 }
 
-function fits(metrics: MatchMetrics, options: MatchOptions): boolean {
+/**
+ * Reference strokes shorter than this fraction of the glyph get a proportionally wider
+ * shape tolerance. Shape is judged after scaling to unit length, so the same wobble of
+ * the hand counts for far more on a short stroke; without this, short strokes and dots
+ * are rejected for jitter no player can avoid. Position tests are unaffected.
+ */
+export const SHORT_STROKE_LENGTH = 0.15;
+
+/** Factor by which the shape tolerance grows for a reference of the given length (fraction of glyph size). */
+function shapeSlack(referenceLength: number): number {
+  return referenceLength > 0 ? Math.max(1, SHORT_STROKE_LENGTH / referenceLength) : 1;
+}
+
+function fits(metrics: MatchMetrics, options: MatchOptions, slack: number): boolean {
   const lenient = options.leniency;
   return (
     metrics.startDistance <= options.endpointTolerance * lenient &&
     metrics.endDistance <= options.endpointTolerance * lenient &&
     metrics.averageDistance <= options.averageDistanceTolerance * lenient &&
-    metrics.shapeDistance <= options.shapeTolerance * lenient &&
+    metrics.shapeDistance <= options.shapeTolerance * lenient * slack &&
     metrics.lengthRatio >= options.minLengthRatio / lenient
   );
 }
@@ -103,14 +116,14 @@ function errorRatio(value: number, limit: number): number {
   return value > 0 ? MAX_ERROR_RATIO : 0;
 }
 
-function closeness(metrics: MatchMetrics, options: MatchOptions): number {
+function closeness(metrics: MatchMetrics, options: MatchOptions, slack: number): number {
   const lenient = options.leniency;
   const weights = MATCH_SCORE_WEIGHTS;
   const endpointError = Math.max(metrics.startDistance, metrics.endDistance);
   const error =
     weights.averageDistance * errorRatio(metrics.averageDistance, options.averageDistanceTolerance * lenient) +
     weights.endpoints * errorRatio(endpointError, options.endpointTolerance * lenient) +
-    weights.shape * errorRatio(metrics.shapeDistance, options.shapeTolerance * lenient);
+    weights.shape * errorRatio(metrics.shapeDistance, options.shapeTolerance * lenient * slack);
   const requiredLength = options.minLengthRatio / lenient;
   const lengthFactor = requiredLength > 0 ? Math.min(1, metrics.lengthRatio / requiredLength) : 1;
   return clamp((1 - error) * lengthFactor, 0, 1);
@@ -132,6 +145,7 @@ function closeness(metrics: MatchMetrics, options: MatchOptions): number {
  *    exactly on every tolerance scores 0, a perfect trace scores 1. The score is not
  *    zeroed when `onStroke` is false; callers that rank candidates decide that.
  *  - `metrics` always describe the stroke as drawn, never the flipped one.
+ *  - Short reference strokes get a wider shape tolerance (see `SHORT_STROKE_LENGTH`).
  *
  * Edge cases:
  *  - Pen positions with non-finite coordinates are ignored.
@@ -175,15 +189,16 @@ export function matchStroke(
   }
   const backward = measure(reversed(line), target, size, averageDistance, lengthRatio);
 
-  const fitsForward = fits(forward, resolved);
-  const fitsBackward = fits(backward, resolved);
+  const slack = shapeSlack(referenceLength / size);
+  const fitsForward = fits(forward, resolved, slack);
+  const fitsBackward = fits(backward, resolved, slack);
   const onStroke = fitsForward || fitsBackward;
   const directionOk = fitsForward && (!fitsBackward || forward.directionCosine >= resolved.minDirectionCosine);
   return {
     onStroke,
     directionOk,
     matched: onStroke && directionOk,
-    score: Math.max(closeness(forward, resolved), closeness(backward, resolved)),
+    score: Math.max(closeness(forward, resolved, slack), closeness(backward, resolved, slack)),
     metrics: forward,
   };
 }

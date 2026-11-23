@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { decodeGlyph, decodeGlyphSet, encodeGlyph, GlyphFormatError } from "./codec";
 import { fixture, FIXTURE_SET } from "./fixtures";
 import {
+  collectUnitComponents,
   extractStrokes,
   findComponents,
   segmentUnits,
@@ -113,6 +114,11 @@ describe("component tree helpers", () => {
     ]);
     const none = segmentUnits(fixture("古"), { alphabet: new Set(["水"]) });
     expect(none.map((u) => [u.component, u.strokes])).toEqual([["古", [0, 1, 2, 3, 4]]]);
+  });
+
+  it("collects the unit vocabulary of a set", () => {
+    const units = collectUnitComponents([fixture("胡"), fixture("沐"), fixture("困")]);
+    expect([...units].sort()).toEqual(["十", "口", "囗", "月", "木", "氵"].sort());
   });
 
   it("extracts a component as a glyph of its own", () => {

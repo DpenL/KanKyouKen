@@ -152,6 +152,20 @@ export function segmentUnits(glyph: Glyph, options: SegmentOptions = {}): GlyphU
   return units.map(({ component, nodeIds, strokes, offset }) => ({ component, nodeIds, strokes, offset }));
 }
 
+/**
+ * Every component that occurs as a unit in at least one of the given glyphs
+ * (see `segmentUnits`): the vocabulary of parts a character set is built from.
+ */
+export function collectUnitComponents(glyphs: Iterable<Glyph>, options: SegmentOptions = {}): Set<string> {
+  const out = new Set<string>();
+  for (const glyph of glyphs) {
+    for (const unit of segmentUnits(glyph, options)) {
+      if (unit.component !== null) out.add(unit.component);
+    }
+  }
+  return out;
+}
+
 /** For each stroke, the index of the unit it belongs to. */
 export function unitOfStroke(units: readonly GlyphUnit[], strokeCount: number): number[] {
   const out = new Array<number>(strokeCount).fill(-1);
