@@ -1,0 +1,20 @@
+{
+  "name": "@kankyouken/glyph-data",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Character sets for the games: authored set definitions (MIT) and glyph shapes converted from KanjiVG (CC BY-SA 3.0, see generated/NOTICE.md)",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./index.ts",
+    "./starter-ja.glyphs.json": "./generated/starter-ja.glyphs.json",
+    "./starter-ja.set.json": "./sets/starter-ja.json"
+  },
+  "scripts": {
+    "build": "tsx build.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@kankyouken/mechanics": "0.1.0"
+  }
+}

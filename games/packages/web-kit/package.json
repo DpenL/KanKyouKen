@@ -11,7 +11,8 @@
     "./audio": "./src/audio/index.ts",
     "./input": "./src/input/index.ts",
     "./render": "./src/render/index.ts",
-    "./telemetry": "./src/telemetry/index.ts"
+    "./telemetry": "./src/telemetry/index.ts",
+    "./app": "./src/app/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
