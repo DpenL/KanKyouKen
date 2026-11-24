@@ -129,6 +129,7 @@ describe("timed playback", () => {
         return { stop: () => void (fake.stops += 1) };
       },
       cue: () => undefined,
+      available: () => true,
     };
     return fake;
   }

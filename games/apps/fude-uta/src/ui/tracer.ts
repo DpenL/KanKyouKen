@@ -83,12 +83,12 @@ export function createTracer(env: Env, ui: WritingUi, onJudged: (result: Attempt
       if (target === null) return;
       env.performer.stop();
       ui.setMessage("");
+      previous = sample;
+      view.setInk([sample]);
       const stroke = target.melody.strokes[expected];
       if (stroke !== undefined) {
         voice = env.sound.startVoice(strokeVoice(env.audioMode(), stroke, env.melodist().config.tuning, env.audioRng));
       }
-      previous = sample;
-      view.setInk([sample]);
     },
     onMove(sample, drawn) {
       if (target === null) return;
@@ -139,9 +139,9 @@ export function createTracer(env: Env, ui: WritingUi, onJudged: (result: Attempt
       board.settle(stroke);
     },
     reject(verdict) {
-      env.sound.cue("error");
       view.flashInk("error");
       ui.setMessage(REASONS[verdict]);
+      env.sound.cue("error");
     },
     end() {
       releaseVoice();

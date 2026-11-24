@@ -8,6 +8,7 @@ import {
   conditionAudioMode,
   effectiveAudioMode,
   sanitizeSettings,
+  soundOn,
 } from "./settings";
 
 describe("sanitizeSettings", () => {
@@ -62,5 +63,16 @@ describe("presets", () => {
     expect(PLANS[DEFAULT_SETTINGS.plan]).toBe(PLAN_GUIDED_FADE);
     expect(PLANS.arrows).toBe(PLAN_ARROWS);
     expect(PLANS.quick).toBe(PLAN_QUICK);
+  });
+});
+
+describe("soundOn", () => {
+  it("is off in silent mode and at volume zero, whichever way the mode was set", () => {
+    expect(soundOn(DEFAULT_SETTINGS, undefined)).toBe(true);
+    expect(soundOn({ ...DEFAULT_SETTINGS, volume: 0 }, undefined)).toBe(false);
+    expect(soundOn({ ...DEFAULT_SETTINGS, audioMode: "silent" }, undefined)).toBe(false);
+    expect(soundOn(DEFAULT_SETTINGS, "silent")).toBe(false);
+    expect(soundOn({ ...DEFAULT_SETTINGS, audioMode: "silent" }, "melody")).toBe(true);
+    expect(soundOn({ ...DEFAULT_SETTINGS, volume: 0 }, "melody")).toBe(false);
   });
 });

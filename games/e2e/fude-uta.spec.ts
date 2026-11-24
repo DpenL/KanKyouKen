@@ -1,10 +1,11 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 const BASE = "http://127.0.0.1:4311/";
 const DEBUG = `${BASE}?debug&seed=e2e`;
 
 interface GameEvent {
   type: string;
+  ts: number;
   item?: string;
   task?: string;
   data?: Record<string, unknown>;
@@ -90,7 +91,13 @@ test("a character is learned stage by stage, and writing it performs it", async 
   await page.goto(DEBUG);
   await expect(page.getByRole("heading", { name: "Fude Uta" })).toBeVisible();
   await expect(page.locator(".lesson-card")).toHaveCount(6);
-  expect((await events(page, "session_start"))[0]?.data).toMatchObject({ seed: "e2e", audio_mode: "melody" });
+  expect((await events(page, "session_start"))[0]?.data).toMatchObject({
+    seed: "e2e",
+    audio_mode: "melody",
+    sound_on: true,
+    volume: 0.6,
+    audio_available: true,
+  });
 
   await page.locator(".lesson-card").first().click();
 
@@ -118,6 +125,8 @@ test("a character is learned stage by stage, and writing it performs it", async 
       );
       await expect(page.locator(".stage-label")).toHaveText(`${label} · ${rep + 1} of ${reps}`);
       await expect(page.locator(".board .kk-dotted-line")).toHaveCount(stage === "trace:dotted" ? 1 : 0);
+      // No Hint where the dotted stroke already shows all a hint could.
+      await expect(page.getByRole("button", { name: "Hint" })).toHaveCount(stage === "trace:dotted" ? 0 : 1);
       await expect(page.locator(".chip[data-current]")).toHaveCount(1);
       await writeRepetition(page);
     }
@@ -141,8 +150,15 @@ test("a character is learned stage by stage, and writing it performs it", async 
     expect(typeof attempt.data?.["response_time_ms"]).toBe("number");
     expect(typeof attempt.data?.["draw_ms"]).toBe("number");
   }
-  expect((await events(page, "stage_enter")).map((event) => event.task)).toEqual(["demo", "trace:dotted", "trace:none"]);
+  const stages = await events(page, "stage_enter");
+  expect(stages.map((event) => event.task)).toEqual(["demo", "trace:dotted", "trace:none"]);
   expect((await events(page, "item_complete"))[0]).toMatchObject({ item: "一", data: { mistakes: 0 } });
+
+  // Response times count from the moment the stroke could be written: not the demonstration
+  // before the first stroke, not the pause before the first stroke of a later repetition.
+  const responseTime = (index: number): number => Number(attempts[index]?.data?.["response_time_ms"]);
+  expect(responseTime(0)).toBeLessThanOrEqual((attempts[0]?.ts ?? 0) - (stages[1]?.ts ?? 0));
+  expect(responseTime(1)).toBeLessThanOrEqual((attempts[1]?.ts ?? 0) - (attempts[0]?.ts ?? 0) - 600);
 
   // The next character: a stroke written backwards, or too early, is turned down and asked for again.
   await page.getByRole("button", { name: "Next character" }).click();
@@ -171,6 +187,13 @@ test("a character is learned stage by stage, and writing it performs it", async 
   expect((await state(page)).expected).toBe(1);
   expect((await events(page, "stroke_attempt")).at(-1)?.data).toMatchObject({ correct: true, attempt: 3, stroke_index: 0 });
   await drawStroke(page, 1);
+
+  // While the finished repetition rests on the board, nothing can be asked for.
+  const resting = await page.waitForFunction(() => {
+    if ((window as unknown as { __kk: DebugHandle }).__kk.state.stage !== "rest") return null;
+    return [...document.querySelectorAll<HTMLButtonElement>(".actions button")].map((button) => `${button.textContent}:${button.disabled}`);
+  });
+  expect(await resting.jsonValue()).toEqual(["Listen:true"]);
 
   // On a blank square, hints show first where the stroke starts, then the stroke itself.
   await page.waitForFunction(() => {
@@ -203,6 +226,101 @@ test("a character is learned stage by stage, and writing it performs it", async 
   ]);
   await page.getByRole("button", { name: "Back to lessons" }).click();
   await expect(page.locator(".lesson-card")).toHaveCount(6);
+
+  // Leaving in mid-lesson is recorded with where the player stood.
+  expect(await events(page, "lesson_abandoned")).toMatchObject([
+    {
+      item: "十",
+      task: "trace:none",
+      data: { lesson: "lines-and-boxes", mode: "learn", left_by: "back", position: 1, of: 10, completed: 1, strokes_done: 1, stroke_count: 2 },
+    },
+  ]);
+
+  // The browser's Back leads to the lessons, not out of the game; a demonstration it cut short was not watched.
+  const watched = (await events(page, "demo_watched")).length;
+  await page.locator(".lesson-card").first().click();
+  await waitForStage(page, "demo", "一");
+  await page.goBack();
+  await expect(page.locator(".lesson-card")).toHaveCount(6);
+  expect(page.url()).toBe(DEBUG);
+  expect((await events(page, "lesson_abandoned")).at(-1)).toMatchObject({ item: "一", task: "demo", data: { position: 0, completed: 0 } });
+  expect(await events(page, "demo_watched")).toHaveLength(watched);
+});
+
+test("the second click of a double click does not act on what the first one brought on screen", async ({ page }) => {
+  await page.goto(DEBUG);
+  const centre = async (target: Locator): Promise<{ x: number; y: number }> => {
+    const box = await target.boundingBox();
+    if (box === null) throw new Error("nothing to click");
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  };
+  const controls = (selector: string): Promise<string[]> =>
+    page.locator(selector).evaluateAll((all) => all.map((each) => `${each.textContent}:${(each as HTMLButtonElement).disabled}`));
+
+  // About: the second click falls on the backdrop of the sheet the first one opened, and must not close it.
+  const about = page.locator('dialog[data-sheet="about"]');
+  const aboutButton = await centre(page.getByRole("button", { name: "About" }));
+  await page.mouse.click(aboutButton.x, aboutButton.y);
+  await page.waitForTimeout(120);
+  await page.mouse.click(aboutButton.x, aboutButton.y);
+  await page.waitForTimeout(200);
+  await expect(about).toBeVisible();
+  // A click on the backdrop that is no part of a double click still closes it.
+  await expect(about.getByRole("button", { name: "Close" })).toBeEnabled();
+  await page.mouse.click(5, 5);
+  await expect(about).toHaveCount(0);
+
+  // Skip: Listen comes up where Skip was. It is off until the double click is over, then works.
+  await page.locator(".lesson-card").first().click();
+  await waitForStage(page, "demo", "一");
+  const skip = page.getByRole("button", { name: "Skip" });
+  await expect(skip).toBeEnabled();
+  const skipButton = await centre(skip);
+  await page.mouse.click(skipButton.x, skipButton.y);
+  expect(await controls(".actions button")).toEqual(["Listen:true"]);
+  await page.waitForTimeout(150);
+  await page.mouse.click(skipButton.x, skipButton.y);
+  expect((await state(page)).stage).toBe("trace:dotted");
+  expect(await events(page, "melody_listen")).toEqual([]);
+  const listen = page.getByRole("button", { name: "Listen" });
+  await expect(listen).toBeEnabled();
+  await listen.click();
+  expect(await events(page, "melody_listen")).toHaveLength(1);
+
+  // A whole screen: the lesson cards that Back to lessons brings up cannot be picked at once.
+  await page.getByRole("button", { name: "Back to lessons" }).click();
+  const cards = await controls(".lesson-card");
+  expect(cards).toHaveLength(6);
+  expect(cards.every((card) => card.endsWith(":true"))).toBe(true);
+  await expect(page.locator(".lesson-card").first()).toBeEnabled();
+});
+
+test("a failing sound layer does not hold back the lesson", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("kk.fude-uta.v1", JSON.stringify({ settings: { plan: "quick" } }));
+    AudioContext.prototype.createOscillator = () => {
+      throw new DOMException("boom", "InvalidStateError");
+    };
+  });
+  await page.goto(DEBUG);
+  await page.locator(".lesson-card").first().click();
+
+  // The demonstration draws and ends by itself, in silence, and the data says that nothing was heard.
+  await waitForStage(page, "demo", "一");
+  await waitForStage(page, "trace:dotted", "一");
+  expect((await events(page, "demo_watched"))[0]?.data).toMatchObject({ skipped: false });
+  expect(await events(page, "audio_unavailable")).toMatchObject([{ data: { audio_mode: "melody" } }]);
+
+  // Messages, hints and the way on are all there.
+  await drawStroke(page, 0, "backward");
+  await expect(page.locator(".message")).toContainText("Other way round");
+  await writeRepetition(page);
+  await waitForStage(page, "trace:none", "一");
+  await page.getByRole("button", { name: "Hint" }).click();
+  await expect(page.locator('.board .kk-dot[data-start="true"]')).toHaveCount(1);
+  await writeRepetition(page);
+  await waitForStage(page, "complete", "一");
+  await expect(page.getByRole("button", { name: "Next character" })).toBeEnabled();
 });
 
 test("settings and the about sheet open and close", async ({ page }) => {
@@ -217,6 +335,11 @@ test("settings and the about sheet open and close", async ({ page }) => {
   await settings.getByText("Quick", { exact: true }).click();
   await settings.getByRole("button", { name: "Close" }).click();
   await expect(settings).toHaveCount(0);
+  // Every change is recorded, with whether anything can be heard after it.
+  expect((await events(page, "settings_change")).map((event) => event.data)).toEqual([
+    { judging: "strict", sound_on: true },
+    { plan: "quick", sound_on: true },
+  ]);
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("kk.fude-uta.v1") ?? "{}") as { settings?: Record<string, unknown> });
   expect(stored.settings).toMatchObject({ judging: "strict", plan: "quick", audioMode: "melody" });
 
@@ -241,10 +364,32 @@ test("settings and the about sheet open and close", async ({ page }) => {
 
 test("a study condition fixes the sound mode and hides its setting", async ({ page }) => {
   await page.goto(`${DEBUG}&condition=silent`);
-  expect((await events(page, "session_start"))[0]?.data).toMatchObject({ condition: "silent", audio_mode: "silent" });
+  expect((await events(page, "session_start"))[0]?.data).toMatchObject({ condition: "silent", audio_mode: "silent", sound_on: false });
   await page.getByRole("button", { name: "Settings" }).click();
   const settings = page.locator('dialog[data-sheet="settings"]');
   await expect(settings).toBeVisible();
   await expect(settings.locator('[data-field="audioMode"]')).toHaveCount(0);
   await expect(settings.locator('[data-field="timbreMode"]')).toHaveCount(1);
+});
+
+test("a study participant does not inherit the settings of the one before on the same device", async ({ page }) => {
+  // Same origin as the game, so no CORS preflight; the collector is played by the test.
+  const link = (participant: string): string =>
+    `${DEBUG}&study=S1&participant=${participant}&api=${encodeURIComponent(`${BASE}platform/functions/v1`)}#token=t`;
+  await page.route("**/event-collector", (route) => route.fulfill({ status: 201, contentType: "application/json", body: '{"event_id":"e"}' }));
+  const stored = (key: string): Promise<string | null> => page.evaluate((name) => localStorage.getItem(name), key);
+  const settings = page.locator('dialog[data-sheet="settings"]');
+
+  await page.goto(link("P1"));
+  await page.getByRole("button", { name: "Settings" }).click();
+  await settings.getByText("Gentle", { exact: true }).click();
+  await settings.getByText("Quick", { exact: true }).click();
+  expect(JSON.parse((await stored("kk.fude-uta.v1:S1:P1")) ?? "{}")).toMatchObject({ settings: { judging: "gentle", plan: "quick" } });
+  expect(await stored("kk.fude-uta.v1")).toBeNull();
+
+  // The next participant starts from the defaults; the first one finds their own choices again.
+  await page.goto(link("P2"));
+  expect((await events(page, "session_start"))[0]?.data).toMatchObject({ judging: "normal", plan: "guided-fade" });
+  await page.goto(link("P1"));
+  expect((await events(page, "session_start"))[0]?.data).toMatchObject({ judging: "gentle", plan: "quick" });
 });

@@ -1,4 +1,4 @@
-import type { LearnPlan, LearnStage, LearnState, TimedItemResult } from "@kankyouken/mechanics/scaffold";
+import type { LearnPlan, LearnStage, LearnState, TimedItemResult, TraceGuide } from "@kankyouken/mechanics/scaffold";
 
 export type Stars = 1 | 2 | 3;
 
@@ -16,10 +16,10 @@ export function starsFor(results: readonly TimedItemResult[]): Stars {
   return mistakes <= results.length ? 2 : 1;
 }
 
-/** Stars per lesson read back from storage; anything that is not 1, 2 or 3 is dropped. */
+/** Stars per lesson read back from storage; anything that is not 1, 2 or 3 is dropped, and a list is not a table of lessons. */
 export function sanitizeStars(raw: unknown): Record<string, Stars> {
   const out: Record<string, Stars> = {};
-  if (raw === null || typeof raw !== "object") return out;
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return out;
   for (const [lesson, value] of Object.entries(raw)) {
     if (value === 1 || value === 2 || value === 3) out[lesson] = value;
   }
@@ -29,6 +29,15 @@ export function sanitizeStars(raw: unknown): Record<string, Stars> {
 /** Record a lesson's stars, keeping the best result so far. */
 export function withStars(stars: Readonly<Record<string, Stars>>, lesson: string, earned: Stars): Record<string, Stars> {
   return { ...stars, [lesson]: Math.max(stars[lesson] ?? 0, earned) as Stars };
+}
+
+/**
+ * Whether a hint can show anything in a trace stage with this guide. A hint shows where
+ * the expected stroke starts, then the stroke itself as a dotted line; the dotted guide
+ * shows both all along, so there Hint is not offered.
+ */
+export function hintAdds(guide: TraceGuide): boolean {
+  return guide !== "dotted";
 }
 
 /** Task name of a learning stage in telemetry: "demo" or "trace:<guide>". */

@@ -1,15 +1,16 @@
 import type { Lesson } from "@kankyouken/glyph-data";
 import type { Glyph } from "@kankyouken/mechanics/glyph";
 import type { GlyphMelody } from "@kankyouken/mechanics/melody";
-import type { HintLevel, LearnEffect, LearnState, TraceStage } from "@kankyouken/mechanics/scaffold";
+import type { LearnEffect, LearnState, TraceStage } from "@kankyouken/mechanics/scaffold";
 import { applyAttempt, currentStage, finishDemo, requestHint, startLearning } from "@kankyouken/mechanics/scaffold";
 import type { AttemptResult } from "@kankyouken/mechanics/stroke";
 import { gameEvent, strokeAttemptEvent } from "@kankyouken/mechanics/telemetry";
 import type { ItemClock } from "../attempts";
-import { recordAttempt, startItemClock } from "../attempts";
+import { openForWriting, recordAttempt, startItemClock } from "../attempts";
 import { glossOf, glyphOf } from "../content";
 import type { Env, Mode } from "../env";
-import { planPips, stageLabel, stageTask } from "../progress";
+import { lessonAbandonedEvent } from "../left";
+import { hintAdds, planPips, stageLabel, stageTask } from "../progress";
 import { PLANS } from "../settings";
 import { button, createTimers, prefersReducedMotion } from "./dom";
 import { createTracer } from "./tracer";
@@ -37,6 +38,8 @@ export function startLearnMode(env: Env, ui: WritingUi, lesson: Lesson, onDone: 
   let state: LearnState;
   let clock: ItemClock;
   let task = "";
+  /** True once the last character is learned and the lesson has moved on. */
+  let over = false;
 
   const where = (): { ts: number; item: string; task: string } => ({ ts: Date.now(), item: item.char, task });
 
@@ -90,7 +93,6 @@ export function startLearnMode(env: Env, ui: WritingUi, lesson: Lesson, onDone: 
   const chipsPlay = (on: boolean): void => ui.setChipAction(on && env.audioMode() !== "silent" ? listenToUnit : null);
 
   const showHint = (effect: Extract<LearnEffect, { type: "hint" }>, auto: boolean): void => {
-    env.sound.cue("hint");
     board.beckon();
     env.emit(
       gameEvent("hint_shown", where(), {
@@ -100,28 +102,41 @@ export function startLearnMode(env: Env, ui: WritingUi, lesson: Lesson, onDone: 
         auto,
       }),
     );
+    env.sound.cue("hint");
   };
 
   const tracer = createTracer(env, ui, (result, drawMs) => onJudged(result, drawMs));
 
-  const traceActions = (hint: HintLevel): void => {
-    const hintButton = button("Hint", () => {
-      const step = requestHint(state, plan);
-      state = step.state;
-      for (const effect of step.effects) if (effect.type === "hint") showHint(effect, false);
-      tracer.expect(state.expected, state.hint);
-      traceActions(state.hint);
-    });
-    hintButton.disabled = hint >= 2;
-    const buttons = env.audioMode() === "silent" ? [hintButton] : [button("Listen", listen), hintButton];
+  /**
+   * The action row of a trace stage: Listen where there is sound, Hint where a hint can
+   * show something. With `live` false the buttons are on show but off: a finished
+   * repetition rests on the board, and nothing asked for now would belong to it.
+   */
+  const traceActions = (stage: TraceStage, live = true): void => {
+    const buttons: HTMLButtonElement[] = [];
+    if (env.audioMode() !== "silent") buttons.push(button("Listen", listen));
+    if (hintAdds(stage.guide)) {
+      const hintButton = button("Hint", () => {
+        const step = requestHint(state, plan);
+        state = step.state;
+        for (const effect of step.effects) if (effect.type === "hint") showHint(effect, false);
+        tracer.expect(state.expected, state.hint);
+        traceActions(stage);
+      });
+      hintButton.disabled = state.hint >= 2;
+      buttons.push(hintButton);
+    }
+    if (!live) for (const each of buttons) each.disabled = true;
     ui.setActions(...buttons);
   };
 
   const beginRep = (stage: TraceStage): void => {
     tracer.begin({ glyph: item.glyph, melody: item.melody, guide: stage.guide }, state.expected, state.hint);
     board.enabled = true;
+    // The player can write from here on: what came before (the demonstration, a pause) is not response time.
+    clock = openForWriting(clock, Date.now());
     chipsPlay(true);
-    traceActions(state.hint);
+    traceActions(stage);
     showStage();
   };
 
@@ -179,7 +194,6 @@ export function startLearnMode(env: Env, ui: WritingUi, lesson: Lesson, onDone: 
     ui.setMessage("");
     probe("complete");
     chipsPlay(true);
-    sing();
     const last = index === lesson.chars.length - 1;
     ui.setActions(
       button(
@@ -188,12 +202,18 @@ export function startLearnMode(env: Env, ui: WritingUi, lesson: Lesson, onDone: 
           env.performer.stop();
           ui.setSeal(false);
           index += 1;
-          if (last) onDone();
-          else startItem();
+          if (last) {
+            over = true;
+            onDone();
+          } else {
+            startItem();
+          }
         },
         "primary",
       ),
     );
+    // The way on is there before the melody: sound must never be what the lesson waits for.
+    sing();
   };
 
   /** Act on the effects of a transition that put the learner somewhere new. */
@@ -236,7 +256,7 @@ export function startLearnMode(env: Env, ui: WritingUi, lesson: Lesson, onDone: 
     }
     if (!repComplete) {
       tracer.expect(state.expected, state.hint);
-      traceActions(state.hint);
+      traceActions(stage);
       probe(task);
       return;
     }
@@ -245,6 +265,7 @@ export function startLearnMode(env: Env, ui: WritingUi, lesson: Lesson, onDone: 
     tracer.end();
     ui.highlightUnit(null);
     chipsPlay(false);
+    traceActions(stage, false);
     probe("rest");
     timers.after(AFTER_REP_MS, () => {
       const next = currentStage(state, plan);
@@ -274,6 +295,27 @@ export function startLearnMode(env: Env, ui: WritingUi, lesson: Lesson, onDone: 
   startItem();
 
   return {
+    recordLeft(by) {
+      if (over) return;
+      // A repetition just finished leaves the player at the start of the next step, whatever still rests on the board.
+      const stage = currentStage(state, plan);
+      const strokeCount = item.glyph.strokes.length;
+      env.emit(
+        lessonAbandonedEvent(Date.now(), by, {
+          lesson: lesson.id,
+          mode: "learn",
+          task: stage === null ? "learn" : stageTask(stage),
+          item: item.char,
+          position: index,
+          of: lesson.chars.length,
+          completed: state.done ? index + 1 : index,
+          strokesDone: state.done ? strokeCount : state.expected,
+          strokeCount,
+          elapsedMs: Date.now() - clock.startedAt,
+          detail: { stage_index: state.stage, rep: state.rep, mistakes: state.totalMistakes },
+        }),
+      );
+    },
     stop() {
       timers.clear();
       env.performer.stop();

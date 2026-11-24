@@ -2,6 +2,7 @@ import type { Melodist, StrokeAudioMode } from "@kankyouken/mechanics/melody";
 import type { GameEvent } from "@kankyouken/mechanics/telemetry";
 import type { Point, Rng } from "@kankyouken/mechanics/util";
 import type { Content } from "./content";
+import type { LeftBy } from "./left";
 import type { Performer } from "./performer";
 import type { Settings } from "./settings";
 import type { Sound } from "./sound";
@@ -43,7 +44,9 @@ export interface Env {
   emit(event: GameEvent): void;
 }
 
-/** A screen activity that can be abandoned at any moment (the player went back). */
+/** A screen activity that can be abandoned at any moment (the player went back, or closed the page). */
 export interface Mode {
+  /** Record, as `lesson_abandoned`, what is being left unfinished. Records nothing once the activity has run its course. */
+  recordLeft(by: LeftBy): void;
   stop(): void;
 }

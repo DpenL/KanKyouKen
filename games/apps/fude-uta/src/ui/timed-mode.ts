@@ -10,6 +10,7 @@ import { recordAttempt, startItemClock } from "../attempts";
 import { glossOf, glyphOf } from "../content";
 import type { Env, Mode } from "../env";
 import { IDLE_PROBE } from "../env";
+import { lessonAbandonedEvent } from "../left";
 import { countMistakes, formatDuration, starsFor } from "../progress";
 import { button, createTimers, el } from "./dom";
 import { createTracer } from "./tracer";
@@ -35,6 +36,8 @@ export function startTimedMode(env: Env, ui: WritingUi, lesson: Lesson, onDone: 
   let clock: ItemClock = startItemClock(Date.now());
   let expected = 0;
   let ticker: number | null = null;
+  /** True once every character is written and the round has handed over its result. */
+  let over = false;
 
   const showStatus = (): void => {
     const running = current === null ? 0 : Date.now() - clock.startedAt;
@@ -55,7 +58,6 @@ export function startTimedMode(env: Env, ui: WritingUi, lesson: Lesson, onDone: 
 
   const finishRound = (): void => {
     if (ticker !== null) window.clearInterval(ticker);
-    env.sound.cue("complete");
     const mistakes = countMistakes(round.results);
     env.emit(
       gameEvent("timed_round_result", { ts: Date.now(), task: TASK }, {
@@ -75,7 +77,9 @@ export function startTimedMode(env: Env, ui: WritingUi, lesson: Lesson, onDone: 
         })),
       }),
     );
+    over = true;
     onDone(round);
+    env.sound.cue("complete");
   };
 
   const tracer = createTracer(env, ui, (result, drawMs) => onJudged(result, drawMs));
@@ -136,7 +140,6 @@ export function startTimedMode(env: Env, ui: WritingUi, lesson: Lesson, onDone: 
         points: round.results.at(-1)?.points ?? 0,
       }),
     );
-    env.sound.cue("tick");
     board.enabled = false;
     tracer.end();
     current = null;
@@ -144,6 +147,7 @@ export function startTimedMode(env: Env, ui: WritingUi, lesson: Lesson, onDone: 
     showStatus();
     probe();
     timers.after(BETWEEN_ITEMS_MS, nextItem);
+    env.sound.cue("tick");
   };
 
   ui.setHeading(lesson.title, "Timed round");
@@ -181,6 +185,26 @@ export function startTimedMode(env: Env, ui: WritingUi, lesson: Lesson, onDone: 
   );
 
   return {
+    recordLeft(by) {
+      if (over) return;
+      const now = Date.now();
+      const running = current === null ? 0 : now - clock.startedAt;
+      env.emit(
+        lessonAbandonedEvent(now, by, {
+          lesson: lesson.id,
+          mode: "timed",
+          task: TASK,
+          item: current?.char ?? null,
+          position: round.index,
+          of: round.queue.length,
+          completed: round.results.length,
+          strokesDone: current === null ? 0 : expected,
+          strokeCount: current?.glyph.strokes.length ?? 0,
+          elapsedMs: running,
+          detail: { mistakes: current === null ? 0 : clock.mistakes, score: round.score, round_elapsed_ms: round.elapsedMs + running },
+        }),
+      );
+    },
     stop() {
       timers.clear();
       if (ticker !== null) window.clearInterval(ticker);

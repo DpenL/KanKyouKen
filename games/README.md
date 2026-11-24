@@ -108,6 +108,43 @@ previous participant's choices. Plain play keeps the plain key. The unsent-event
 backlog is kept per study and participant as well
 (`kankyouken:events:<study>:<participant>`).
 
+Fude Uta does the same with its settings and stars
+(`kk.fude-uta.v1:<study>:<participant>`). A study `condition` still fixes only the sound
+mode: judging, learning plan, instruments and volume start from the defaults for every
+participant and stay theirs to change (each change is a `settings_change` event).
+
+### Reading the data: Fude Uta
+
+- **`stroke_attempt.response_time_ms`** counts from the moment the stroke could first be
+  written: the end of the demonstration or of the pause after a repetition for a first
+  stroke, the acceptance of the stroke before for the others. It never includes time in
+  which the square took no strokes. `recall_result.response_time_ms` is the whole time
+  from the prompt to Done, listening included.
+- **`recall_result`** is scored with the judging level the player has set, as the
+  learning stages are, and carries it: `judging` (`gentle`, `normal`, `strict`) and the
+  matcher's `leniency`. `drawn_count` above `stroke_count` means extra strokes; the
+  summary on screen marks them ("+2 extra").
+- **`lesson_abandoned`** is recorded when a lesson is left before its end, by the Back
+  button, the browser's Back, or closing the page: `mode` (`learn`, `timed`, `recall`),
+  `left_by` (`back`, `page-closed`), `lesson`, `position` of the character on screen in
+  that part's order, `of`, `completed` characters, `strokes_done` of `stroke_count`,
+  `elapsed_ms` on that character, plus `stage_index`, `rep`, `mistakes` (learning),
+  `score`, `round_elapsed_ms`, `mistakes` (timed round) or `melody_listens` (from
+  memory). `task_id` is the stage that was left; `item_id` is missing when no character
+  was on screen. After `page-closed` the browser may bring the page back as it was, so
+  more events of that lesson can follow. A demonstration cut short by leaving has no
+  `demo_watched`.
+- **Whether anything was heard.** `session_start` carries `sound_on` (a sound mode other
+  than silent at a volume above zero), `volume` and `audio_available` (the browser has
+  Web Audio). Every `settings_change` carries the changed setting and `sound_on` after
+  it. `audio_unavailable` is recorded once if the audio layer fails during the session;
+  from then on the session is silent whatever `audio_mode` says.
+- **`hint_shown`** is not recorded in "Trace the dotted stroke": Hint is not offered
+  there, because the dotted stroke already shows all a hint could.
+- A control that a click has just brought on screen is disabled for half a second, so the
+  second click of a double click never hands in a character, skips a demonstration or
+  starts a lesson. The browser's Back returns to the lesson list.
+
 ## Data and licenses
 
 Code and the authored set definitions (`data/sets`) are MIT, like the rest of the

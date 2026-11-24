@@ -2,7 +2,7 @@ import { judgeAttempt } from "@kankyouken/mechanics/stroke";
 import type { AttemptResult } from "@kankyouken/mechanics/stroke";
 import { describe, expect, it } from "vitest";
 import type { AttemptContext } from "./attempts";
-import { isStrayTap, recordAttempt, startItemClock } from "./attempts";
+import { isStrayTap, openForWriting, recordAttempt, startItemClock } from "./attempts";
 import { glyphOf, loadContent } from "./content";
 import { LENIENCY } from "./settings";
 
@@ -40,7 +40,7 @@ describe("recordAttempt", () => {
       guide: "dotted",
       audio_mode: "melody",
     });
-    expect(clock).toEqual({ startedAt: 1000, lastAcceptedAt: 1800, attemptsOnStroke: 0, mistakes: 0 });
+    expect(clock).toEqual({ startedAt: 1000, awaitedSince: 1800, attemptsOnStroke: 0, mistakes: 0 });
   });
 
   it("numbers repeated attempts and measures them from the last accepted stroke", () => {
@@ -52,7 +52,20 @@ describe("recordAttempt", () => {
     expect(early.data).toMatchObject({ correct: false, verdict: "wrong-order", attempt: 2, response_time_ms: 800, resembles: 3 });
     const right = recordAttempt(early.clock, context(2000, judged(1, 1)));
     expect(right.data).toMatchObject({ correct: true, attempt: 3, response_time_ms: 1500 });
-    expect(right.clock).toEqual({ startedAt: 0, lastAcceptedAt: 2000, attemptsOnStroke: 0, mistakes: 2 });
+    expect(right.clock).toEqual({ startedAt: 0, awaitedSince: 2000, attemptsOnStroke: 0, mistakes: 2 });
+  });
+
+  it("measures the first stroke from the moment the board opened, not from the start of the character", () => {
+    // A 6 s demonstration, then the stroke 200 ms after the board opened.
+    const afterDemo = openForWriting(startItemClock(0), 6000);
+    const first = recordAttempt(afterDemo, context(6200, judged(0, 0)));
+    expect(first.data.response_time_ms).toBe(200);
+    expect(first.clock.startedAt).toBe(0);
+    // The pause after a repetition is not the player's either; mistakes and the item start stay.
+    const wrong = recordAttempt(first.clock, context(6500, judged(1, 1, true)));
+    const afterPause = openForWriting(wrong.clock, 7150);
+    expect(afterPause).toEqual({ startedAt: 0, awaitedSince: 7150, attemptsOnStroke: 1, mistakes: 1 });
+    expect(recordAttempt(afterPause, context(7330, judged(1, 1))).data).toMatchObject({ response_time_ms: 180, attempt: 2 });
   });
 
   it("carries the hint level, guide and sound mode it is given", () => {

@@ -4,7 +4,7 @@ import { toneOf } from "../palette";
 import type { Pip } from "../progress";
 import type { Board } from "./board";
 import { createBoard } from "./board";
-import { el } from "./dom";
+import { arm, el } from "./dom";
 
 /** The writing screen's furniture; the learning, timed and recall modes fill it in. */
 export interface WritingUi {
@@ -22,8 +22,9 @@ export interface WritingUi {
   setChipAction(action: ((unit: number) => void) | null): void;
   highlightUnit(unit: number | null): void;
   setMessage(text: string): void;
+  /** Replace the action row. Buttons a click brought here cannot act until a double click is over (`arm`). */
   setActions(...buttons: HTMLElement[]): void;
-  /** A card over the writing square (round intro, "listen first"); null removes it. */
+  /** A card over the writing square (round intro, "listen first"); null removes it. Its buttons are held like those of the action row. */
   setOverlay(content: HTMLElement | null): void;
   setSeal(visible: boolean): void;
   destroy(): void;
@@ -116,10 +117,12 @@ export function createWritingUi(onBack: () => void): WritingUi {
     },
     setActions(...buttons) {
       actions.replaceChildren(...buttons);
+      arm(actions);
     },
     setOverlay(content) {
       overlay.replaceChildren(...(content === null ? [] : [content]));
       overlay.hidden = content === null;
+      arm(overlay);
     },
     setSeal(visible) {
       seal.hidden = !visible;

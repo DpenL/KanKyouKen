@@ -4,13 +4,13 @@ import type { GlyphMelody } from "@kankyouken/mechanics/melody";
 import type { RecallItemState } from "@kankyouken/mechanics/scaffold";
 import { recallListened, recallStrokeDrawn, recallUndo, startRecallItem, submitRecall } from "@kankyouken/mechanics/scaffold";
 import type { DrawnStroke } from "@kankyouken/mechanics/stroke";
-import { scoreFreeWriting } from "@kankyouken/mechanics/stroke";
 import { gameEvent, recallResultEvent } from "@kankyouken/mechanics/telemetry";
 import { isStrayTap } from "../attempts";
 import { glossOf, glyphOf } from "../content";
 import type { Env, Mode } from "../env";
+import { lessonAbandonedEvent } from "../left";
 import type { RecallRow } from "../recall";
-import { recallCueFor, recallResultData, recallRow } from "../recall";
+import { recallCueFor, recallResultData, recallRow, scoreRecall } from "../recall";
 import { button, el } from "./dom";
 import type { WritingUi } from "./writing-ui";
 
@@ -19,6 +19,7 @@ const TASK = "recall";
 /**
  * The recall test: cue, then write on a blank square. Strokes stay as plain ink, nothing
  * is judged or revealed while writing; `onDone` gets the scores once every character is in.
+ * Scoring uses the judging level of the settings, as the learning stages do.
  */
 export function startRecallMode(env: Env, ui: WritingUi, lesson: Lesson, onDone: (rows: readonly RecallRow[]) => void): Mode {
   const cue = recallCueFor(env.audioMode());
@@ -32,14 +33,16 @@ export function startRecallMode(env: Env, ui: WritingUi, lesson: Lesson, onDone:
   let state: RecallItemState;
   let drawn: DrawnStroke[] = [];
   let startedAt = 0;
+  /** True once the last character is handed in. */
+  let over = false;
 
   const where = (): { ts: number; item: string; task: string } => ({ ts: Date.now(), item: state.item, task: TASK });
 
   const listen = (): void => {
     state = recallListened(state);
     env.emit(gameEvent("melody_listen", where(), { audio_mode: env.audioMode(), listens: state.listens }));
-    env.performer.perform(melody, { mode: env.audioMode(), onStroke: () => undefined });
     show();
+    env.performer.perform(melody, { mode: env.audioMode(), onStroke: () => undefined });
   };
 
   const undo = (): void => {
@@ -56,14 +59,18 @@ export function startRecallMode(env: Env, ui: WritingUi, lesson: Lesson, onDone:
   const submit = (): void => {
     env.performer.stop();
     state = submitRecall(state);
-    const score = scoreFreeWriting(drawn, glyph);
+    const { judging } = env.settings();
+    const score = scoreRecall(drawn, glyph, judging);
     const responseMs = Date.now() - startedAt;
-    env.emit(recallResultEvent(where(), recallResultData(score, state, responseMs, env.audioMode())));
+    env.emit(recallResultEvent(where(), recallResultData(score, state, responseMs, env.audioMode(), judging)));
     env.emit(gameEvent("item_complete", where(), { duration_ms: responseMs }));
     rows.push(recallRow(state.item, glossOf(env.content, state.item).meaning, score));
     index += 1;
     if (index < order.length) startItem();
-    else onDone(rows);
+    else {
+      over = true;
+      onDone(rows);
+    }
   };
 
   /** Bring counters, buttons and the lock in line with the item's state. */
@@ -138,6 +145,24 @@ export function startRecallMode(env: Env, ui: WritingUi, lesson: Lesson, onDone:
   startItem();
 
   return {
+    recordLeft(by) {
+      if (over) return;
+      env.emit(
+        lessonAbandonedEvent(Date.now(), by, {
+          lesson: lesson.id,
+          mode: "recall",
+          task: TASK,
+          item: state.item,
+          position: index,
+          of: order.length,
+          completed: rows.length,
+          strokesDone: state.strokesDrawn,
+          strokeCount: glyph.strokes.length,
+          elapsedMs: Date.now() - startedAt,
+          detail: { melody_listens: state.listens },
+        }),
+      );
+    },
     stop() {
       env.performer.stop();
       board.pen = null;

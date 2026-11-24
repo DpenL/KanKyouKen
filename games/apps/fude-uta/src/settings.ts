@@ -87,3 +87,11 @@ export function conditionAudioMode(condition: string | undefined): StrokeAudioMo
 export function effectiveAudioMode(settings: Settings, condition: string | undefined): StrokeAudioMode {
   return conditionAudioMode(condition) ?? settings.audioMode;
 }
+
+/**
+ * Whether the game is set to make sound at all: a sound mode other than Silent, at a
+ * volume above zero. Whether the browser can play it is another matter (`Sound.available`).
+ */
+export function soundOn(settings: Settings, condition: string | undefined): boolean {
+  return effectiveAudioMode(settings, condition) !== "silent" && settings.volume > 0;
+}

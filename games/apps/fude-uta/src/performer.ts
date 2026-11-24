@@ -28,7 +28,7 @@ export function createPerformer(sound: Sound, tuning: () => TuningConfig, rng: R
   return {
     perform(melody, options) {
       stop();
-      const audio = sound.play(melodyNotes(melody, options.mode, tuning(), rng, options));
+      const notes = melodyNotes(melody, options.mode, tuning(), rng, options);
       // The port schedules audio slightly ahead of time; the visuals wait just as long.
       const cues = strokeCues(melody, tuning(), rng, options).map((cue) => ({
         ...cue,
@@ -38,6 +38,8 @@ export function createPerformer(sound: Sound, tuning: () => TuningConfig, rng: R
         stopCurrent = null;
         options.onEnd?.();
       });
+      // The screen's part is under way before any sound is asked for.
+      const audio = sound.play(notes);
       stopCurrent = () => {
         cancel();
         audio.stop();

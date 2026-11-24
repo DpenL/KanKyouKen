@@ -142,6 +142,11 @@ p {
 .icon-btn:hover {
   background: var(--paper-deep);
 }
+.icon-btn:disabled {
+  background: transparent;
+  opacity: 0.45;
+  cursor: default;
+}
 
 /* Home -------------------------------------------------------------------- */
 
@@ -203,6 +208,14 @@ p {
   border-color: var(--ink-faint);
   box-shadow: 0 6px 18px -12px rgb(31 27 22 / 0.5);
   transform: translateY(-1px);
+}
+/* A card that has only just come on screen cannot be picked yet (see ARM_MS). */
+.lesson-card:disabled {
+  border-color: var(--line);
+  box-shadow: none;
+  opacity: 0.6;
+  transform: none;
+  cursor: default;
 }
 .lesson-number {
   color: var(--ink-faint);
@@ -711,6 +724,12 @@ p {
 }
 .recall-meaning {
   color: var(--ink-soft);
+}
+.recall-extra {
+  display: block;
+  color: var(--vermilion);
+  font-size: 0.8rem;
+  font-weight: 600;
 }
 
 /* Dialogs ----------------------------------------------------------------- */

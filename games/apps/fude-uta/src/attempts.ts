@@ -6,8 +6,12 @@ import { polylineLength } from "@kankyouken/mechanics/util";
 /** Bookkeeping for the stroke attempts on one character: timing, attempt numbers, mistakes. */
 export interface ItemClock {
   readonly startedAt: number;
-  /** When the previous stroke was accepted (the item start before the first). */
-  readonly lastAcceptedAt: number;
+  /**
+   * Since when the stroke that is expected now can be written: the board opened for
+   * writing (`openForWriting`), or the stroke before it was accepted. Response times
+   * count from here, so they never include a demonstration or a pause.
+   */
+  readonly awaitedSince: number;
   /** Attempts already made at the stroke that is expected now. */
   readonly attemptsOnStroke: number;
   readonly mistakes: number;
@@ -25,7 +29,16 @@ export interface AttemptContext {
 }
 
 export function startItemClock(now: number): ItemClock {
-  return { startedAt: now, lastAcceptedAt: now, attemptsOnStroke: 0, mistakes: 0 };
+  return { startedAt: now, awaitedSince: now, attemptsOnStroke: 0, mistakes: 0 };
+}
+
+/**
+ * The board opens for writing at `now`, after a time in which it took no strokes (the
+ * demonstration, the pause between two repetitions): the player's response time for the
+ * next stroke starts here.
+ */
+export function openForWriting(clock: ItemClock, now: number): ItemClock {
+  return { ...clock, awaitedSince: now };
 }
 
 /** Account for one judged attempt and build the payload of its `stroke_attempt` event. */
@@ -33,7 +46,7 @@ export function recordAttempt(clock: ItemClock, context: AttemptContext): { cloc
   const correct = context.result.verdict === "correct";
   const data: StrokeAttemptData = {
     correct,
-    response_time_ms: Math.max(0, Math.round(context.now - clock.lastAcceptedAt)),
+    response_time_ms: Math.max(0, Math.round(context.now - clock.awaitedSince)),
     verdict: context.result.verdict,
     stroke_index: context.result.expected,
     resembles: context.result.resembles,
@@ -45,7 +58,7 @@ export function recordAttempt(clock: ItemClock, context: AttemptContext): { cloc
     audio_mode: context.audioMode,
   };
   const next: ItemClock = correct
-    ? { ...clock, lastAcceptedAt: context.now, attemptsOnStroke: 0 }
+    ? { ...clock, awaitedSince: context.now, attemptsOnStroke: 0 }
     : { ...clock, attemptsOnStroke: clock.attemptsOnStroke + 1, mistakes: clock.mistakes + 1 };
   return { clock: next, data };
 }

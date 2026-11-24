@@ -47,14 +47,22 @@ export function renderResults(
   );
 }
 
-/** Shown once the whole recall round is over: per character, how much of order and direction was right. */
+/**
+ * Shown once the whole recall round is over: per character, how much of order and
+ * direction was right, and how many strokes were written that the character does not have.
+ */
 export function renderRecallSummary(lesson: Lesson, rows: readonly RecallRow[], onHome: () => void): HTMLElement {
   const body = rows.map((row) =>
     el(
       "tr",
       { "data-char": row.char },
       el("td", { class: "recall-char", lang: "ja" }, row.char),
-      el("td", { class: "recall-meaning" }, row.meaning),
+      el(
+        "td",
+        { class: "recall-meaning" },
+        row.meaning,
+        ...(row.extra > 0 ? [el("span", { class: "recall-extra" }, `+${row.extra} extra`)] : []),
+      ),
       el("td", { class: "num" }, `${row.orderCorrect} / ${row.strokeCount}`),
       el("td", { class: "num" }, `${row.directionCorrect} / ${row.strokeCount}`),
     ),
@@ -64,7 +72,11 @@ export function renderRecallSummary(lesson: Lesson, rows: readonly RecallRow[], 
     { class: "screen panel recall-summary" },
     el("p", { class: "panel-kicker" }, "From memory"),
     el("h1", { class: "panel-title" }, lesson.title),
-    el("p", { class: "panel-text" }, "Strokes you wrote in the right order and in the right direction."),
+    el(
+      "p",
+      { class: "panel-text" },
+      "Strokes you wrote in the right order and in the right direction. Strokes the character does not have are marked as extra.",
+    ),
     el(
       "table",
       { class: "recall-table" },

@@ -1,7 +1,7 @@
 import type { LearnState, TimedItemResult } from "@kankyouken/mechanics/scaffold";
 import { PLAN_ARROWS, PLAN_GUIDED_FADE, applyAttempt, finishDemo, startLearning } from "@kankyouken/mechanics/scaffold";
 import { describe, expect, it } from "vitest";
-import { countMistakes, formatDuration, planPips, sanitizeStars, stageLabel, stageTask, starsFor, withStars } from "./progress";
+import { countMistakes, formatDuration, hintAdds, planPips, sanitizeStars, stageLabel, stageTask, starsFor, withStars } from "./progress";
 
 const result = (item: string, mistakes: number): TimedItemResult => ({ item, strokeCount: 3, mistakes, durationMs: 2000, points: 30 });
 
@@ -84,5 +84,12 @@ describe("formatDuration", () => {
 
   it("never goes below zero", () => {
     expect(formatDuration(-50)).toBe("0:00.0");
+  });
+});
+
+describe("hintAdds", () => {
+  it("offers no hint where the guide already shows the stroke and its start", () => {
+    expect(hintAdds("dotted")).toBe(false);
+    for (const guide of ["none", "outline", "arrows"] as const) expect(hintAdds(guide)).toBe(true);
   });
 });
