@@ -1,0 +1,18 @@
+{
+  "name": "@kankyouken/fude-uta",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Fude Uta (筆歌): a stroke-order writing game where writing a character performs its tune",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@kankyouken/glyph-data": "0.1.0",
+    "@kankyouken/mechanics": "0.1.0",
+    "@kankyouken/web-kit": "0.1.0"
+  }
+}

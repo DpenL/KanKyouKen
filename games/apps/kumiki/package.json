@@ -1,0 +1,19 @@
+{
+  "name": "@kankyouken/kumiki",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Kumiki: assemble kanji from component tiles",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@kankyouken/glyph-data": "0.1.0",
+    "@kankyouken/mechanics": "0.1.0",
+    "@kankyouken/web-kit": "0.1.0"
+  }
+}
