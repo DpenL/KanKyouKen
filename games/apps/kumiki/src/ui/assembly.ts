@@ -5,7 +5,7 @@ import { TONE_ICON, feedbackLines } from "../feedback";
 import { canCheck, check, isOver, moveTile, potentialScore, returnTile, takeHint, type CheckData, type Round } from "../round";
 import type { App } from "./app";
 import { createBoardView } from "./board-view";
-import { button, h } from "./dom";
+import { backButton, button, h } from "./dom";
 import { createGlyphBoard } from "./glyph-board";
 
 /** How long the hint keeps the character on show. */
@@ -146,7 +146,7 @@ export function assemblyScreen(app: App, options: AssemblyOptions): { screen: HT
     h(
       "header",
       { class: "bar" },
-      button("← Decks", { class: "ghost small", "data-action": "quit" }, options.quit),
+      backButton(options.quit),
       h("span", { class: "bar-progress" }, options.progress),
     ),
     h(

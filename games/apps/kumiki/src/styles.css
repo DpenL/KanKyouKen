@@ -169,6 +169,12 @@ button:disabled {
   min-height: 44px;
 }
 
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .bar-progress {
   margin-left: auto;
   color: var(--muted);
@@ -668,14 +674,14 @@ button:disabled {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 2px;
+  gap: 1px;
   width: min(100%, 460px);
-  min-height: 82px;
+  min-height: 78px;
   margin: 0 auto;
-  padding: 8px 14px;
+  padding: 6px 14px;
   border-radius: 12px;
   background: rgba(8, 12, 34, 0.45);
-  font-size: 0.95rem;
+  font-size: 0.93rem;
 }
 
 .feedback-idle {
@@ -1036,7 +1042,9 @@ button:disabled {
 
 @media (max-width: 760px) {
   :root {
-    --frame: clamp(104px, 16.5dvh, 150px);
+    --frame: clamp(112px, 18.6dvh, 160px);
+    --tile: clamp(50px, 7.6dvh, 74px);
+    --gap: 8px;
   }
 
   .frames {
@@ -1047,19 +1055,61 @@ button:disabled {
     grid-template-columns: min(230px, 30dvh, 70vw);
   }
 
+  /* The back button and the status share one row, so the board fits a phone screen. */
+  .assembly {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-content: start;
+    padding-bottom: 0;
+  }
+
+  .assembly > * {
+    grid-column: 1 / -1;
+  }
+
+  .assembly:not(.exam) > .bar {
+    grid-column: 1;
+  }
+
+  .assembly:not(.exam) > .status {
+    grid-column: 2;
+    grid-row: 1;
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    font-size: 0.86rem;
+  }
+
+  .assembly:not(.exam) .bar-progress,
+  .assembly:not(.exam) .back-label,
+  .stat-note {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .assembly:not(.exam) .back {
+    min-width: 44px;
+    justify-content: center;
+    padding: 0;
+  }
+
+  /* Check stays within reach when a short screen makes the page scroll. */
+  .assembly > .actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 4;
+    padding: 6px 0 max(12px, env(safe-area-inset-bottom));
+    background: linear-gradient(to top, var(--cloth-deep) 55%, transparent);
+  }
 }
 
 @media (max-width: 420px) {
   .screen {
     padding-inline: 12px;
-  }
-
-  .status {
-    font-size: 0.84rem;
-  }
-
-  .stat-note {
-    display: none;
   }
 }
 

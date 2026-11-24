@@ -300,7 +300,7 @@ test("exam: no feedback until the end, then a score per character", async ({ pag
 test.describe("on a phone", () => {
   test.use({ viewport: { width: 360, height: 740 }, hasTouch: true, isMobile: true });
 
-  test("nothing scrolls sideways and tiles can be placed by touch", async ({ page }) => {
+  test("nothing scrolls sideways and tiles can be tapped or dragged into place by touch", async ({ page }) => {
     const errors = watchConsole(page);
     await page.goto(DEBUG);
     const fits = (): Promise<boolean> => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
@@ -317,6 +317,23 @@ test.describe("on a phone", () => {
     const at = await slotPoint(page, info.correctLayout, 0);
     await page.touchscreen.tap(at.x, at.y);
     await expect(page.locator(`.slot[data-layout="${info.correctLayout}"][data-slot="0"]`)).toHaveAttribute("data-tile", tile);
+
+    // A finger drags the next tile into its slot.
+    const second = solvingTiles(info)[1]!;
+    const from = await centre(page, `.tray .tile[data-tile="${second}"]`);
+    const to = await slotPoint(page, info.correctLayout, 1);
+    const client = await page.context().newCDPSession(page);
+    const touch = (type: "touchStart" | "touchMove" | "touchEnd", points: { x: number; y: number }[]): Promise<unknown> =>
+      client.send("Input.dispatchTouchEvent", { type, touchPoints: points });
+    await touch("touchStart", [from]);
+    for (let step = 1; step <= 6; step++) {
+      await touch("touchMove", [{ x: from.x + ((to.x - from.x) * step) / 6, y: from.y + ((to.y - from.y) * step) / 6 }]);
+    }
+    await expect(page.locator(".drag-ghost")).toBeVisible();
+    await touch("touchEnd", []);
+    await expect(page.locator(`.slot[data-layout="${info.correctLayout}"][data-slot="1"]`)).toHaveAttribute("data-tile", second);
+    await expect(page.locator(".drag-ghost")).toHaveCount(0);
+    expect(await fits()).toBe(true);
 
     expect(errors).toEqual([]);
   });

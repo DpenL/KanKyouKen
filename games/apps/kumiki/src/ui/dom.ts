@@ -44,6 +44,18 @@ export function button(label: string, attrs: Attrs, onClick: () => void): HTMLBu
   return element;
 }
 
+/** The way back to the deck list; on narrow assembly screens only the arrow is shown. */
+export function backButton(onClick: () => void): HTMLButtonElement {
+  const element = h(
+    "button",
+    { type: "button", class: "ghost small back", "data-action": "quit" },
+    h("span", { "aria-hidden": "true" }, "←"),
+    h("span", { class: "back-label" }, "Decks"),
+  );
+  element.addEventListener("click", onClick);
+  return element;
+}
+
 export function prefersReducedMotion(): boolean {
   return typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 }

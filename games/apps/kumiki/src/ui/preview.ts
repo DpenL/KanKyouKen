@@ -1,7 +1,7 @@
 /** Learn mode: a look at the character before it has to be built. */
 
 import type { App } from "./app";
-import { button, h } from "./dom";
+import { backButton, button, h } from "./dom";
 import { createGlyphBoard } from "./glyph-board";
 
 const STROKE_MS = 260;
@@ -25,7 +25,7 @@ export function previewScreen(app: App, options: PreviewOptions): { screen: HTML
     h(
       "header",
       { class: "bar" },
-      button("← Decks", { class: "ghost small", "data-action": "quit" }, options.quit),
+      backButton(options.quit),
       h("span", { class: "bar-progress" }, options.progress),
     ),
     h("p", { class: "eyebrow" }, "Remember this character"),

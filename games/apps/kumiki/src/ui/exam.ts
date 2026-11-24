@@ -6,7 +6,7 @@ import type { Deck } from "../content";
 import { examTotals, type Exam } from "../exam";
 import type { App } from "./app";
 import { createBoardView } from "./board-view";
-import { button, h } from "./dom";
+import { backButton, button, h } from "./dom";
 import { drawnChar } from "./home";
 
 export interface ExamItemOptions {
@@ -44,7 +44,7 @@ export function examScreen(app: App, options: ExamItemOptions): { screen: HTMLEl
     h(
       "header",
       { class: "bar" },
-      button("← Decks", { class: "ghost small", "data-action": "quit" }, options.quit),
+      backButton(options.quit),
       h("span", { class: "bar-progress" }, options.progress),
     ),
     h(

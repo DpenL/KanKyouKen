@@ -17,7 +17,7 @@ export interface GlyphBoard {
 export function createGlyphBoard(glyph: Glyph, label: string): GlyphBoard {
   const drawing = svg("svg", { class: "glyph-board-svg", role: "img", "aria-label": label });
   const element = h("div", { class: "glyph-board" }, drawing);
-  const view = createGlyphView(drawing, { padding: 0.08, strokeWidth: 0.05 });
+  const view = createGlyphView(drawing, { padding: 0.08, strokeWidth: 0.042 });
   view.setGlyph(glyph);
   let disposed = false;
 
