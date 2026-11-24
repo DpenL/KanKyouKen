@@ -4,7 +4,7 @@ import { createRng } from "@kankyouken/mechanics/util";
 import { createLocalStore, readLaunchParams } from "@kankyouken/web-kit/app";
 import { installGlyphCss } from "@kankyouken/web-kit/render";
 import { buildContent } from "./content";
-import { DEFAULT_SAVED, STORE_KEY, type Saved } from "./saved";
+import { DEFAULT_SAVED, STORE_KEY, cleanSaved, type Saved } from "./saved";
 import { createSound } from "./sound";
 import { APP_VERSION, createTelemetry } from "./telemetry";
 import type { App, Probe } from "./ui/app";
@@ -31,7 +31,7 @@ function start(root: HTMLElement): void {
   const rng = createRng(seed);
   const { glyphs, set } = loadStarterJa();
   const content = buildContent(glyphs, set);
-  const store = createLocalStore<Saved>(STORE_KEY, DEFAULT_SAVED);
+  const store = createLocalStore<Saved>(STORE_KEY, DEFAULT_SAVED, undefined, cleanSaved);
   const telemetry = createTelemetry(params);
   const sound = createSound(glyphs, rng.fork("sound"), store.get());
   const probe: Probe = { screen: "", puzzle: null, state: null, board: null };
@@ -51,6 +51,9 @@ function start(root: HTMLElement): void {
       root.replaceChildren(screen);
       root.setAttribute("data-screen", name);
       window.scrollTo(0, 0);
+      // Keyboard and screen-reader users continue from the new screen, not from the page top.
+      screen.tabIndex = -1;
+      screen.focus({ preventScroll: true });
     },
   };
 
@@ -83,7 +86,6 @@ function start(root: HTMLElement): void {
     gameEvent("session_start", { ts: Date.now() }, {
       app_version: APP_VERSION,
       seed,
-      mode: store.get().mode,
       ...(params.condition === undefined ? {} : { condition: params.condition }),
     }),
   );

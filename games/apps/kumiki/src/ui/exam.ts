@@ -9,6 +9,13 @@ import { createBoardView } from "./board-view";
 import { backButton, button, h } from "./dom";
 import { drawnChar } from "./shapes";
 
+/**
+ * How long Next stays off after an item appears. Next sits in the same place on every
+ * item, so the second tap of a double tap would otherwise hand in the following
+ * character before it has been seen.
+ */
+const NEXT_ARM_MS = 600;
+
 export interface ExamItemOptions {
   readonly puzzle: AssemblyPuzzle;
   readonly progress: string;
@@ -40,6 +47,15 @@ export function examScreen(app: App, options: ExamItemOptions): { screen: HTMLEl
     touched: (tile) => app.sound.tile(tile.shows),
   });
   app.probe.board = board;
+  let handedIn = false;
+  const nextButton = button(options.last ? "Finish" : "Next", { class: "primary", "data-action": "next", disabled: true }, () => {
+    if (handedIn) return;
+    handedIn = true;
+    options.next(board);
+  });
+  const armTimer = window.setTimeout(() => {
+    nextButton.disabled = false;
+  }, NEXT_ARM_MS);
   screen.append(
     h(
       "header",
@@ -56,13 +72,15 @@ export function examScreen(app: App, options: ExamItemOptions): { screen: HTMLEl
     h("div", { class: "frames-wrap" }, view.frames),
     h("p", { class: "feedback feedback-idle" }, "Fill the structure from memory. Nothing is marked until the end."),
     view.tray,
-    h(
-      "div",
-      { class: "actions" },
-      button(options.last ? "Finish" : "Next", { class: "primary", "data-action": "next" }, () => options.next(board)),
-    ),
+    h("div", { class: "actions" }, nextButton),
   );
-  return { screen, leave: () => view.dispose() };
+  return {
+    screen,
+    leave() {
+      window.clearTimeout(armTimer);
+      view.dispose();
+    },
+  };
 }
 
 export interface ExamResultsOptions {

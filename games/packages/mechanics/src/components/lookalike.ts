@@ -10,7 +10,7 @@
 import type { Glyph } from "../glyph/types";
 import { squareFrame } from "../glyph/tree";
 import { minCostAssignment } from "../util/assignment";
-import { boundingBox, boxWidth, resample, type Point } from "../util/geometry";
+import { boundingBox, boxHeight, boxWidth, distanceToPolyline, polylineLength, resample, type Point } from "../util/geometry";
 import type { LookAlikeTable } from "./types";
 
 /** Points each stroke is sampled to when shapes are compared. */
@@ -49,6 +49,12 @@ export interface LookAlikeTableOptions {
   readonly maxDistance?: number;
   /** Hand-picked look-alikes; listed first and made symmetric. */
   readonly curated?: LookAlikeTable;
+  /**
+   * Pairs that must never be listed for each other, in either direction and whatever
+   * `curated` or the computed distances say: shapes that are the same at another size
+   * (口 and 囗), which a player cannot tell apart on a tile.
+   */
+  readonly exclude?: LookAlikeTable;
 }
 
 interface Shape {
@@ -126,6 +132,94 @@ export function shapeDistance(a: Glyph, b: Glyph, options?: ShapeDistanceOptions
   return distanceBetween(shapeOf(a, samples), shapeOf(b, samples));
 }
 
+/** How a shape is brought to the unit square before two shapes are compared by eye. */
+export type ShapeFit =
+  /** Aspect ratio kept: how a tile shows the shape. */
+  | "square"
+  /** Stretched to fill the square on both axes: how a slot shows the shape. */
+  | "stretch";
+
+/** Spacing of the points a stroke is sampled at, as a fraction of the fitted square. */
+const SAMPLE_STEP = 0.04;
+
+interface FittedShape {
+  /** Stroke spines in the unit square. */
+  readonly strokes: readonly (readonly Point[])[];
+  /** Points along every spine, `SAMPLE_STEP` apart. */
+  readonly samples: readonly Point[];
+}
+
+const fitted = new WeakMap<Glyph, Partial<Record<ShapeFit, FittedShape>>>();
+
+function fittedShape(glyph: Glyph, fit: ShapeFit): FittedShape {
+  let known = fitted.get(glyph);
+  if (known === undefined) fitted.set(glyph, (known = {}));
+  const cached = known[fit];
+  if (cached !== undefined) return cached;
+
+  const drawn = glyph.strokes.filter((stroke) => stroke.median.length > 0);
+  let shape: FittedShape = { strokes: [], samples: [] };
+  if (drawn.length > 0) {
+    const box = boundingBox(drawn.flatMap((stroke) => stroke.median));
+    const frame = fit === "square" ? squareFrame(box) : box;
+    const w = boxWidth(frame);
+    const h = boxHeight(frame);
+    const strokes = drawn.map((stroke) =>
+      stroke.median.map((p) => ({
+        x: w === 0 ? 0.5 : (p.x - frame.minX) / w,
+        y: h === 0 ? 0.5 : (p.y - frame.minY) / h,
+      })),
+    );
+    const samples = strokes.flatMap((stroke) =>
+      resample(stroke, Math.max(2, Math.ceil(polylineLength(stroke) / SAMPLE_STEP) + 1)),
+    );
+    shape = { strokes, samples };
+  }
+  known[fit] = shape;
+  return shape;
+}
+
+/** Farthest that any sampled point of `from` lies from the nearest stroke of `to`. */
+function farthestGap(from: FittedShape, to: FittedShape): number {
+  let worst = 0;
+  for (const p of from.samples) {
+    let nearest = Infinity;
+    for (const other of to.strokes) {
+      nearest = Math.min(nearest, distanceToPolyline(p, other));
+      if (nearest <= worst) break;
+    }
+    if (nearest > worst) worst = nearest;
+  }
+  return worst;
+}
+
+/**
+ * How visibly two shapes differ when drawn at the same size, as a fraction of the
+ * square they are drawn in: the largest distance from any piece of ink in one shape to
+ * the nearest ink in the other (a Hausdorff distance between the stroke spines).
+ * 0 means one drawing covers the other exactly, whatever the stroke counts: a stroke
+ * drawn twice in the same place does not show. Unlike `shapeDistance`, which asks
+ * whether two shapes are built alike, this asks whether a player can tell them apart.
+ *
+ * Two glyphs without strokes differ by 0; a glyph without strokes differs from any
+ * other by Infinity.
+ */
+export function visibleDifference(a: Glyph, b: Glyph, fit: ShapeFit = "square"): number {
+  const sa = fittedShape(a, fit);
+  const sb = fittedShape(b, fit);
+  if (sa.strokes.length === 0 || sb.strokes.length === 0) return sa.strokes.length === sb.strokes.length ? 0 : Infinity;
+  return Math.max(farthestGap(sa, sb), farthestGap(sb, sa));
+}
+
+/**
+ * Whether a player can tell two tiles apart both in the tray (aspect ratio kept) and
+ * once placed in a slot (stretched): the smaller of the two visible differences must
+ * reach `minimum`.
+ */
+export function tellApart(a: Glyph, b: Glyph, minimum: number): boolean {
+  return Math.min(visibleDifference(a, b, "square"), visibleDifference(a, b, "stretch")) >= minimum;
+}
+
 function rankShapes(
   component: string,
   candidates: Iterable<string>,
@@ -193,7 +287,8 @@ export function rankLookAlikes(
  *
  * The table has a key for every listed component and for every component mentioned in
  * `curated`; a component nothing resembles gets an empty list. A component never lists
- * itself and no list has duplicates.
+ * itself and no list has duplicates. Pairs named in `exclude` are never listed for each
+ * other.
  */
 export function buildLookAlikeTable(
   components: Iterable<string>,
@@ -203,11 +298,18 @@ export function buildLookAlikeTable(
   const perComponent = Math.max(0, Math.floor(options?.perComponent ?? 3));
   const curated = options?.curated ?? {};
   const all = new Set(components);
+  const excluded = new Set<string>();
+  for (const [key, list] of Object.entries(options?.exclude ?? {})) {
+    for (const other of list) {
+      excluded.add(`${key}\n${other}`);
+      excluded.add(`${other}\n${key}`);
+    }
+  }
   const curatedFor = new Map<string, string[]>();
   const link = (from: string, to: string): void => {
     all.add(from);
     all.add(to);
-    if (from === to) return;
+    if (from === to || excluded.has(`${from}\n${to}`)) return;
     const list = curatedFor.get(from) ?? [];
     if (!list.includes(to)) list.push(to);
     curatedFor.set(from, list);
@@ -227,7 +329,7 @@ export function buildLookAlikeTable(
     if (list.length < perComponent) {
       for (const { component: neighbour } of rankShapes(component, all, shapes, rankOptions, known)) {
         if (list.length >= perComponent) break;
-        if (!list.includes(neighbour)) list.push(neighbour);
+        if (!list.includes(neighbour) && !excluded.has(`${component}\n${neighbour}`)) list.push(neighbour);
       }
     }
     table[component] = list;

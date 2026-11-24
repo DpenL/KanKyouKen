@@ -231,6 +231,15 @@ two strokes, some by whether a stroke crosses another stroke".
 - *Ours*: measuring resemblance by pairing strokes, and generating wrong versions by
   rule. Hand-picked pairs are still supported and take precedence (`curated`).
   "Crosses or not" is not generated yet.
+- *Ours*: a tile must be something a player can tell apart. A generated wrong version
+  is only used when it differs visibly from every other tile in the tray, the right one
+  included (`visibleDifference`, `MIN_MALFORMED_DIFFERENCE`): a doubled stroke that lands
+  on an existing one, or a dropped stroke that turns 氵 into 冫 next to a real 冫, is
+  discarded. Real components may be closer to each other (`MIN_TILE_DIFFERENCE`),
+  because genuine near-twins such as 夂 and 攵 are the point of the exercise. Pairs that
+  are one shape at two sizes (口 and 囗) cannot be told apart on tiles at all and are
+  listed by hand (`sameShape` in the set file); they never share a tray. Both
+  thresholds are our judgment, checked by eye on the starter set only.
 
 ### ZH-4 Fine-grained decomposition — *stated*
 

@@ -49,6 +49,22 @@ describe("local store", () => {
     expect("k" in storage.data).toBe(false);
   });
 
+  it("passes what was stored through the cleaner, and falls back to the defaults if it throws", () => {
+    const defaults = { volume: 0.5, mode: "melody" };
+    const clean = (stored: typeof defaults): typeof defaults => ({
+      volume: typeof stored.volume === "number" ? stored.volume : defaults.volume,
+      mode: stored.mode,
+    });
+    const storage = fakeStorage({ k: JSON.stringify({ volume: "loud", mode: "sfx" }) });
+    expect(createLocalStore("k", defaults, storage, clean).get()).toEqual({ volume: 0.5, mode: "sfx" });
+    // Nothing stored: the defaults are used as they are.
+    expect(createLocalStore("other", defaults, storage, () => ({ volume: 0, mode: "x" })).get()).toEqual(defaults);
+    const failing = (): typeof defaults => {
+      throw new Error("bad data");
+    };
+    expect(createLocalStore("k", defaults, storage, failing).get()).toEqual(defaults);
+  });
+
   it("survives corrupt, wrong-shaped, missing and throwing storage", () => {
     expect(createLocalStore("k", { a: 1 }, fakeStorage({ k: "{nope" })).get()).toEqual({ a: 1 });
     expect(createLocalStore("k", { a: 1 }, fakeStorage({ k: "[1,2]" })).get()).toEqual({ a: 1 });

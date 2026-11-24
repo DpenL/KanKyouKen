@@ -48,6 +48,12 @@ export interface SetDefinition {
    * use `symmetricLookAlikes` for the completed, two-way relation.
    */
   readonly lookAlikes: Readonly<Record<string, readonly string[]>>;
+  /**
+   * Pairs that are the same shape at another size or proportion (口 and 囗) and must
+   * never be offered as look-alikes of each other: a player cannot tell them apart on a
+   * tile. Listed once per pair; the relation is symmetric.
+   */
+  readonly sameShape?: Readonly<Record<string, readonly string[]>>;
   /** Characters needed only as distractors: everything on the right-hand side of `lookAlikes`. */
   readonly extra: readonly string[];
   readonly lexicon: Readonly<Record<string, LexiconEntry>>;

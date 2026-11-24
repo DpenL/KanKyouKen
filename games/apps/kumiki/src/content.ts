@@ -71,7 +71,8 @@ export function buildContent(glyphs: ReadonlyMap<string, Glyph>, set: SetDefinit
     pool.add(key);
     for (const other of list) pool.add(other);
   }
-  const lookAlikes = buildLookAlikeTable(pool, glyphs, { curated, perComponent: 4 });
+  const sameShape = set.sameShape ?? {};
+  const lookAlikes = buildLookAlikeTable(pool, glyphs, { curated, perComponent: 4, exclude: sameShape });
   const fillers = [...pool].filter((component) => {
     const glyph = glyphs.get(component);
     return glyph !== undefined && glyph.strokes.length <= FILLER_MAX_STROKES && !hasNamedParts(glyph);
@@ -94,7 +95,7 @@ export function buildContent(glyphs: ReadonlyMap<string, Glyph>, set: SetDefinit
 
   const lexicon = new Map<string, LexiconEntry>();
   for (const char of mixed.chars) lexicon.set(char, describe(set.lexicon[char]!));
-  return { glyphs, context: { glyphs, lookAlikes, fillers, known }, decks: [...families, mixed], lexicon };
+  return { glyphs, context: { glyphs, lookAlikes, fillers, known, sameShape }, decks: [...families, mixed], lexicon };
 }
 
 /** The characters of one run through a deck, shuffled; the Mixed deck is sampled down to `MIXED_DECK_SIZE`. */

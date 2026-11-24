@@ -11,6 +11,7 @@ import type { Glyph } from "../glyph/types";
 import type { Rng } from "../util/rng";
 import { decompose } from "./decompose";
 import { alternativeLayouts } from "./layout";
+import { tellApart } from "./lookalike";
 import { mutationsFor } from "./mutate";
 import type { AssemblyPuzzle, ComponentTile, LookAlikeTable, PuzzleOptions } from "./types";
 
@@ -24,9 +25,30 @@ export interface PuzzleContext {
   readonly fillers?: readonly string[];
   /** Components a learner can be expected to recognise; limits how finely the target is split (see `decompose`). */
   readonly known?: ReadonlySet<string>;
+  /**
+   * Components that are one shape at another size or proportion (口 and 囗). Such a
+   * pair never shares a tray: on tiles of equal size nobody can tell which is which.
+   * Listed once per pair; the relation is symmetric.
+   */
+  readonly sameShape?: LookAlikeTable;
 }
 
 type TileDraft = Omit<ComponentTile, "id">;
+
+/**
+ * Least visible difference (fraction of the tile) between a made-up shape and any other
+ * tile, the component it imitates included. Below this a player cannot see what is wrong
+ * with the tile, or cannot tell it from a real component next to it (氵 with a stroke
+ * dropped beside 冫).
+ */
+export const MIN_MALFORMED_DIFFERENCE = 0.1;
+
+/**
+ * Least visible difference between two real components in one tray. Lower than for
+ * made-up shapes on purpose: genuine near-twins (夂 and 攵, 鳥 and 烏) are what the
+ * player is meant to learn to tell apart.
+ */
+export const MIN_TILE_DIFFERENCE = 0.06;
 
 function positiveInteger(value: number, name: string): number {
   if (!Number.isInteger(value) || value < 1) {
@@ -76,6 +98,11 @@ function matchLookAlikes(components: readonly string[], pools: ReadonlyMap<strin
  *    out so that as many components as possible get at least one, and no shape appears
  *    on two distractor tiles. A component is left without a distractor only when its
  *    look-alikes are all taken or missing and no mutation applies (or is allowed).
+ *  - No tile may look like another. A made-up shape must differ visibly from every
+ *    other tile, the component it imitates included (`MIN_MALFORMED_DIFFERENCE`); two
+ *    real components may be closer (`MIN_TILE_DIFFERENCE`). Candidates that fail are
+ *    skipped. So a mutation whose extra stroke lands on an existing one, or that
+ *    happens to equal a real component on offer, never reaches the player.
  *  - Fillers from `context.fillers` (random, each shape once, never one already in the
  *    tray) top the tray up to `traySize`; by default that is the tile count so far
  *    rounded up to full rows. `traySize` never removes needed tiles, and the tray stays
@@ -123,6 +150,20 @@ export function createAssemblyPuzzle(
     role: "correct",
   }));
   const shown = new Set(solution);
+  const twins = new Set<string>();
+  for (const [key, list] of Object.entries(context.sameShape ?? {})) {
+    for (const other of list) {
+      twins.add(`${key}\n${other}`);
+      twins.add(`${other}\n${key}`);
+    }
+  }
+  // Correct tiles may repeat (a component needed twice); every other tile must be told apart from all tiles.
+  const distinctFromTray = (shows: string, shape: Glyph, madeUp = false): boolean =>
+    tiles.every(
+      (tile) =>
+        !twins.has(`${tile.shows}\n${shows}`) &&
+        tellApart(tile.glyph, shape, madeUp || tile.role === "malformed" ? MIN_MALFORMED_DIFFERENCE : MIN_TILE_DIFFERENCE),
+    );
 
   const distinct = [...shown];
   const pools = new Map<string, string[]>();
@@ -136,24 +177,24 @@ export function createAssemblyPuzzle(
   for (const candidate of firstPick.values()) shown.add(candidate);
 
   for (const component of distinct) {
-    const picked: string[] = [];
     const first = firstPick.get(component);
-    if (first !== undefined) picked.push(first);
-    for (const candidate of pools.get(component)!) {
-      if (picked.length >= perComponent) break;
-      if (shown.has(candidate)) continue;
+    const pool = pools.get(component)!;
+    let missing = perComponent;
+    for (const candidate of first === undefined ? pool : [first, ...pool]) {
+      if (missing === 0) break;
+      if (shown.has(candidate) && candidate !== first) continue;
       shown.add(candidate);
-      picked.push(candidate);
+      const shape = context.glyphs.get(candidate)!;
+      if (!distinctFromTray(candidate, shape)) continue;
+      tiles.push({ shows: candidate, glyph: shape, role: "lookalike", imitates: component });
+      missing--;
     }
-    for (const lookAlike of picked) {
-      tiles.push({ shows: lookAlike, glyph: context.glyphs.get(lookAlike)!, role: "lookalike", imitates: component });
-    }
-    let missing = perComponent - picked.length;
     if (missing > 0 && allowMalformed) {
       const original = { ...tiles[solution.indexOf(component)]!.glyph, char: component };
       for (const mutated of rng.shuffle(mutationsFor(original, rng))) {
         if (missing === 0) break;
         if (shown.has(mutated.char)) continue;
+        if (!distinctFromTray(mutated.char, mutated, true)) continue;
         shown.add(mutated.char);
         tiles.push({ shows: mutated.char, glyph: mutated, role: "malformed", imitates: component });
         missing--;
@@ -168,7 +209,9 @@ export function createAssemblyPuzzle(
     );
     for (const filler of rng.shuffle(fillers)) {
       if (tiles.length >= traySize) break;
-      tiles.push({ shows: filler, glyph: context.glyphs.get(filler)!, role: "filler" });
+      const shape = context.glyphs.get(filler)!;
+      if (!distinctFromTray(filler, shape)) continue;
+      tiles.push({ shows: filler, glyph: shape, role: "filler" });
     }
   }
 

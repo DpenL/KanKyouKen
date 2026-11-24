@@ -1,5 +1,31 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_SAVED, bestKey, bestScore, withScore } from "./saved";
+import { DEFAULT_SAVED, bestKey, bestScore, cleanSaved, withScore, type Saved } from "./saved";
+
+const stored = (value: unknown): Saved => ({ ...DEFAULT_SAVED, ...(value as Partial<Saved>) });
+
+describe("cleanSaved", () => {
+  it("keeps what is valid", () => {
+    const saved: Saved = { mode: "review", sound: false, volume: 0.25, best: { "gate:learn": 320 } };
+    expect(cleanSaved(saved)).toEqual(saved);
+    expect(cleanSaved(DEFAULT_SAVED)).toEqual(DEFAULT_SAVED);
+  });
+
+  it("replaces every field of the wrong kind with its default", () => {
+    expect(cleanSaved(stored({ best: null }))).toEqual(DEFAULT_SAVED);
+    expect(cleanSaved(stored({ best: [1, 2] })).best).toEqual({});
+    expect(cleanSaved(stored({ mode: "exam" })).mode).toBe("learn");
+    expect(cleanSaved(stored({ mode: null })).mode).toBe("learn");
+    expect(cleanSaved(stored({ sound: "yes" })).sound).toBe(true);
+    expect(cleanSaved(stored({ volume: "loud" })).volume).toBe(DEFAULT_SAVED.volume);
+    expect(cleanSaved(stored({ volume: Number.NaN })).volume).toBe(DEFAULT_SAVED.volume);
+  });
+
+  it("clamps the volume and drops best scores that are not finite numbers", () => {
+    expect(cleanSaved(stored({ volume: 7 })).volume).toBe(1);
+    expect(cleanSaved(stored({ volume: -1 })).volume).toBe(0);
+    expect(cleanSaved(stored({ best: { a: 10, b: "many", c: null, d: Infinity } })).best).toEqual({ a: 10 });
+  });
+});
 
 describe("best scores", () => {
   it("keeps a best per deck and mode", () => {

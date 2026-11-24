@@ -1,7 +1,7 @@
 /** Which screen follows which: home, a run through a deck, the exam. */
 
 import { drawDeck, type Deck } from "../content";
-import { examChar, startExam, submitExamItem } from "../exam";
+import { examChar, examTotals, startExam, submitExamItem } from "../exam";
 import { buildPuzzle, startRound, type Mode, type Round } from "../round";
 import { bestScore, withScore } from "../saved";
 import { currentChar, finishRound, startSession, summarize } from "../session";
@@ -26,7 +26,55 @@ export function startFlow(app: App): void {
     app.probe.board = null;
   };
 
+  /**
+   * A run (a deck or an exam) adds one entry to the browser history, so that the
+   * browser's Back, or the back gesture on a phone, returns to the deck list instead of
+   * leaving the game. `abandon` records that the run was left unfinished.
+   */
+  let inRun = false;
+  let abandon: (() => void) | null = null;
+  /** Steps back in history that the game asked for itself and must not act on. */
+  let ownSteps = 0;
+  const enterRun = (onAbandon: () => void): void => {
+    abandon = onAbandon;
+    if (inRun) return;
+    inRun = true;
+    try {
+      history.pushState({ kumiki: "run" }, "");
+    } catch {
+      // No history to add to (some embedded pages): Back then leaves the game as before.
+    }
+  };
+  /** The run is complete: nothing is left to abandon, though its last screen is still up. */
+  const endRun = (): void => {
+    abandon = null;
+  };
+  window.addEventListener("popstate", () => {
+    if (ownSteps > 0) {
+      ownSteps--;
+      return;
+    }
+    if (!inRun) return;
+    inRun = false;
+    abandon?.();
+    abandon = null;
+    showHome();
+  });
+
+  /** Back to the deck list from inside the game (the Decks button, the end of a run). */
   const home = (): void => {
+    abandon?.();
+    abandon = null;
+    if (inRun) {
+      inRun = false;
+      ownSteps++;
+      history.back();
+    }
+    showHome();
+  };
+
+  const showHome = (): void => {
+    app.sound.hush();
     clearProbe();
     app.show(
       "home",
@@ -45,6 +93,16 @@ export function startFlow(app: App): void {
     let session = startSession(deck.id, mode, drawDeck(deck, rng.fork("order")));
     const at = (item: string): { ts: number; item: string; task: string } => ({ ts: Date.now(), item, task });
     const progress = (): string => `${deck.title} · ${session.index + 1} / ${session.queue.length}`;
+    enterRun(() => {
+      const char = currentChar(session);
+      app.record(
+        gameEvent("deck_abandoned", char === null ? { ts: Date.now(), task } : at(char), {
+          deck: deck.id,
+          position: session.index,
+          ...summarize(session),
+        }),
+      );
+    });
 
     const next = (): void => {
       const char = currentChar(session);
@@ -74,22 +132,30 @@ export function startFlow(app: App): void {
         quit: home,
         checked: (data) => app.record(choiceAttemptEvent(at(char), data)),
         hinted: (current) => app.record(gameEvent("hint_shown", at(char), { hint: "character", hints_used: current.state.hintsUsed })),
+        over: settle,
         done: reveal,
       });
       app.show("assembly", view.screen, view.leave);
     };
 
-    const reveal = (round: Round): void => {
+    /** What the reveal of the round just settled needs to know about the deck as it was. */
+    let settled: { readonly label: string; readonly returns: boolean } | null = null;
+
+    /** Count the round the moment it ends, so that leaving during the pause before the reveal loses nothing. */
+    const settle = (round: Round): void => {
       const { solved, attempts, hintsUsed: hints, score } = round.state;
       app.record(gameEvent("item_complete", at(round.char), { solved, attempts, hints, score }));
-      const returns = !solved && !session.retried.includes(round.char);
-      const label = progress();
+      settled = { label: progress(), returns: !solved && !session.retried.includes(round.char) };
       session = finishRound(session, { char: round.char, solved, attempts, hints, score });
-      const view = revealScreen(app, { round, progress: label, returns, next });
+    };
+
+    const reveal = (round: Round): void => {
+      const view = revealScreen(app, { round, progress: settled?.label ?? progress(), returns: settled?.returns ?? false, next });
       app.show("reveal", view.screen, view.leave);
     };
 
     const finish = (): void => {
+      endRun();
       clearProbe();
       const summary = summarize(session);
       const saved = app.store.get();
@@ -108,11 +174,28 @@ export function startFlow(app: App): void {
     const task = "exam";
     const at = (item: string): { ts: number; item: string; task: string } => ({ ts: Date.now(), item, task });
     let exam = startExam(deck.id, drawDeck(deck, rng.fork("order")));
+    const totals = (): { score: number; slots: number; items: number; answered: number } => ({
+      ...examTotals(exam),
+      items: exam.chars.length,
+      answered: exam.results.length,
+    });
+    enterRun(() => {
+      const char = examChar(exam);
+      app.record(
+        gameEvent("deck_abandoned", char === null ? { ts: Date.now(), task } : at(char), {
+          deck: deck.id,
+          position: exam.index,
+          ...totals(),
+        }),
+      );
+    });
 
     const next = (): void => {
       const char = examChar(exam);
       if (char === null) {
+        endRun();
         clearProbe();
+        app.record(gameEvent("exam_complete", { ts: Date.now(), task }, { deck: deck.id, ...totals() }));
         app.show("exam-results", examResultsScreen(app, { deck, exam, home }));
         return;
       }
@@ -147,5 +230,5 @@ export function startFlow(app: App): void {
     next();
   };
 
-  home();
+  showHome();
 }

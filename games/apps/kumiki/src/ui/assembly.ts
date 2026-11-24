@@ -23,7 +23,9 @@ export interface AssemblyOptions {
   /** A check was made; `data` is the payload of its event. */
   checked(data: CheckData): void;
   hinted(round: Round): void;
-  /** The round is solved or failed and its last feedback has been shown. */
+  /** The round has just been solved or failed; its last feedback is on screen. */
+  over(round: Round): void;
+  /** Some time after `over`, when the last feedback has been read. Not called if the player leaves first. */
   done(round: Round): void;
 }
 
@@ -54,7 +56,8 @@ export function assemblyScreen(app: App, options: AssemblyOptions): { screen: HT
     layouts: round.puzzle.layouts.map((_, index) => index),
     board: () => round.board,
     memory: () => round.state.memory,
-    locked: () => isOver(round),
+    // While the hint covers the structures nothing can be placed under it.
+    locked: () => isOver(round) || hintBoard !== null,
     place(layout, slot, tileId) {
       round = moveTile(round, layout, slot, tileId);
       renderStatus();
@@ -89,7 +92,14 @@ export function assemblyScreen(app: App, options: AssemblyOptions): { screen: HT
     score.replaceChildren(
       h("span", { class: "stat-label" }, "Score"),
       h("strong", {}, String(options.banked)),
-      h("span", { class: "stat-note" }, round.state.solved ? `+${round.state.score}` : `this one: ${potentialScore(round)}`),
+      // What solving is worth right now; it drops with every check and hint.
+      h(
+        "span",
+        { class: "stat-note", "data-stat": "worth" },
+        ...(round.state.solved
+          ? [`+${round.state.score}`]
+          : [h("span", { class: "stat-note-label" }, "this one: "), `+${potentialScore(round)}`]),
+      ),
     );
     checkButton.disabled = !canCheck(round);
     hintButton.disabled = isOver(round);
@@ -118,12 +128,16 @@ export function assemblyScreen(app: App, options: AssemblyOptions): { screen: HT
     if (outcome === null) return;
     lostLife = outcome.round.state.livesLeft !== round.state.livesLeft;
     round = outcome.round;
-    options.checked(outcome.data);
-    if (!round.state.solved) app.sound.cue("error");
+    // The screen first: whatever follows (events, sound) must not keep the answer back.
     boardView.refresh();
     renderStatus();
     renderFeedback();
-    if (isOver(round)) doneTimer = window.setTimeout(() => options.done(round), OUTCOME_DELAY_MS);
+    options.checked(outcome.data);
+    if (isOver(round)) {
+      options.over(round);
+      doneTimer = window.setTimeout(() => options.done(round), OUTCOME_DELAY_MS);
+    }
+    if (!round.state.solved) app.sound.cue("error");
   }
 
   function hideHint(): void {
@@ -131,20 +145,23 @@ export function assemblyScreen(app: App, options: AssemblyOptions): { screen: HT
     hint.hidden = true;
     hint.replaceChildren();
     hintBoard?.dispose();
+    const shown = hintBoard !== null;
     hintBoard = null;
+    if (shown) boardView.refresh();
   }
 
   function onHint(): void {
     if (isOver(round) || hintBoard !== null) return;
     round = takeHint(round);
-    options.hinted(round);
-    app.sound.cue("hint");
     hintBoard = createGlyphBoard(glyph, "The character");
     hintBoard.view.setAllStrokes("done");
     hint.replaceChildren(hintBoard.element);
     hint.hidden = false;
+    boardView.refresh();
     renderStatus();
     hintTimer = window.setTimeout(hideHint, HINT_MS);
+    options.hinted(round);
+    app.sound.cue("hint");
   }
 
   screen.append(

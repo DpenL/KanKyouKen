@@ -3,9 +3,10 @@ import { FIXTURES, fixture } from "../glyph/fixtures";
 import type { Glyph } from "../glyph/types";
 import { createRng } from "../util/rng";
 import { evaluateAttempt } from "./assembly";
-import { buildLookAlikeTable } from "./lookalike";
-import { createAssemblyPuzzle, type PuzzleContext } from "./puzzle";
-import { EARTH_LINES, SCHOLAR_LINES, handGlyph, randomTreeGlyph } from "./test-glyphs";
+import { buildLookAlikeTable, tellApart, visibleDifference } from "./lookalike";
+import { mutateGlyph } from "./mutate";
+import { MIN_MALFORMED_DIFFERENCE, MIN_TILE_DIFFERENCE, createAssemblyPuzzle, type PuzzleContext } from "./puzzle";
+import { EARTH_LINES, SCHOLAR_LINES, boxLines, handGlyph, randomTreeGlyph, type TestLine } from "./test-glyphs";
 import type { AssemblyPuzzle, LookAlikeTable, PuzzleOptions } from "./types";
 
 const COMPONENTS = ["十", "口", "木", "月", "氵"];
@@ -36,7 +37,19 @@ function solvingPlacements(puzzle: AssemblyPuzzle): string[] {
   });
 }
 
+/** Every distractor and filler can be told from every other tile; made-up shapes by a wider margin. */
+function expectDistinctTiles(puzzle: AssemblyPuzzle): void {
+  puzzle.tray.forEach((a, i) => {
+    for (const b of puzzle.tray.slice(i + 1)) {
+      if (a.role === "correct" && b.role === "correct") continue;
+      const least = a.role === "malformed" || b.role === "malformed" ? MIN_MALFORMED_DIFFERENCE : MIN_TILE_DIFFERENCE;
+      expect(tellApart(a.glyph, b.glyph, least), `${a.shows} and ${b.shows} look alike`).toBe(true);
+    }
+  });
+}
+
 function expectWellFormed(puzzle: AssemblyPuzzle): void {
+  expectDistinctTiles(puzzle);
   expect(puzzle.tray.map((t) => t.id)).toEqual(puzzle.tray.map((_, i) => `t${i}`));
   expect(new Set(puzzle.layouts.map((l) => l.signature)).size).toBe(puzzle.layouts.length);
   expect(puzzle.layouts[puzzle.correctLayout]!.slots).toHaveLength(puzzle.solution.length);
@@ -214,6 +227,110 @@ describe("createAssemblyPuzzle", () => {
             expect(imitators(puzzle, component).length).toBeGreaterThanOrEqual(1);
           }
         }
+      }
+    });
+  });
+
+  describe("tiles that look alike", () => {
+    // An upright with two equal rungs 12% of its height apart: doubling either rung puts
+    // the copy exactly on the other one.
+    const RUNGS: readonly TestLine[] = [
+      [
+        [200, 0],
+        [200, 1000],
+      ],
+      [
+        [50, 440],
+        [350, 440],
+      ],
+      [
+        [50, 560],
+        [350, 560],
+      ],
+    ];
+    const ladder = handGlyph("梯", [...RUNGS, ...boxLines(550, 100, 400, 800)], {
+      c: [
+        { e: "丰", s: [0, 1, 2] },
+        { e: "口", s: [3, 4, 5] },
+      ],
+    });
+
+    it("never offers a made-up shape that cannot be told from the component it imitates", () => {
+      for (let seed = 0; seed < 20; seed++) {
+        const puzzle = createAssemblyPuzzle(ladder, context(), { lookAlikesPerComponent: 2 }, createRng(seed));
+        expectWellFormed(puzzle);
+        const rungs = puzzle.tray.find((t) => t.shows === "丰")!.glyph;
+        const doubled = mutateGlyph({ ...rungs, char: "丰" }, "extra-stroke", createRng(seed))!;
+        expect(doubled.strokes).toHaveLength(4);
+        expect(visibleDifference(rungs, doubled)).toBeCloseTo(0, 9);
+        expect(imitators(puzzle, "丰").map((t) => t.shows)).toEqual(["丰~drop-stroke"]);
+      }
+    });
+
+    it("never offers a made-up shape that equals a real component in the tray", () => {
+      // The two shapes 口 can lose a stroke to, entered as real components.
+      const open = new Map<string, Glyph>();
+      for (let seed = 0; open.size < 2 && seed < 50; seed++) {
+        const dropped = mutateGlyph(fixture("口"), "drop-stroke", createRng(seed))!;
+        const key = dropped.strokes.map((stroke) => stroke.path).join("|");
+        if (!open.has(key)) open.set(key, dropped);
+      }
+      const [first, second] = [...open.values()];
+      const withOpen = new Map<string, Glyph>([...glyphs, ["凵", { ...first!, char: "凵" }], ["匚", { ...second!, char: "匚" }]]);
+      for (let seed = 0; seed < 20; seed++) {
+        const puzzle = createAssemblyPuzzle(
+          fixture("古"),
+          { glyphs: withOpen, lookAlikes: { 口: ["凵", "匚"] } },
+          { lookAlikesPerComponent: 3 },
+          createRng(seed),
+        );
+        expectWellFormed(puzzle);
+        expect(imitators(puzzle, "口").map((t) => t.shows).sort()).toEqual(["凵", "匚", "口~extra-stroke"].sort());
+      }
+    });
+
+    it("skips a look-alike or filler that looks like a tile already in the tray", () => {
+      // 圡 is 土 under another name: whichever comes second is left out.
+      const twin = new Map<string, Glyph>([...glyphs, ["圡", { ...earth, char: "圡" }]]);
+      for (let seed = 0; seed < 20; seed++) {
+        const alike = createAssemblyPuzzle(
+          fixture("古"),
+          { glyphs: twin, lookAlikes: { 十: ["土", "圡"] } },
+          { lookAlikesPerComponent: 2 },
+          createRng(seed),
+        );
+        expectWellFormed(alike);
+        expect(imitators(alike, "十").map((t) => t.role).sort()).toEqual(["lookalike", "malformed"]);
+        const filled = createAssemblyPuzzle(
+          fixture("古"),
+          { glyphs: twin, lookAlikes: {}, fillers: ["土", "圡", "木"] },
+          { traySize: 9 },
+          createRng(seed),
+        );
+        expectWellFormed(filled);
+        expect(filled.tray.filter((t) => t.role === "filler").map((t) => t.shows).filter((c) => c !== "木")).toHaveLength(1);
+      }
+    });
+
+    it("keeps components named as one shape out of the same tray", () => {
+      const sameShape = { 土: ["士"] };
+      for (let seed = 0; seed < 20; seed++) {
+        // Without the note both are fine side by side.
+        const free = make("古", context(NO_TABLE, ["土", "士", "木"]), { traySize: 9 }, seed);
+        expect(shows(free)).toEqual(expect.arrayContaining(["土", "士"]));
+
+        const filled = make("古", { ...context(NO_TABLE, ["土", "士", "木"]), sameShape }, { traySize: 9 }, seed);
+        expectWellFormed(filled);
+        expect(shows(filled).filter((c) => c === "土" || c === "士")).toHaveLength(1);
+
+        const alike = make("古", { ...context({ 十: ["土", "士"] }), sameShape }, { lookAlikesPerComponent: 2 }, seed);
+        expectWellFormed(alike);
+        expect(imitators(alike, "十").map((t) => t.role).sort()).toEqual(["lookalike", "malformed"]);
+
+        // Against a tile the target needs, whichever side the pair is listed from.
+        const needed = make("古", { ...context({ 口: ["土"] }, ["土"]), sameShape: { 土: ["十"] } }, { traySize: 9 }, seed);
+        expectWellFormed(needed);
+        expect(shows(needed)).not.toContain("土");
       }
     });
   });

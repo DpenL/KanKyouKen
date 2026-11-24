@@ -162,6 +162,11 @@ button:disabled {
   padding: 10px 16px 24px;
 }
 
+/* Focus is moved to a new screen so that reading continues there; the screen itself needs no ring. */
+.screen:focus {
+  outline: none;
+}
+
 .bar {
   display: flex;
   align-items: center;
@@ -1083,7 +1088,7 @@ button:disabled {
 
   .assembly:not(.exam) .bar-progress,
   .assembly:not(.exam) .back-label,
-  .stat-note {
+  .stat-note-label {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -1114,6 +1119,54 @@ button:disabled {
 @media (max-width: 420px) {
   .screen {
     padding-inline: 12px;
+  }
+}
+
+/*
+ * Phones whose screen is short, or shortened by the browser's toolbars (390 x 664,
+ * 375 x 553): the board must fit without scrolling, because the bar with Check sticks
+ * to the bottom and would lie over the tray. The tray becomes two rows of six, the
+ * prompt one line, and the structures take what height is left.
+ * 272px is everything but the structures and the tiles: bar, prompt, feedback, actions,
+ * the gaps between them and the gaps inside the two grids.
+ */
+@media (max-width: 760px) and (max-height: 819px) {
+  :root {
+    --tile: min(51px, calc((100vw - 64px) / 6));
+    --frame: clamp(88px, calc((100dvh - 272px - 2 * var(--tile)) / 2), min(166px, calc((100vw - 34px) / 2)));
+  }
+
+  .assembly .tray {
+    grid-template-columns: repeat(6, var(--tile));
+  }
+
+  .assembly .prompt {
+    flex-flow: row wrap;
+    align-items: baseline;
+    justify-content: center;
+    gap: 0 10px;
+  }
+
+  .assembly .meaning {
+    font-size: 1.3rem;
+  }
+
+  .assembly .reading {
+    font-size: 1rem;
+  }
+
+  .assembly .feedback {
+    min-height: 64px;
+    padding: 4px 12px;
+    font-size: 0.86rem;
+  }
+
+  .assembly > .actions {
+    padding: 4px 0 max(8px, env(safe-area-inset-bottom));
+  }
+
+  .frames[data-count="1"] {
+    grid-template-columns: min(230px, calc(100dvh - 270px - 2 * var(--tile)), 70vw);
   }
 }
 

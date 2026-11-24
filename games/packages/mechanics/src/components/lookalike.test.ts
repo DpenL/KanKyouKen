@@ -7,6 +7,8 @@ import {
   buildLookAlikeTable,
   rankLookAlikes,
   shapeDistance,
+  tellApart,
+  visibleDifference,
 } from "./lookalike";
 import { EARTH_LINES, SCHOLAR_LINES, boxLines, crossLines, handGlyph } from "./test-glyphs";
 
@@ -100,6 +102,56 @@ describe("shapeDistance", () => {
     expect(coarse).toBeGreaterThan(0);
     expect(fine).toBeGreaterThan(0);
     expect(fine).toBeLessThan(DEFAULT_LOOKALIKE_DISTANCE);
+  });
+});
+
+describe("visibleDifference", () => {
+  const wide = handGlyph("a", boxLines(100, 100, 800, 800));
+  const narrow = handGlyph("b", boxLines(300, 100, 400, 800));
+
+  it("is 0 for the same drawing, however many strokes it took", () => {
+    expect(visibleDifference(earth, earth)).toBeCloseTo(0, 9);
+    // The short bar drawn a second time in the same place does not show.
+    const doubled = handGlyph("土", [...EARTH_LINES, EARTH_LINES[0]!]);
+    expect(doubled.strokes).toHaveLength(4);
+    expect(visibleDifference(earth, doubled)).toBeCloseTo(0, 9);
+    expect(shapeDistance(earth, doubled)).toBeGreaterThan(0);
+  });
+
+  it("is the farthest any ink of one shape lies from the other, as a fraction of the square", () => {
+    // The bars trade lengths: the long bar's ends overhang the short one by 200 of 800.
+    expect(visibleDifference(earth, scholar)).toBeCloseTo(0.25, 6);
+    // A second bar 100 below the first: its ends are 100 of 800 from the nearest ink.
+    const barred = handGlyph("x", [...EARTH_LINES, [[300, 500], [700, 500]]]);
+    expect(visibleDifference(earth, barred)).toBeCloseTo(0.125, 6);
+  });
+
+  it("is symmetric and ignores where and how large a shape is drawn", () => {
+    expect(visibleDifference(scholar, earth)).toBe(visibleDifference(earth, scholar));
+    const small = handGlyph("土", EARTH_LINES.map((line) => line.map(([x, y]) => [x / 4 + 50, y / 4 + 600] as const)));
+    expect(visibleDifference(earth, small)).toBeCloseTo(0, 9);
+  });
+
+  it("keeps proportions when fitted square and drops them when stretched", () => {
+    expect(visibleDifference(wide, narrow)).toBeCloseTo(0.25, 6);
+    expect(visibleDifference(wide, narrow, "square")).toBeCloseTo(0.25, 6);
+    expect(visibleDifference(wide, narrow, "stretch")).toBeCloseTo(0, 9);
+  });
+
+  it("handles glyphs without strokes", () => {
+    expect(visibleDifference(noStrokes, noStrokes)).toBe(0);
+    expect(visibleDifference(noStrokes, earth)).toBe(Infinity);
+    expect(visibleDifference(earth, noStrokes, "stretch")).toBe(Infinity);
+  });
+
+  describe("tellApart", () => {
+    it("asks for the difference both at the shape's own proportions and stretched", () => {
+      expect(tellApart(earth, scholar, 0.2)).toBe(true);
+      expect(tellApart(earth, scholar, 0.3)).toBe(false);
+      // Different only in proportions: the same once each fills a slot.
+      expect(tellApart(wide, narrow, 0.05)).toBe(false);
+      expect(tellApart(earth, earth, 0.01)).toBe(false);
+    });
   });
 });
 
@@ -217,6 +269,20 @@ describe("buildLookAlikeTable", () => {
     expect(strict["口"]).toEqual(["氵"]);
     const loose = buildLookAlikeTable(components, glyphs, { maxDistance: 10, perComponent: 6 });
     for (const component of components) expect(loose[component]).toHaveLength(6);
+  });
+
+  it("never lists excluded pairs for each other, computed or curated, in either direction", () => {
+    const plain = buildLookAlikeTable(components, glyphs);
+    const computed = buildLookAlikeTable(components, glyphs, { exclude: { 土: ["士"] } });
+    expect(computed["土"]).not.toContain("士");
+    expect(computed["士"]).not.toContain("土");
+    expect(computed["口"]).toEqual(plain["口"]);
+    // Listed from the other side, and curated on top of it.
+    const curated = buildLookAlikeTable(components, glyphs, { curated: { 土: ["士", "木"] }, exclude: { 士: ["土"] } });
+    expect(curated["土"]![0]).toBe("木");
+    expect(curated["土"]).not.toContain("士");
+    expect(curated["士"]).not.toContain("土");
+    expect(curated["木"]![0]).toBe("土");
   });
 
   it("returns an empty table for no components", () => {

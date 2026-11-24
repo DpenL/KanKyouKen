@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { loadStarterJa } from "@kankyouken/glyph-data";
-import { DEFAULT_RULES, type AssemblyPuzzle } from "@kankyouken/mechanics/components";
+import {
+  DEFAULT_RULES,
+  MIN_MALFORMED_DIFFERENCE,
+  MIN_TILE_DIFFERENCE,
+  tellApart,
+  type AssemblyPuzzle,
+} from "@kankyouken/mechanics/components";
 import { createRng } from "@kankyouken/mechanics/util";
 import { buildContent } from "./content";
 import { examChar, examTotals, startExam, submitExamItem } from "./exam";
@@ -59,6 +65,28 @@ describe("puzzles", () => {
     const b = puzzleFor("持", "seed");
     expect(a.tray.map((tile) => tile.shows)).toEqual(b.tray.map((tile) => tile.shows));
     expect(a.layouts.map((layout) => layout.signature)).toEqual(b.layouts.map((layout) => layout.signature));
+  });
+
+  it("never show two tiles a player cannot tell apart, for any character of the set", () => {
+    const twins = new Set(Object.entries(set.sameShape ?? {}).flatMap(([a, list]) => list.flatMap((b) => [a + b, b + a])));
+    expect(twins.has("口囗")).toBe(true);
+    for (const char of content.decks.at(-1)!.chars) {
+      for (const seed of ["a", "b"]) {
+        const puzzle = puzzleFor(char, seed);
+        expect(puzzle.tray, char).toHaveLength(12);
+        for (const component of new Set(puzzle.solution)) {
+          expect(puzzle.tray.some((t) => t.imitates === component), `${char}: nothing passes for ${component}`).toBe(true);
+        }
+        puzzle.tray.forEach((a, i) => {
+          for (const b of puzzle.tray.slice(i + 1)) {
+            if (a.role === "correct" && b.role === "correct") continue;
+            expect(twins.has(a.shows + b.shows), `${char}: ${a.shows} and ${b.shows}`).toBe(false);
+            const least = a.role === "malformed" || b.role === "malformed" ? MIN_MALFORMED_DIFFERENCE : MIN_TILE_DIFFERENCE;
+            expect(tellApart(a.glyph, b.glyph, least), `${char}: ${a.shows} and ${b.shows}`).toBe(true);
+          }
+        });
+      }
+    }
   });
 
   it("refuse characters without a glyph", () => {
@@ -130,6 +158,27 @@ describe("a round", () => {
     expect(isOver(second.round)).toBe(true);
   });
 
+  it("does not judge an unchanged board twice", () => {
+    let round = begin("持", "review");
+    const { puzzle } = round;
+    const tiles = solving(puzzle);
+    const reversed = [...tiles].reverse();
+    round = check(fill(round, puzzle.correctLayout, reversed), 2000)!.round;
+    expect(round.state.livesLeft).toBe(4);
+    // A second tap on Check: nothing to judge, no life lost.
+    expect(canCheck(round)).toBe(false);
+    expect(check(round, 2010)).toBeNull();
+    // Taking a tile out and putting it back gives the same board again.
+    const emptied = returnTile(round, reversed[0]!);
+    expect(canCheck(emptied)).toBe(false);
+    expect(canCheck(moveTile(emptied, puzzle.correctLayout, 0, reversed[0]!))).toBe(false);
+    // Any other arrangement can be checked.
+    round = fill(round, puzzle.correctLayout, tiles);
+    expect(canCheck(round)).toBe(true);
+    const solved = check(round, 3000)!;
+    expect(solved.data).toMatchObject({ correct: true, attempt: 2, lives_left: 4 });
+  });
+
   it("locks the board once it is over", () => {
     let round = begin("持", "review");
     const tiles = solving(round.puzzle);
@@ -143,8 +192,13 @@ describe("a round", () => {
   it("fails after five wrong checks in Review", () => {
     let round = begin("持", "review");
     const { puzzle } = round;
-    round = fill(round, puzzle.correctLayout, [...solving(puzzle)].reverse());
-    for (let n = 0; n < 5; n++) round = check(round, 2000 + n)!.round;
+    // Two wrong arrangements in turn: the same one is not judged twice in a row.
+    const reversed = [...solving(puzzle)].reverse();
+    const strangers = puzzle.tray.filter((tile) => !puzzle.solution.includes(tile.shows)).map((tile) => tile.id);
+    for (let n = 0; n < 5; n++) {
+      round = fill(round, puzzle.correctLayout, n % 2 === 0 ? reversed : strangers.slice(0, reversed.length));
+      round = check(round, 2000 + n)!.round;
+    }
     expect(round.state.failed).toBe(true);
     expect(round.state.livesLeft).toBe(0);
     expect(round.state.score).toBe(0);

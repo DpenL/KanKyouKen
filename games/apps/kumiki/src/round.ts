@@ -44,13 +44,25 @@ export interface Round {
   readonly board: Board;
   /** Feedback of the latest check, or null before the first. */
   readonly feedback: AssemblyFeedback | null;
+  /** The board as it was at the latest check, or null before the first. */
+  readonly checked: Board | null;
   /** When the round started or was last checked; response times are measured from here. */
   readonly since: number;
 }
 
 export function startRound(char: string, mode: Mode, puzzle: AssemblyPuzzle, now: number): Round {
   const rules = rulesFor(mode);
-  return { char, mode, puzzle, rules, state: startAssembly(puzzle, rules), board: EMPTY_BOARD, feedback: null, since: now };
+  return {
+    char,
+    mode,
+    puzzle,
+    rules,
+    state: startAssembly(puzzle, rules),
+    board: EMPTY_BOARD,
+    feedback: null,
+    checked: null,
+    since: now,
+  };
 }
 
 export function isOver(round: Round): boolean {
@@ -68,8 +80,16 @@ export function returnTile(round: Round, tileId: string): Round {
   return isOver(round) ? round : { ...round, board: removeTile(round.board, tileId) };
 }
 
+function sameBoard(a: Board, b: Board): boolean {
+  return a.layout === b.layout && a.slots.length === b.slots.length && a.slots.every((id, slot) => id === b.slots[slot]);
+}
+
+/**
+ * A full board can be checked once: judging the same arrangement again could only repeat
+ * the answer and cost another life (a double tap on Check would do exactly that).
+ */
 export function canCheck(round: Round): boolean {
-  return !isOver(round) && isFull(round.board);
+  return !isOver(round) && isFull(round.board) && (round.checked === null || !sameBoard(round.board, round.checked));
 }
 
 /** Payload of the `choice_attempt` event a check produces. */
@@ -108,7 +128,7 @@ export function check(round: Round, now: number): { round: Round; data: CheckDat
     correct_positions: feedback.correctPositions,
     lives_left: state.livesLeft,
   };
-  return { round: { ...round, state, feedback, since: now }, data };
+  return { round: { ...round, state, feedback, checked: round.board, since: now }, data };
 }
 
 /** Count a look at the whole character; it lowers what a solved round is worth. */

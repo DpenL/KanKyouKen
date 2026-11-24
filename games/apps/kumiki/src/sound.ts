@@ -36,6 +36,8 @@ export interface Sound {
    */
   melody(glyph: Glyph): { readonly notes: readonly ScheduledNote[]; play(): { stop(): void } };
   cue(name: CueName): void;
+  /** Stop the motif or melody that is playing, if any. */
+  hush(): void;
   apply(settings: SoundSettings): void;
 }
 
@@ -64,7 +66,8 @@ export function createSound(glyphs: ReadonlyMap<string, Glyph>, rng: Rng, initia
         return null;
       }
     }
-    void port.resume();
+    // A browser may refuse to start audio; the game goes on without sound.
+    port.resume().catch(() => undefined);
     return port;
   };
 
@@ -99,13 +102,39 @@ export function createSound(glyphs: ReadonlyMap<string, Glyph>, rng: Rng, initia
       } catch {
         notes = [];
       }
-      return { notes, play: () => start(notes, 1) };
+      return {
+        notes,
+        play() {
+          try {
+            return start(notes, 1);
+          } catch {
+            return { stop: () => undefined };
+          }
+        },
+      };
     },
     cue(name) {
-      const out = audible();
-      if (out === null) return;
-      out.setMasterGain(settings.volume);
-      out.cue(name);
+      // Sound is never worth a broken round: whatever the audio layer throws is dropped.
+      try {
+        const out = audible();
+        if (out === null) return;
+        // One master level serves motifs and cues. A motif still sounding would jump to
+        // the cue's level, so it ends here.
+        playing?.stop();
+        playing = null;
+        out.setMasterGain(settings.volume);
+        out.cue(name);
+      } catch {
+        // Stay silent.
+      }
+    },
+    hush() {
+      try {
+        playing?.stop();
+      } catch {
+        // Nothing to stop.
+      }
+      playing = null;
     },
     apply(next) {
       settings = next;

@@ -12,14 +12,26 @@ export interface LocalStore<T extends object> {
  * A small persisted settings/progress object. Storage that is missing, full or blocked
  * (private windows, embedded previews) is tolerated: the store then simply lives in memory.
  * Unknown or corrupt stored data falls back to the defaults.
+ *
+ * Stored fields are merged over the defaults as they are. Storage can hold anything, so
+ * pass `clean` to check what was read field by field; it gets the merged object and
+ * returns the one to use. If it throws, the defaults are used.
  */
-export function createLocalStore<T extends object>(key: string, defaults: T, storage: KeyValueStorage | null = safeLocalStorage()): LocalStore<T> {
+export function createLocalStore<T extends object>(
+  key: string,
+  defaults: T,
+  storage: KeyValueStorage | null = safeLocalStorage(),
+  clean?: (stored: T) => T,
+): LocalStore<T> {
   let value: T = { ...defaults };
   try {
     const raw = storage?.getItem(key);
     if (raw) {
       const parsed: unknown = JSON.parse(raw);
-      if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) value = { ...defaults, ...(parsed as Partial<T>) };
+      if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+        value = { ...defaults, ...(parsed as Partial<T>) };
+        if (clean !== undefined) value = clean(value);
+      }
     }
   } catch {
     value = { ...defaults };

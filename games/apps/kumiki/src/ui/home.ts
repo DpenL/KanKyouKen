@@ -37,14 +37,30 @@ export function homeScreen(app: App, actions: HomeActions): HTMLElement {
       ...MODES.map((mode) => {
         const option = h(
           "button",
-          { type: "button", class: "mode", role: "radio", "data-mode": mode.id, "aria-checked": saved.mode === mode.id ? "true" : "false" },
+          {
+            type: "button",
+            class: "mode",
+            role: "radio",
+            "data-mode": mode.id,
+            "aria-checked": saved.mode === mode.id ? "true" : "false",
+            // One tab stop for the group; the arrow keys move within it.
+            tabindex: saved.mode === mode.id ? 0 : -1,
+          },
           h("strong", {}, mode.title),
           h("span", {}, mode.line),
         );
-        option.addEventListener("click", () => {
-          app.store.patch({ mode: mode.id });
+        const choose = (id: Mode): void => {
+          app.store.patch({ mode: id });
           render();
-          modes.querySelector<HTMLElement>(`[data-mode="${mode.id}"]`)?.focus();
+          modes.querySelector<HTMLElement>(`[data-mode="${id}"]`)?.focus();
+        };
+        option.addEventListener("click", () => choose(mode.id));
+        option.addEventListener("keydown", (event) => {
+          const step = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 0;
+          if (step === 0) return;
+          event.preventDefault();
+          const at = MODES.findIndex((other) => other.id === mode.id);
+          choose(MODES[(at + step + MODES.length) % MODES.length]!.id);
         });
         return option;
       }),

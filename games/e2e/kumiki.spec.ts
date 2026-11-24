@@ -226,6 +226,59 @@ test("review: a wrong check is marked, then the character is assembled by draggi
   expect(errors).toEqual([]);
 });
 
+test("review: a double click on Check is judged once", async ({ page }) => {
+  const errors = watchConsole(page);
+  await page.goto(DEBUG);
+  await page.getByRole("radio", { name: /Review/ }).click();
+  await page.locator(".deck").first().click();
+  const info = await puzzleInfo(page);
+  const strangers = info.tray.filter((tile) => !info.solution.includes(tile.shows)).map((tile) => tile.id);
+  for (let slot = 0; slot < info.solution.length; slot++) {
+    await page.locator(`.tray .tile[data-tile="${strangers[slot]}"]`).click();
+    const at = await slotPoint(page, info.correctLayout, slot);
+    await page.mouse.click(at.x, at.y);
+  }
+  const check = page.getByRole("button", { name: "Check" });
+  await check.dblclick();
+  await expect(page.locator(".lives")).toHaveAttribute("aria-label", "4 of 5 lives left");
+  await expect(check).toBeDisabled();
+  expect((await kk(page)).state!.attempts).toBe(1);
+  expect(await events(page, "choice_attempt")).toHaveLength(1);
+
+  // Changing the board makes it checkable again.
+  await page.locator(`.tray .tile[data-tile="${strangers[info.solution.length]}"]`).click();
+  const first = await slotPoint(page, info.correctLayout, 0);
+  await page.mouse.click(first.x, first.y);
+  await expect(check).toBeEnabled();
+
+  // Leaving in mid-deck is recorded, and the browser's Back leads to the decks, not out of the game.
+  await page.getByRole("button", { name: "Decks" }).click();
+  await expect(page.locator(".home")).toBeVisible();
+  expect((await events(page, "deck_abandoned"))[0]).toMatchObject({ item: info.target, data: { position: 0, score: 0 } });
+  await page.locator(".deck").first().click();
+  await expect(page.locator(".tray .tile")).toHaveCount(12);
+  await page.goBack();
+  await expect(page.locator(".home")).toBeVisible();
+  expect(page.url()).toBe(DEBUG);
+  expect(await events(page, "deck_abandoned")).toHaveLength(2);
+
+  expect(errors).toEqual([]);
+});
+
+test("stored data of the wrong shape does not break the start", async ({ page }) => {
+  const errors = watchConsole(page);
+  await page.addInitScript(() => localStorage.setItem("kk.kumiki.v1", '{"best":null,"mode":"exam","volume":"loud"}'));
+  await page.goto(DEBUG);
+  await expect(page.locator(".deck").first()).toBeVisible();
+  await expect(page.getByRole("radio", { name: /Learn/ })).toHaveAttribute("aria-checked", "true");
+  // The arrow keys move within the mode group.
+  await page.getByRole("radio", { name: /Learn/ }).focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByRole("radio", { name: /Review/ })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByRole("radio", { name: /Review/ })).toBeFocused();
+  expect(errors).toEqual([]);
+});
+
 test("learn: the character is shown first, and a hint is counted", async ({ page }) => {
   const errors = watchConsole(page);
   await page.goto(DEBUG);
@@ -272,7 +325,11 @@ test("exam: no feedback until the end, then a score per character", async ({ pag
     await page.mouse.click(at.x, at.y);
   }
   await expect(page.locator(".structure")).toHaveAttribute("data-mark", "untried");
-  await page.getByRole("button", { name: "Next" }).click();
+  // The second click of a double click must not hand in the next character unseen.
+  await page.getByRole("button", { name: "Next" }).dblclick();
+  await expect(page.locator(".assembly .bar-progress")).toContainText("2 /");
+  expect(await events(page, "choice_attempt")).toHaveLength(1);
+  expect((await kk(page)).puzzle!.target).not.toBe(first.target);
 
   // Every other character is left empty.
   for (;;) {
@@ -293,6 +350,9 @@ test("exam: no feedback until the end, then a score per character", async ({ pag
   expect(attempts.every((event) => event.task === "exam")).toBe(true);
   expect(attempts[0]!.data).toMatchObject({ correct: true, slots_correct: first.solution.length, slots_total: first.solution.length });
   expect(attempts[1]!.data).toMatchObject({ correct: false, slots_correct: 0 });
+  const done = await events(page, "exam_complete");
+  expect(done).toHaveLength(1);
+  expect(done[0]!.data).toMatchObject({ score: first.solution.length, items: attempts.length, answered: attempts.length });
 
   expect(errors).toEqual([]);
 });
@@ -345,6 +405,46 @@ test.describe("on a phone", () => {
     await expect(page.locator(`.slot[data-layout="${info.correctLayout}"][data-slot="1"]`)).toHaveAttribute("data-tile", second);
     await expect(page.locator(".drag-ghost")).toHaveCount(0);
     expect(await fits()).toBe(true);
+
+    expect(errors).toEqual([]);
+  });
+});
+
+test.describe("on a phone with the browser's toolbars showing", () => {
+  test.use({ viewport: { width: 390, height: 664 }, hasTouch: true, isMobile: true });
+
+  test("the whole board fits: nothing lies under the Check bar or below the screen", async ({ page }) => {
+    const errors = watchConsole(page);
+    await page.goto(DEBUG);
+    await page.getByRole("radio", { name: /Review/ }).tap();
+    await page.locator(".deck").first().tap();
+    await expect(page.locator(".tray .tile")).toHaveCount(12);
+
+    const layout = await page.evaluate(() => {
+      const onTop = (element: Element): boolean => {
+        const box = element.getBoundingClientRect();
+        const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+        return hit !== null && (hit === element || element.contains(hit));
+      };
+      return {
+        scrolls: document.documentElement.scrollHeight > window.innerHeight,
+        hidden: [...document.querySelectorAll(".tray .tile, .structure, .assembly .actions button")].filter((element) => !onTop(element)).length,
+        worth: document.querySelector('[data-stat="worth"]')?.getBoundingClientRect().width ?? 0,
+      };
+    });
+    expect(layout.scrolls).toBe(false);
+    expect(layout.hidden).toBe(0);
+    // What the round is worth stays visible, so the cost of a hint shows.
+    expect(layout.worth).toBeGreaterThan(10);
+    await expect(page.locator('[data-stat="worth"]')).toContainText("+100");
+
+    // A tile of the bottom row can be tapped, and Hint lowers what the round is worth.
+    const info = await puzzleInfo(page);
+    const last = info.tray.at(-1)!.id;
+    await page.locator(`.tray .tile[data-tile="${last}"]`).tap();
+    await expect(page.locator(`.tray .tile[data-tile="${last}"]`)).toHaveAttribute("data-selected", "true");
+    await page.getByRole("button", { name: "Hint" }).tap();
+    await expect(page.locator('[data-stat="worth"]')).toContainText("+75");
 
     expect(errors).toEqual([]);
   });
