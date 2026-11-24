@@ -21,7 +21,7 @@
     "build": "npm run build --workspaces --if-present",
     "e2e": "npm run build && playwright test",
     "check": "npm run lint && npm run typecheck && npm run test && npm run build",
-    "data": "npm run build --workspace @kankyouken/glyph-data"
+    "data": "npm run generate --workspace @kankyouken/glyph-data"
   },
   "devDependencies": {
     "@eslint/js": "^9",

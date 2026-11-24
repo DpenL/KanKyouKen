@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { decodeGlyphSet, segmentUnits } from "@kankyouken/mechanics/glyph";
 import type { ComponentNode, Glyph } from "@kankyouken/mechanics/glyph";
+import { judgeAttempt, matchStroke } from "@kankyouken/mechanics/stroke";
+import { pointAt, polylineLength, type Point } from "@kankyouken/mechanics/util";
 import { loadStarterJa, setCharacters, STARTER_JA_GLYPHS, STARTER_JA_SET } from "../index";
 import { KANJIVG_SOURCE, serializeGlyphSet } from "./glyph-set";
 
@@ -139,5 +141,116 @@ describe("loadStarterJa", () => {
     const [content, walk] = glyphs.get("返")!.root.children;
     expect(content).toMatchObject({ element: "反", position: "inside", positionDetail: "nyoc" });
     expect(walk).toMatchObject({ position: "enclosure", positionDetail: "nyo", original: "辶" });
+  });
+});
+
+/**
+ * The tolerances of the stroke matcher are our own tuning, so they are checked against
+ * every real stroke: 1.0, 1.3 and 1.6 are the levels Fude Uta offers (Strict, Normal,
+ * Gentle), 1.0 the library default.
+ */
+describe("stroke judging on the real strokes", () => {
+  const LEVELS = [1, 1.3, 1.6];
+  const SAMPLES = 48;
+
+  /** Pen positions along a part of the stroke, evenly spaced. */
+  const pen = (median: readonly Point[], from = 0, to = 1, count = SAMPLES): Point[] =>
+    Array.from({ length: count }, (_, i) => pointAt(median, from + ((to - from) * i) / (count - 1)));
+
+  /** Unit normal of the line at point i. */
+  const normal = (line: readonly Point[], i: number): Point => {
+    const a = line[Math.max(0, i - 1)]!;
+    const b = line[Math.min(line.length - 1, i + 1)]!;
+    const length = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    return { x: -(b.y - a.y) / length, y: (b.x - a.x) / length };
+  };
+
+  /** The points pushed sideways by `offset(i)` glyph units. */
+  const sideways = (line: readonly Point[], offset: (i: number) => number): Point[] =>
+    line.map((p, i) => {
+      const n = normal(line, i);
+      return { x: p.x + n.x * offset(i), y: p.y + n.y * offset(i) };
+    });
+
+  const verdicts = (drawn: (glyph: Glyph, median: readonly Point[]) => Point[], leniency: number): Map<string, number> => {
+    const seen = new Map<string, number>();
+    for (const glyph of glyphs.values()) {
+      glyph.strokes.forEach((stroke, index) => {
+        const { verdict } = judgeAttempt(drawn(glyph, stroke.median), glyph, index, { match: { leniency } });
+        seen.set(verdict, (seen.get(verdict) ?? 0) + 1);
+      });
+    }
+    return seen;
+  };
+  const strokeCount = [...glyphs.values()].reduce((sum, glyph) => sum + glyph.strokes.length, 0);
+
+  /** Strokes whose own drawing, made by `drawn`, the matcher takes for that stroke written the right way. */
+  const matched = (drawn: (glyph: Glyph, median: readonly Point[]) => Point[], leniency: number): string[] => {
+    const out: string[] = [];
+    for (const glyph of glyphs.values()) {
+      glyph.strokes.forEach((stroke, index) => {
+        if (matchStroke(drawn(glyph, stroke.median), stroke.median, glyph.size, { leniency }).matched) out.push(`${glyph.char}${index}`);
+      });
+    }
+    return out;
+  };
+
+  // These walk every stroke of the set against every other stroke of its character several times over.
+  const SLOW = 30_000;
+
+  it(
+    "accepts every stroke traced along its median and refuses it reversed, at every level",
+    () => {
+      for (const leniency of LEVELS) {
+        expect(verdicts((_, median) => pen(median), leniency), `leniency ${leniency}`).toEqual(new Map([["correct", strokeCount]]));
+        expect(matched((_, median) => pen(median).reverse(), leniency), `reversed, leniency ${leniency}`).toEqual([]);
+      }
+    },
+    SLOW,
+  );
+
+  it(
+    "accepts honest sloppy strokes at the default level",
+    () => {
+      const sloppy: Record<string, (glyph: Glyph, median: readonly Point[]) => Point[]> = {
+        // Sways 1.5 % of the square to either side, three times along the stroke.
+        wobbly: (glyph, median) => sideways(pen(median), (i) => Math.sin((i / (SAMPLES - 1)) * Math.PI * 6) * 0.015 * glyph.size),
+        // Starts 4 % late and stops 6 % early.
+        short: (_, median) => pen(median, 0.04, 0.94),
+        // Runs 10 % past the end.
+        long: (_, median) => {
+          const line = pen(median);
+          const end = line[line.length - 1]!;
+          const before = line[line.length - 4]!;
+          const heading = Math.hypot(end.x - before.x, end.y - before.y) || 1;
+          const extra = polylineLength(median) * 0.1;
+          return [...line, { x: end.x + ((end.x - before.x) / heading) * extra, y: end.y + ((end.y - before.y) / heading) * extra }];
+        },
+      };
+      for (const [name, drawn] of Object.entries(sloppy)) {
+        // The library default in full, as the game judges it; Fude Uta's default (Normal) on the stroke itself.
+        expect(verdicts(drawn, 1), name).toEqual(new Map([["correct", strokeCount]]));
+        expect(matched(drawn, 1.3), `${name}, leniency 1.3`).toHaveLength(strokeCount);
+      }
+    },
+    SLOW,
+  );
+
+  it("refuses a dense scribble over any stroke, at every level", () => {
+    // A zigzag from the stroke's start to its end, drawn with three pen positions per leg.
+    const scribble = (glyph: Glyph, median: readonly Point[], turns: number, reach: number): Point[] => {
+      const corners = sideways(pen(median, 0, 1, turns), (i) => (i === 0 || i === turns - 1 ? 0 : i % 2 === 0 ? -reach : reach) * glyph.size);
+      return corners.flatMap((corner, i) => {
+        if (i === 0) return [corner];
+        const previous = corners[i - 1]!;
+        return [1, 2, 3].map((k) => ({ x: previous.x + ((corner.x - previous.x) * k) / 3, y: previous.y + ((corner.y - previous.y) * k) / 3 }));
+      });
+    };
+    // Without the length limit the second of these passes for every stroke of the set, the first for about one in twelve.
+    for (const [turns, reach] of [[24, 0.15], [48, 0.15]] as const) {
+      for (const leniency of LEVELS) {
+        expect(matched((glyph, median) => scribble(glyph, median, turns, reach), leniency), `${turns} turns, leniency ${leniency}`).toEqual([]);
+      }
+    }
   });
 });

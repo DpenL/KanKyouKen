@@ -11,7 +11,7 @@
     "./starter-ja.set.json": "./sets/starter-ja.json"
   },
   "scripts": {
-    "build": "tsx build.ts",
+    "generate": "tsx build.ts",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {

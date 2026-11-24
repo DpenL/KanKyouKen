@@ -15,6 +15,7 @@ export const DEFAULT_MATCH_OPTIONS: MatchOptions = Object.freeze({
   minDirectionCosine: 0,
   shapeTolerance: 0.4,
   minLengthRatio: 0.4,
+  maxLengthRatio: 1.6,
   resampleCount: 24,
 });
 
@@ -28,7 +29,8 @@ const OPTION_KEYS = Object.keys(DEFAULT_MATCH_OPTIONS) as readonly (keyof MatchO
  * is not a number, or when `leniency` is not a positive finite number: tolerances are
  * multiplied and divided by it, so zero or a negative value has no meaning.
  * Tolerances of zero or below are accepted and simply make that test unpassable
- * (or, for `minLengthRatio`, always passed).
+ * (or, for `minLengthRatio`, always passed). An infinite `maxLengthRatio` switches the
+ * upper length test off.
  */
 export function resolveMatchOptions(partial: Partial<MatchOptions> = {}): MatchOptions {
   const resolved: { -readonly [K in keyof MatchOptions]: MatchOptions[K] } = { ...DEFAULT_MATCH_OPTIONS };

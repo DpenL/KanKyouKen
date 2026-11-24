@@ -204,7 +204,12 @@ type Axis = "x" | "y";
 interface Built {
   readonly tree: LayoutNode;
   readonly order: number[];
+  /** The last resort was used somewhere in this tree. */
+  readonly guessed: boolean;
 }
+
+/** `hints` of `layoutFromBoxes`: a shape, null for "never an enclosure", undefined for "not known". */
+type EncloseHints = readonly (EncloseShape | null | undefined)[];
 
 interface Cut {
   readonly groups: number[][];
@@ -291,12 +296,8 @@ function findEncloser(boxes: readonly Box[], indices: readonly number[]): number
   return best;
 }
 
-function buildFromBoxes(
-  boxes: readonly Box[],
-  indices: readonly number[],
-  hints: readonly (EncloseShape | undefined)[] | undefined,
-): Built {
-  if (indices.length === 1) return { tree: SLOT, order: [indices[0]!] };
+function buildFromBoxes(boxes: readonly Box[], indices: readonly number[], hints: EncloseHints | undefined): Built {
+  if (indices.length === 1) return { tree: SLOT, order: [indices[0]!], guessed: false };
 
   const across = cutAlong(boxes, indices, "x");
   const down = cutAlong(boxes, indices, "y");
@@ -305,21 +306,24 @@ function buildFromBoxes(
     const kind = cut === across ? "row" : "column";
     const children: LayoutNode[] = [];
     const order: number[] = [];
+    let guessed = false;
     for (const group of cut.groups) {
       const built = buildFromBoxes(boxes, group, hints);
       if (built.tree.kind === kind) children.push(...built.tree.children);
       else children.push(built.tree);
       order.push(...built.order);
+      guessed ||= built.guessed;
     }
-    return { tree: { kind, children }, order };
+    return { tree: { kind, children }, order, guessed };
   }
 
   const outer = findEncloser(boxes, indices);
-  if (outer !== null) {
+  // A box that is no enclosure is not replaced by a smaller one: that would turn the character inside out.
+  if (outer !== null && hints?.[outer] !== null) {
     const rest = indices.filter((i) => i !== outer);
     const inner = buildFromBoxes(boxes, rest, hints);
     const shape = hints?.[outer] ?? shapeFromClearance(unionOf(boxes, indices), unionOf(boxes, rest));
-    return { tree: { kind: "enclose", shape, inner: inner.tree }, order: [outer, ...inner.order] };
+    return { tree: { kind: "enclose", shape, inner: inner.tree }, order: [outer, ...inner.order], guessed: inner.guessed };
   }
 
   const centres = indices.map((i) => boxCenter(boxes[i]!));
@@ -331,7 +335,7 @@ function buildFromBoxes(
     return alongX ? c.x : c.y;
   };
   const order = [...indices].sort((a, b) => position(a) - position(b) || a - b);
-  return { tree: { kind: alongX ? "row" : "column", children: order.map(() => SLOT) }, order };
+  return { tree: { kind: alongX ? "row" : "column", children: order.map(() => SLOT) }, order, guessed: true };
 }
 
 /**
@@ -348,19 +352,22 @@ function buildFromBoxes(
  *     more than `ENCLOSE_CLEARANCE` of the whole away from the edge; combinations that
  *     match no named shape count as "full". With several such boxes the largest wins.
  *  4. Last resort: a flat row or column, ordered along the axis on which the box
- *     centres spread more.
+ *     centres spread more. This is a guess, not a structure that was found, and
+ *     `guessed` says so (also when it happened inside a group of a cut or enclosure).
  *
  * `hints[i]`, when given, is the enclosure shape to use if box i turns out to be the
  * outer slot of an enclosure (callers that know the component's strokes can tell the
- * shape more reliably than the clearance test).
+ * shape more reliably than the clearance test). A hint of null says that box i is no
+ * enclosure whatever it contains (its strokes do not go round anything): when step 3
+ * would make it the outer slot, there is no enclosure and step 4 follows.
  *
  * `order[slot]` is the index of the input box that sits in that slot (slot order as in
  * `Layout.slots`). Throws a RangeError when no boxes are given.
  */
 export function layoutFromBoxes(
   boxes: readonly Box[],
-  hints?: readonly (EncloseShape | undefined)[],
-): { tree: LayoutNode; order: number[] } {
+  hints?: readonly (EncloseShape | null | undefined)[],
+): { tree: LayoutNode; order: number[]; guessed: boolean } {
   if (boxes.length === 0) throw new RangeError("layoutFromBoxes: no boxes given");
   return buildFromBoxes(
     boxes,

@@ -5,8 +5,9 @@
  * The SVG's viewBox is expected to be in glyph units (as `createGlyphView` sets it), so
  * the screen-to-SVG matrix is all the conversion there is. One stroke is one pen-down to
  * pen-up gesture of one pointer; a second finger, a palm or a mouse joining in while a
- * stroke is being drawn is ignored. This is our own adapter; the research games only
- * fix what a stroke is, not how the browser delivers it.
+ * stroke is being drawn is ignored, and a thumb or palm resting elsewhere on the page
+ * does not keep the next finger from writing. This is our own adapter; the research
+ * games only fix what a stroke is, not how the browser delivers it.
  */
 
 import type { Point } from "@kankyouken/mechanics/util";
@@ -74,17 +75,19 @@ export interface StrokeCapture {
  * - Sets `touch-action: none` on the target so that drawing does not scroll or zoom the
  *   page, and captures the pointer so the stroke keeps coming when the pen leaves the
  *   SVG.
- * - Only primary pointers pressing their main button start a stroke (no second finger,
- *   no right mouse button, no pen eraser). While a stroke is being drawn every other
- *   pointer is ignored.
+ * - Any pointer pressing its main button on the target starts a stroke when none is
+ *   being drawn (no right mouse button, no pen eraser). It need not be the browser's
+ *   primary pointer: with a thumb or palm resting anywhere on the page, the finger that
+ *   writes never is. While a stroke is being drawn every other pointer is ignored.
  * - Positions come from `getCoalescedEvents()` when the browser has it, so fast strokes
  *   keep their shape; they are thinned with `appendSample`. Each sample's `t` is its
  *   event's `timeStamp` (milliseconds, monotonic).
  * - On pen-up the final position is always added (`finishStroke`), then `onEnd` gets the
  *   whole stroke. A tap gives a one-sample stroke.
  * - `pointercancel`, or losing pointer capture any other way, calls `onCancel`. So does a
- *   new primary pointer of the same kind going down while a stroke is still open: that
- *   can only mean the pen-up was missed, and the new gesture then starts a fresh stroke.
+ *   new primary pointer of the same kind going down while a primary pointer's stroke is
+ *   still open: that can only mean the pen-up was missed, and the new gesture then
+ *   starts a fresh stroke.
  * - Positions that cannot be converted (see `clientToGlyph`) are skipped; a gesture that
  *   starts on such a position is ignored.
  *
@@ -99,7 +102,7 @@ export function createStrokeCapture(
   const previousTouchAction = target.style.touchAction;
   target.style.touchAction = "none";
 
-  let active: { readonly pointerId: number; readonly pointerType: string } | null = null;
+  let active: { readonly pointerId: number; readonly pointerType: string; readonly primary: boolean } | null = null;
   let stroke: DrawnStroke = [];
   let disposed = false;
 
@@ -123,9 +126,11 @@ export function createStrokeCapture(
   };
 
   const onDown = (event: PointerEvent): void => {
-    if (!event.isPrimary || event.button !== 0) return;
+    if (event.button !== 0) return;
     if (active !== null) {
-      if (active.pointerType !== event.pointerType) return;
+      // Two primary pointers of one kind cannot be down together, so the first one's pen-up was
+      // missed. Anything else is a second finger, a palm or another device joining in.
+      if (!event.isPrimary || !active.primary || active.pointerType !== event.pointerType) return;
       abandon();
       handlers.onCancel?.();
     }
@@ -133,7 +138,7 @@ export function createStrokeCapture(
     const sample = sampleOf(event, event.timeStamp);
     if (!Number.isFinite(sample.x) || !Number.isFinite(sample.y)) return;
 
-    active = { pointerId: event.pointerId, pointerType: event.pointerType };
+    active = { pointerId: event.pointerId, pointerType: event.pointerType, primary: event.isPrimary };
     stroke = [sample];
     try {
       target.setPointerCapture(event.pointerId);

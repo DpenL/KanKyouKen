@@ -449,3 +449,120 @@ test.describe("on a phone with the browser's toolbars showing", () => {
     expect(errors).toEqual([]);
   });
 });
+
+test.describe("a session that belongs to a study", () => {
+  // Same origin as the game, so no CORS preflight; every request is answered by the test, not by a server.
+  const API = `${BASE}platform/functions/v1`;
+  const link = (participant: string, extra = ""): string =>
+    `${BASE}?debug&seed=e2e&study=S1&participant=${participant}&api=${encodeURIComponent(API)}${extra}`;
+  const notice = (page: Page) => page.locator("[data-kk-recording-notice]");
+
+  interface Received {
+    readonly token: string;
+    readonly type: string;
+    readonly id: unknown;
+  }
+
+  /** Answer every request to the collector with what `answer()` gives at that moment: a status, or null for a network failure. */
+  async function stubCollector(page: Page, answer: () => number | null): Promise<Received[]> {
+    const received: Received[] = [];
+    await page.route("**/event-collector", async (route) => {
+      const status = answer();
+      const body = route.request().postDataJSON() as { event_type: string; payload: Record<string, unknown> | null };
+      received.push({
+        token: (route.request().headers().authorization ?? "").replace("Bearer ", ""),
+        type: body.event_type,
+        id: body.payload?.client_event_id,
+      });
+      if (status === null) await route.abort("connectionfailed");
+      else await route.fulfill({ status, contentType: "application/json", body: status === 201 ? '{"event_id":"e"}' : '{"title":"refused"}' });
+    });
+    return received;
+  }
+
+  const stored = (page: Page, key: string): Promise<string | null> => page.evaluate((k) => localStorage.getItem(k), key);
+
+  test("plain play shows no notice; a study link that lost its token says the session is not recorded", async ({ page }) => {
+    await page.goto(DEBUG);
+    await expect(page.locator(".deck").first()).toBeVisible();
+    await expect(notice(page)).toHaveCount(0);
+
+    await page.goto(link("P1"));
+    await expect(notice(page)).toBeVisible();
+    await expect(notice(page)).toHaveAttribute("role", "status");
+    await expect(notice(page)).toContainText("Not being recorded: the study link is incomplete (no token)");
+
+    // The notice lies over the page without getting in the way: a deck under it can still be started.
+    await expect(page.locator("#app")).toHaveAttribute("data-screen", "home");
+    await page.locator(".deck").first().click();
+    await expect(page.locator("#app")).not.toHaveAttribute("data-screen", "home");
+    await expect(notice(page)).toBeVisible();
+  });
+
+  test("a refused token and an outage are announced, and no event is lost to either", async ({ page }) => {
+    let answer: number | null = 401;
+    const received = await stubCollector(page, () => answer);
+
+    await page.goto(link("P1", "#token=stale"));
+    await expect(notice(page)).toContainText("Not being recorded: the study link was not accepted");
+    const backlog = JSON.parse((await stored(page, "kankyouken:events:S1:P1"))!) as { events: { event_type: string; payload: { client_event_id: string } }[] };
+    expect(backlog.events.map((event) => event.event_type)).toEqual(["session_start"]);
+    expect(backlog.events[0]!.payload.client_event_id).toMatch(/^[0-9a-f-]{36}$/);
+    await page.waitForTimeout(1500);
+    // One attempt, and none after it: the refused token is not tried again.
+    expect(received).toEqual([{ token: "stale", type: "session_start", id: backlog.events[0]!.payload.client_event_id }]);
+
+    // The next launch has a token that works: the backlog goes out first, under the id it had.
+    answer = 201;
+    await page.goto(link("P1", "&session=2#token=fresh"));
+    await expect.poll(() => received.filter((r) => r.token === "fresh").map((r) => r.type)).toEqual(["session_start", "session_end", "session_start"]);
+    expect(received[1]).toEqual({ token: "fresh", type: "session_start", id: backlog.events[0]!.payload.client_event_id });
+    await expect(notice(page)).toBeHidden();
+    await expect.poll(() => stored(page, "kankyouken:events:S1:P1")).toBeNull();
+
+    // The connection drops while playing: the player is told, the events wait.
+    answer = null;
+    await page.locator(".deck").first().click();
+    await expect(notice(page)).toContainText("Results cannot be sent right now");
+    expect((await stored(page, "kankyouken:events:S1:P1"))!).toContain("item_start");
+
+    // It comes back: everything is delivered and the notice goes away.
+    const before = received.length;
+    answer = 201;
+    await expect(notice(page)).toBeHidden({ timeout: 15_000 });
+    await expect.poll(() => stored(page, "kankyouken:events:S1:P1")).toBeNull();
+    const delivered = received.slice(before).filter((r) => r.type === "item_start");
+    expect(delivered.length).toBeGreaterThan(0);
+    // Every event has an id of its own; a repeated id is the same event sent again.
+    const ids = new Map<unknown, string>();
+    for (const r of received) {
+      expect(typeof r.id).toBe("string");
+      expect(ids.get(r.id) ?? r.type).toBe(r.type);
+      ids.set(r.id, r.type);
+    }
+  });
+
+  test("a participant does not inherit the settings of the one before on the same device", async ({ page }) => {
+    await stubCollector(page, () => 201);
+    const learn = page.getByRole("radio", { name: /Learn/ });
+    const review = page.getByRole("radio", { name: /Review/ });
+
+    await page.goto(link("P1", "#token=t"));
+    await expect(learn).toBeChecked();
+    await review.click();
+    await expect(review).toBeChecked();
+    expect(JSON.parse((await stored(page, "kk.kumiki.v1:S1:P1"))!)).toMatchObject({ mode: "review" });
+    expect(await stored(page, "kk.kumiki.v1")).toBeNull();
+
+    // The next participant starts from the defaults.
+    await page.goto(link("P2", "#token=t"));
+    await expect(learn).toBeChecked();
+    expect(await stored(page, "kk.kumiki.v1:S1:P2")).toBeNull();
+
+    // The first one finds their own choice again, and plain play has a place of its own.
+    await page.goto(link("P1", "&session=2#token=t"));
+    await expect(review).toBeChecked();
+    await page.goto(DEBUG);
+    await expect(learn).toBeChecked();
+  });
+});

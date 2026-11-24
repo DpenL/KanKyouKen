@@ -95,7 +95,7 @@ export interface LearnStep {
 // ---------------------------------------------------------------------------
 
 export interface TimedScoring {
-  /** Points for each stroke written correctly at the first attempt. */
+  /** Points for each stroke of the character, however many attempts it took (mistakes cost `mistakePenalty`). */
   readonly strokePoints: number;
   /** Points lost per wrong attempt (a character's points never go below zero). */
   readonly mistakePenalty: number;

@@ -4,11 +4,20 @@
  * `cost[r][c]` is the cost of pairing row r with column c; the matrix may be
  * rectangular. Returns, for every row, the column it is paired with, or -1 when there
  * are more rows than columns and the row is left over. The pairing minimises the total
- * cost over min(rows, columns) pairs. Costs must be finite.
+ * cost over min(rows, columns) pairs.
+ *
+ * Throws a RangeError when rows differ in length or a cost is not a finite number: with
+ * NaN or an all-infinite row the search below would never end.
  */
 export function minCostAssignment(cost: readonly (readonly number[])[]): number[] {
   const rows = cost.length;
   const cols = rows === 0 ? 0 : cost[0]!.length;
+  for (const row of cost) {
+    if (row.length !== cols) throw new RangeError("minCostAssignment: rows differ in length");
+    for (const value of row) {
+      if (!Number.isFinite(value)) throw new RangeError("minCostAssignment: costs must be finite numbers");
+    }
+  }
   if (rows === 0 || cols === 0) return new Array<number>(rows).fill(-1);
   // The algorithm needs rows <= columns; transpose when that is not the case.
   if (rows > cols) {

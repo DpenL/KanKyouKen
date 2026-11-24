@@ -78,10 +78,13 @@ export function buildContent(glyphs: ReadonlyMap<string, Glyph>, set: SetDefinit
     return glyph !== undefined && glyph.strokes.length <= FILLER_MAX_STROKES && !hasNamedParts(glyph);
   });
 
-  // A character that stays in one piece gives nothing to assemble.
+  // A character that stays in one piece gives nothing to assemble, and one whose structure is only
+  // a guess would have the player's right answer marked wrong.
   const playable = (char: string): boolean => {
     const glyph = glyphs.get(char);
-    return glyph !== undefined && set.lexicon[char] !== undefined && decompose(glyph, { known }).components.length > 1;
+    if (glyph === undefined || set.lexicon[char] === undefined) return false;
+    const parts = decompose(glyph, { known });
+    return parts.components.length > 1 && !parts.layoutGuessed;
   };
   const families: Deck[] = set.families
     .map((family) => ({ id: family.id, title: title(family.id), shared: family.shared, chars: family.chars.filter(playable) }))

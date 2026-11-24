@@ -6,7 +6,7 @@
  * stroke data, and every rule about how far to split, is our own design.
  */
 
-import { strokesBox } from "../glyph/tree";
+import { splitRuns, strokesBox } from "../glyph/tree";
 import type { ComponentNode, Glyph } from "../glyph/types";
 import { boxCenter, boxHeight, boxWidth, distance, polylineLength, resample, type Box, type Point } from "../util/geometry";
 import { layoutFromBoxes, makeLayout } from "./layout";
@@ -46,30 +46,34 @@ const byFirstStroke = (a: Part, b: Part): number => a.strokes[0]! - b.strokes[0]
  * The parts directly below a tree node, or null when the node cannot be split cleanly:
  * it has fewer than two named parts, or some of its strokes belong to no named part
  * (splitting would leave strokes nobody can name). Groups without a name are looked
- * through. Runs of one component written in separate goes form a single part.
+ * through. Runs of one component written in separate goes form a single part (`runs`
+ * is `splitRuns` of the glyph); a run whose partners are filed elsewhere in the tree is
+ * only a fragment of its component and is looked through like a group without a name.
  */
-function childParts(node: ComponentNode): Part[] | null {
+function childParts(node: ComponentNode, runs: ReadonlyMap<string, string>): Part[] | null {
   const parts: Part[] = [];
+  const partOfRun = new Map<string, Part>();
   let loose = false;
   const hasOwnStrokes = (n: ComponentNode): boolean => {
     const inChildren = new Set(n.children.flatMap((c) => c.strokes));
     return n.strokes.some((s) => !inChildren.has(s));
   };
   const visit = (n: ComponentNode): void => {
-    if (n.element === undefined) {
+    const run = runs.get(n.id);
+    if (n.element === undefined || (n.part !== undefined && run === undefined)) {
       if (hasOwnStrokes(n)) loose = true;
       for (const child of n.children) visit(child);
       return;
     }
-    if (n.part !== undefined) {
-      const earlier = parts.find((p) => p.key === n.element && p.nodes.every((x) => x.part !== undefined));
-      if (earlier) {
-        earlier.strokes.push(...n.strokes);
-        earlier.nodes.push(n);
-        return;
-      }
+    const earlier = run === undefined ? undefined : partOfRun.get(run);
+    if (earlier) {
+      earlier.strokes.push(...n.strokes);
+      earlier.nodes.push(n);
+      return;
     }
-    parts.push({ key: n.element, strokes: [...n.strokes], nodes: [n] });
+    const part: Part = { key: n.element, strokes: [...n.strokes], nodes: [n] };
+    if (run !== undefined) partOfRun.set(run, part);
+    parts.push(part);
   };
   if (hasOwnStrokes(node)) loose = true;
   for (const child of node.children) visit(child);
@@ -157,7 +161,9 @@ function shapeFromSides(top: boolean, bottom: boolean, left: boolean, right: boo
  * Which enclosure shape a part would have if it wraps other parts. The source's own
  * label decides for hanging and sweeping wraps (广-like and 辶-like); otherwise the
  * shape is read off the part's strokes: a side is covered when strokes run along at
- * least half of it. Undefined when neither gives a known shape.
+ * least half of it. Undefined when neither gives a known shape: the part's own strokes
+ * cover fewer than two adjoining sides (a single crossing stroke such as 亅 through 二,
+ * a block such as 王 beside 丶), so whatever its box holds, it wraps nothing.
  */
 function encloseHint(glyph: Glyph, part: Part): EncloseShape | undefined {
   const label = part.nodes[0]?.positionDetail ?? "";
@@ -211,7 +217,13 @@ function encloseHint(glyph: Glyph, part: Part): EncloseShape | undefined {
  *
  * The structure comes from `layoutFromBoxes` over where the parts sit (measured without
  * the thin extremities of sweeping strokes), with the shape of an enclosing part read
- * off its own strokes. `components` and `strokes` are in slot order.
+ * off its own strokes; a part whose strokes show no enclosure shape is never taken for
+ * the outer slot of one. `components` and `strokes` are in slot order.
+ *
+ * `layoutGuessed` is true when the parts fitted neither a row, a column nor an
+ * enclosure somewhere and were lined up by their centres instead (原 comes out as 厂,
+ * 白 and 小 in a column). The parts are still right, the structure is not to be trusted:
+ * hosts that ask the player for the structure should leave such characters out.
  *
  * Throws a RangeError when `maxSlots` is not a positive integer or the glyph has no strokes.
  */
@@ -223,14 +235,15 @@ export function decompose(glyph: Glyph, options: DecomposeOptions = {}): Decompo
   if (glyph.strokes.length === 0) throw new RangeError(`decompose: ${glyph.char} has no strokes`);
 
   const whole: Part = { key: glyph.char, strokes: glyph.strokes.map((_, s) => s), nodes: [] };
-  let parts: Part[] = maxSlots === 1 ? [whole] : (childParts(glyph.root) ?? [whole]);
+  const runs = splitRuns(glyph.root);
+  let parts: Part[] = maxSlots === 1 ? [whole] : (childParts(glyph.root, runs) ?? [whole]);
   while (parts.length > maxSlots) parts = mergeClosest(glyph, parts);
 
   for (;;) {
     let best: { part: Part; pieces: Part[] } | null = null;
     for (const part of parts) {
       if (part.nodes.length !== 1) continue;
-      const pieces = childParts(part.nodes[0]!);
+      const pieces = childParts(part.nodes[0]!, runs);
       if (pieces === null || parts.length - 1 + pieces.length > maxSlots) continue;
       if (options.known && !pieces.every((piece) => options.known!.has(piece.key))) continue;
       if (best === null || part.strokes.length > best.part.strokes.length) best = { part, pieces };
@@ -240,13 +253,14 @@ export function decompose(glyph: Glyph, options: DecomposeOptions = {}): Decompo
     parts = [...parts.filter((p) => p !== part), ...pieces].sort(byFirstStroke);
   }
 
-  const { tree, order } = layoutFromBoxes(
+  const { tree, order, guessed } = layoutFromBoxes(
     parts.map((part) => trimmedBox(glyph, part.strokes)),
-    parts.map((part) => encloseHint(glyph, part)),
+    parts.map((part) => encloseHint(glyph, part) ?? null),
   );
   return {
     char: glyph.char,
     layout: makeLayout(tree),
+    layoutGuessed: guessed,
     components: order.map((p) => parts[p]!.key),
     strokes: order.map((p) => parts[p]!.strokes),
   };

@@ -83,7 +83,9 @@ describe("assessWriting", () => {
 
   it("swapped strokes cost order only, a reversed stroke costs direction only", () => {
     const swapped = assessWriting(write(hu, { order: [1, 0, 2, 3, 4, 5, 6, 7, 8] }), hu);
-    expect(swapped.metrics["stroke-order"]).toMatchObject({ value: 7, outOf: 9, stars: 2 });
+    // Eight strokes are in the right order relative to each other; one was written too early.
+    expect(swapped.metrics["stroke-order"]).toMatchObject({ value: 8, outOf: 9, stars: 2 });
+    expect(swapped.strokes.filter((s) => !s.orderOk).map((s) => s.stroke)).toEqual([1]);
     expect(swapped.metrics["stroke-direction"]).toMatchObject({ value: 9, stars: 3 });
     expect(swapped.metrics["stroke-valid"].stars).toBe(3);
 
@@ -91,6 +93,81 @@ describe("assessWriting", () => {
     expect(reversed.metrics["stroke-direction"]).toMatchObject({ value: 8, outOf: 9, stars: 2 });
     expect(reversed.metrics["stroke-order"]).toMatchObject({ value: 9, stars: 3 });
     expect(reversed.strokes[5]).toMatchObject({ directionOk: false, orderOk: true });
+  });
+
+  it("counts the written strokes that are in the right relative order", () => {
+    // Only the first stroke is left out: the other eight follow each other correctly.
+    const a = assessWriting(write(hu, { order: [1, 2, 3, 4, 5, 6, 7, 8] }), hu);
+    expect(a.missing).toEqual([0]);
+    expect(a.metrics["stroke-order"]).toMatchObject({ value: 8, outOf: 9, stars: 2 });
+    expect(a.strokes.map((s) => s.orderOk)).toEqual([false, true, true, true, true, true, true, true, true]);
+
+    // One stroke written far too late costs one point, not one for every stroke it was moved past.
+    const late = assessWriting(write(hu, { order: [1, 2, 3, 4, 5, 6, 7, 8, 0] }), hu);
+    expect(late.metrics["stroke-order"]).toMatchObject({ value: 8, outOf: 9 });
+    expect(late.strokes[0]!.orderOk).toBe(false);
+
+    const backwards = assessWriting(write(hu, { order: [8, 7, 6, 5, 4, 3, 2, 1, 0] }), hu);
+    expect(backwards.metrics["stroke-order"]).toMatchObject({ value: 1, outOf: 9, stars: 0 });
+  });
+
+  it("keeps the fit when a stroke is missing", () => {
+    const shrink = (strokes: DrawnStroke[]): DrawnStroke[] =>
+      strokes.map((stroke) => stroke.map((p) => ({ x: 40 + p.x * 0.45, y: 60 + p.y * 0.45 })));
+
+    // 古 without the long horizontal that gives the character its width, written small and off-centre.
+    const gu = fixture("古");
+    const narrow = assessWriting(shrink(write(gu, { order: [1, 2, 3, 4] })), gu);
+    expect(narrow.missing).toEqual([0]);
+    expect(narrow.extra).toEqual([]);
+    expect(narrow.metrics["stroke-valid"]).toMatchObject({ value: 4, outOf: 5 });
+    expect(narrow.metrics["stroke-closeness"]).toMatchObject({ value: 4, outOf: 4, stars: 3 });
+
+    // 十 with only its horizontal: a flat drawing is not stretched over the whole character.
+    const ten = fixture("十");
+    const flat = assessWriting(write(ten, { order: [0] }), ten);
+    expect(flat.missing).toEqual([1]);
+    expect(flat.extra).toEqual([]);
+    const wobbly = write(ten, { order: [0], bend: (_, points) => points.map((p, i) => ({ x: p.x, y: p.y + (i % 2 === 0 ? 5 : -5) })) });
+    expect(assessWriting(wobbly, ten).missing).toEqual([1]);
+
+    // Two strokes missing, one of them on the edge: the fit is redone from the strokes that were found.
+    const two = assessWriting(shrink(write(hu, { order: [1, 2, 3, 4, 5, 7, 8] })), hu);
+    expect(two.missing).toEqual([0, 6]);
+    expect(two.extra).toEqual([]);
+  });
+
+  it("keeps the fit when there is a stray mark beside the character", () => {
+    const tree = fixture("木");
+    const far: DrawnStroke = [
+      { x: -600, y: -600 },
+      { x: -500, y: -500 },
+    ];
+    const withStray = assessWriting([...write(tree), far], tree);
+    expect(withStray.missing).toEqual([]);
+    expect(withStray.extra).toEqual([4]);
+    expect(withStray.metrics["stroke-valid"]).toMatchObject({ value: 4, outOf: 4, stars: 3 });
+    expect(withStray.metrics["stroke-exist"]).toMatchObject({ value: 4, outOf: 5 });
+
+    // A tick just beside the box squeezes the plain fit only a little; precision is still judged without it.
+    const tick: DrawnStroke = [
+      { x: 1000, y: 100 },
+      { x: 1040, y: 150 },
+    ];
+    const withTick = assessWriting([...write(tree), tick], tree);
+    expect(withTick.extra).toEqual([4]);
+    expect(withTick.strokes.every((s) => s.closeness !== null && s.closeness < 1e-6)).toBe(true);
+    expect(withTick.metrics["stroke-length"]).toMatchObject({ value: 4, outOf: 4, stars: 3 });
+  });
+
+  it("never pairs fewer strokes than the writing as drawn", () => {
+    // In place and at full size, but with half of the character missing.
+    const half = write(hu, { order: [0, 1, 2, 3, 4] });
+    const fitted = assessWriting(half, hu);
+    const asDrawn = assessWriting(half, hu, { fitToReference: false });
+    expect(asDrawn.missing).toEqual([5, 6, 7, 8]);
+    expect(fitted.missing).toEqual([5, 6, 7, 8]);
+    expect(fitted.extra).toEqual([]);
   });
 
   it("judges shape, not size or place, when fitted to the reference", () => {

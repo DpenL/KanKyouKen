@@ -37,6 +37,7 @@ const UNMEASURABLE: MatchMetrics = Object.freeze({
   directionCosine: 0,
   shapeDistance: Infinity,
   lengthRatio: 0,
+  coarseLengthRatio: 0,
 });
 
 const isFinitePoint = (p: Point): boolean => Number.isFinite(p.x) && Number.isFinite(p.y);
@@ -64,6 +65,26 @@ function meanDirectionCosine(line: readonly Point[], target: readonly Point[]): 
 }
 
 /**
+ * Pen movement finer than this fraction of the glyph size does not count towards
+ * `MatchMetrics.coarseLengthRatio`. Large enough to iron out tremor and pointer noise,
+ * small enough that a scribble (which has to leave the stroke to be one) keeps its length.
+ */
+export const SCRIBBLE_GRAIN = 0.05;
+
+/** Length of the line measured from each point to the next one at least `grain` away, plus the rest to its end. */
+function coarseLength(line: readonly Point[], grain: number): number {
+  let anchor = line[0]!;
+  let length = 0;
+  for (const p of line) {
+    const step = distance(anchor, p);
+    if (step < grain) continue;
+    length += step;
+    anchor = p;
+  }
+  return length + distance(anchor, line[line.length - 1]!);
+}
+
+/**
  * `line` and `target` are both resampled to the same number of points. A target without
  * length has no shape to differ from, so its shape distance is 0.
  */
@@ -73,6 +94,7 @@ function measure(
   size: number,
   averageDistance: number,
   lengthRatio: number,
+  coarseLengthRatio: number,
 ): MatchMetrics {
   const targetShape = unitShape(target);
   const shapeless = polylineLength(target) === 0;
@@ -83,18 +105,20 @@ function measure(
     directionCosine: meanDirectionCosine(line, target),
     shapeDistance: shapeless ? 0 : frechetDistance(unitShape(line), targetShape),
     lengthRatio,
+    coarseLengthRatio,
   };
 }
 
 /**
  * Reference strokes shorter than this fraction of the glyph get a proportionally wider
- * shape tolerance. Shape is judged after scaling to unit length, so the same wobble of
- * the hand counts for far more on a short stroke; without this, short strokes and dots
- * are rejected for jitter no player can avoid. Position tests are unaffected.
+ * shape tolerance and upper length limit. Shape is judged after scaling to unit length,
+ * and length as a ratio, so the same wobble or overshoot of the hand counts for far more
+ * on a short stroke; without this, short strokes and dots are rejected for jitter no
+ * player can avoid. Position tests are unaffected.
  */
 export const SHORT_STROKE_LENGTH = 0.15;
 
-/** Factor by which the shape tolerance grows for a reference of the given length (fraction of glyph size). */
+/** Factor by which the shape tolerance and the upper length limit grow for a reference of the given length (fraction of glyph size). */
 function shapeSlack(referenceLength: number): number {
   return referenceLength > 0 ? Math.max(1, SHORT_STROKE_LENGTH / referenceLength) : 1;
 }
@@ -106,7 +130,8 @@ function fits(metrics: MatchMetrics, options: MatchOptions, slack: number): bool
     metrics.endDistance <= options.endpointTolerance * lenient &&
     metrics.averageDistance <= options.averageDistanceTolerance * lenient &&
     metrics.shapeDistance <= options.shapeTolerance * lenient * slack &&
-    metrics.lengthRatio >= options.minLengthRatio / lenient
+    metrics.lengthRatio >= options.minLengthRatio / lenient &&
+    metrics.coarseLengthRatio <= options.maxLengthRatio * lenient * slack
   );
 }
 
@@ -145,7 +170,11 @@ function closeness(metrics: MatchMetrics, options: MatchOptions, slack: number):
  *    exactly on every tolerance scores 0, a perfect trace scores 1. The score is not
  *    zeroed when `onStroke` is false; callers that rank candidates decide that.
  *  - `metrics` always describe the stroke as drawn, never the flipped one.
- *  - Short reference strokes get a wider shape tolerance (see `SHORT_STROKE_LENGTH`).
+ *  - A drawing more than `maxLengthRatio` times as long as the reference fits neither
+ *    way, however well its resampled points sit on the stroke: that is a scribble. The
+ *    length is taken without fine detail (see `SCRIBBLE_GRAIN`), so tremor is not.
+ *  - Short reference strokes get a wider shape tolerance and upper length limit (see
+ *    `SHORT_STROKE_LENGTH`).
  *
  * Edge cases:
  *  - Pen positions with non-finite coordinates are ignored.
@@ -176,6 +205,8 @@ export function matchStroke(
   const drawnLength = polylineLength(pen);
   const referenceLength = polylineLength(reference);
   const lengthRatio = drawnLength === 0 ? 0 : referenceLength === 0 ? 1 : drawnLength / referenceLength;
+  const coarseLengthRatio =
+    drawnLength === 0 ? 0 : referenceLength === 0 ? 1 : coarseLength(pen, SCRIBBLE_GRAIN * size) / referenceLength;
 
   const line = resample(pen, resolved.resampleCount);
   const target = resample(reference, resolved.resampleCount);
@@ -183,11 +214,11 @@ export function matchStroke(
   for (const p of line) distanceSum += distanceToPolyline(p, reference);
   const averageDistance = distanceSum / line.length / size;
 
-  const forward = measure(line, target, size, averageDistance, lengthRatio);
+  const forward = measure(line, target, size, averageDistance, lengthRatio, coarseLengthRatio);
   if (drawnLength === 0) {
     return { onStroke: false, directionOk: false, matched: false, score: 0, metrics: forward };
   }
-  const backward = measure(reversed(line), target, size, averageDistance, lengthRatio);
+  const backward = measure(reversed(line), target, size, averageDistance, lengthRatio, coarseLengthRatio);
 
   const slack = shapeSlack(referenceLength / size);
   const fitsForward = fits(forward, resolved, slack);

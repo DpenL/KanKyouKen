@@ -41,6 +41,14 @@ describe("minCostAssignment", () => {
     expect(minCostAssignment([[5], [1], [9]])).toEqual([-1, 0, -1]);
   });
 
+  it("refuses costs it cannot rank and ragged matrices instead of searching forever", () => {
+    expect(() => minCostAssignment([[Number.NaN]])).toThrow(RangeError);
+    expect(() => minCostAssignment([[Infinity, 1], [Infinity, Infinity]])).toThrow(RangeError);
+    expect(() => minCostAssignment([[1, -Infinity]])).toThrow(RangeError);
+    expect(() => minCostAssignment([[1, 2], [3]])).toThrow(RangeError);
+    expect(() => minCostAssignment([[1], [3, 0]])).toThrow(RangeError);
+  });
+
   it("matches brute force on random matrices", () => {
     const rng = createRng("assignment");
     for (let trial = 0; trial < 60; trial++) {

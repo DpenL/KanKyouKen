@@ -22,7 +22,8 @@ export function sinkFrom(record: (event: GameEvent) => void): EventSink {
 
 /**
  * Sends each event to several sinks. A sink that throws does not stop the others;
- * `flush` waits for all of them and never rejects.
+ * `flush` waits for all of them and never rejects, whether a sink's `flush` rejects or
+ * throws outright.
  */
 export function createFanoutSink(sinks: readonly EventSink[]): EventSink {
   return {
@@ -36,7 +37,8 @@ export function createFanoutSink(sinks: readonly EventSink[]): EventSink {
       }
     },
     async flush() {
-      await Promise.allSettled(sinks.map((s) => s.flush?.()));
+      // `async` turns a flush that throws before returning its promise into a rejection.
+      await Promise.allSettled(sinks.map(async (s) => s.flush?.()));
     },
   };
 }

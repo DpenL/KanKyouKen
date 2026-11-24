@@ -6,6 +6,7 @@ import {
   extractStrokes,
   findComponents,
   segmentUnits,
+  splitRuns,
   squareFrame,
   strokeBaseType,
   strokesBox,
@@ -94,6 +95,79 @@ describe("component tree helpers", () => {
       ["木", [2, 3, 4, 5], 0],
       ["囗", [6], 2],
     ]);
+  });
+
+  describe("runs of a split component that the source files in different places", () => {
+    const bar = (y: number): [string, number[]] => [`M100,${y}L900,${y}`, [100, y, 900, y]];
+    const set = { script: "ja", size: 1000, pathKind: "centerline", source: { name: "test", license: "MIT", attribution: "x", url: "about:blank" } } as const;
+    // 主 as KanjiVG has it: the lid 亠 is a dot at the top level and a bar filed inside 王.
+    const lord = decodeGlyph(
+      {
+        char: "主",
+        strokes: [["M450,50L550,150", [450, 50, 550, 150]], bar(250), ["M500,250L500,900", [500, 250, 500, 900]], bar(550), bar(900)],
+        tree: {
+          c: [
+            { e: "亠", n: 1, p: "top", c: [{ e: "丶", s: [0] }] },
+            { e: "王", p: "bottom", s: [2, 3, 4], c: [{ e: "亠", n: 2, s: [1] }] },
+          ],
+        },
+      },
+      set,
+    );
+    // 五: the two bars of 二 with two strokes between them; the first bar is also named 一.
+    const five = decodeGlyph(
+      {
+        char: "五",
+        strokes: [bar(100), ["M400,100L300,900", [400, 100, 300, 900]], ["M200,500L700,500L700,900", [200, 500, 700, 500, 700, 900]], bar(900)],
+        tree: { s: [1, 2], c: [{ e: "二", n: 1, c: [{ e: "一", s: [0] }] }, { e: "二", n: 2, s: [3] }] },
+      },
+      set,
+    );
+    // 午: the first run of 干 sits in a group without a name, the second beside that group.
+    const noon = decodeGlyph(
+      {
+        char: "午",
+        strokes: [["M300,50L150,300", [300, 50, 150, 300]], bar(250), bar(550), ["M500,250L500,950", [500, 250, 500, 950]]],
+        tree: { c: [{ p: "top", c: [{ e: "丿", s: [0] }, { e: "干", n: 1, s: [1] }] }, { e: "干", n: 2, p: "bottom", c: [{ e: "十", s: [2, 3] }] }] },
+      },
+      set,
+    );
+    const brief = (glyph: typeof lord): [string | null, number[], number][] =>
+      segmentUnits(glyph).map((u) => [u.component, [...u.strokes], u.offset]);
+
+    it("pairs runs below the same named group, looking through groups without a name", () => {
+      expect([...splitRuns(fixture("困").root).keys()]).toEqual(["r.0", "r.2"]);
+      expect(new Set(splitRuns(fixture("困").root).values()).size).toBe(1);
+      expect(splitRuns(lord.root).size).toBe(0);
+      expect(splitRuns(five.root).size).toBe(2);
+      expect(splitRuns(noon.root).size).toBe(2);
+      expect(splitRuns(fixture("胡").root).size).toBe(0);
+    });
+
+    it("does not name a lone fragment after the whole component", () => {
+      // Not 丶, 亠 and three loose strokes: the bar is part of 王, as it is wherever 主 is a component.
+      expect(brief(lord)).toEqual([
+        ["丶", [0], 0],
+        ["王", [1, 2, 3, 4], 0],
+      ]);
+    });
+
+    it("counts a run for its component even when the source names something inside it", () => {
+      expect(brief(five)).toEqual([
+        ["二", [0], 0],
+        [null, [1, 2], 0],
+        ["二", [3], 1],
+      ]);
+      // With 二 outside the alphabet the runs are looked into as before.
+      expect(segmentUnits(five, { alphabet: new Set(["一"]) }).map((u) => u.component)).toEqual(["一", null]);
+    });
+
+    it("joins runs that follow each other", () => {
+      expect(brief(noon)).toEqual([
+        ["丿", [0], 0],
+        ["干", [1, 2, 3], 0],
+      ]);
+    });
   });
 
   it("keeps repeated components as separate instances", () => {

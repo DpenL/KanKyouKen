@@ -50,6 +50,13 @@ export interface MatchOptions {
   readonly shapeTolerance: number;
   /** Min ratio drawn length / reference length. Guards against taps and stubs. */
   readonly minLengthRatio: number;
+  /**
+   * Max ratio drawn length / reference length, the drawn length taken without its fine
+   * detail (`MatchMetrics.coarseLengthRatio`). Guards against scribbles: a dense zigzag
+   * over a stroke starts and ends in the right places, stays near the spine and, once
+   * resampled, can even look straight; only its length gives it away.
+   */
+  readonly maxLengthRatio: number;
   /** Number of points both strokes are resampled to before comparison. */
   readonly resampleCount: number;
 }
@@ -67,6 +74,13 @@ export interface MatchMetrics {
   readonly shapeDistance: number;
   /** drawn length / reference length. */
   readonly lengthRatio: number;
+  /**
+   * The same ratio with the drawing's fine detail ironed out: pen movement counts only
+   * from one point to the next that is at least `SCRIBBLE_GRAIN` of the glyph size away.
+   * A trembling hand or a noisy pointer adds to `lengthRatio` but not to this; a scribble
+   * adds to both.
+   */
+  readonly coarseLengthRatio: number;
 }
 
 export interface StrokeMatch {
@@ -142,7 +156,9 @@ export interface FreeWritingStrokeScore {
  * `orderCorrect` and `directionCorrect` follow the two-axis scoring of the Radical Tunes
  * studies: each is a count of reference strokes, out of `strokeCount`. A stroke counts
  * for order when it was drawn at its canonical position, so swapping two neighbouring
- * strokes costs two order points and a missing stroke costs one point on each axis.
+ * strokes costs two order points. A missing stroke costs its own point on each axis and,
+ * on the order axis, the point of every stroke after it (they are all drawn one position
+ * early); only a missing last stroke costs a single order point.
  * `orderRelative` is a gentler alternative: the size of the longest run of strokes whose
  * relative order is right (a single early omission does not sink everything after it).
  */
@@ -296,6 +312,11 @@ export interface AssessedStroke {
   readonly stroke: number;
   /** Index of the drawn stroke attributed to it, or null if it is missing. */
   readonly drawnIndex: number | null;
+  /**
+   * Written, and part of the longest run of written strokes that are in the right order
+   * relative to each other (the strokes the stroke-order metric counts). When several
+   * runs are equally long, one is chosen and stays the same for the same writing.
+   */
   readonly orderOk: boolean;
   readonly directionOk: boolean;
   /** Drawn length / reference length, or null if missing. */
@@ -329,9 +350,18 @@ export interface WritingAssessmentOptions {
   /** As in `FreeWritingOptions`. */
   readonly minScore?: number;
   /**
-   * Scale and move the drawn character so that its bounding box matches the reference
-   * character's before comparing, so writing that is smaller or off-centre is judged on
-   * its shape. Default true. With false, positions are compared as drawn.
+   * Scale and move the drawn character onto the reference before comparing, so writing
+   * that is smaller or off-centre is judged on its shape. Default true. With false,
+   * positions are compared as drawn.
+   *
+   * The fit lands the bounding box of the writing on that of the reference. When that
+   * leaves strokes unpaired, it is retried as drawn, without each drawn stroke (a stray
+   * mark) and without each reference stroke (a stroke not written), and the placement
+   * that pairs the most strokes is used: one missing stroke or one stray mark does not
+   * spoil the judgement of the rest, and the fit never pairs fewer strokes than the
+   * comparison as drawn. Several missing strokes in a small or off-centre writing can
+   * still defeat it. The retries cost several attributions instead of one (about ten
+   * for a character of fifteen strokes); a complete writing needs none.
    */
   readonly fitToReference?: boolean;
   /** How many times the writer used undo or clear; the host counts this. Omit to leave stroke-edit unavailable. */

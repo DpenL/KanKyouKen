@@ -122,7 +122,14 @@ export interface StudyContext {
   readonly sessionId?: string;
 }
 
-/** Request body of the platform's `POST /functions/v1/event-collector`. */
+/**
+ * Request body of the platform's `POST /functions/v1/event-collector`.
+ *
+ * The collector stores one row per request and the body has no field for an event id.
+ * A sink that may deliver an event more than once therefore puts a client-generated id
+ * into the payload, under `client_event_id` (as `@kankyouken/web-kit/telemetry` does),
+ * so that duplicates can be removed when the rows are analysed.
+ */
 export interface CollectorBody {
   readonly participant_id: string;
   readonly study_id: string;

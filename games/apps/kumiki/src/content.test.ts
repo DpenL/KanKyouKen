@@ -26,6 +26,20 @@ describe("buildContent", () => {
     }
   });
 
+  it("leaves out characters whose structure is only a guess", () => {
+    // 反 has a meaning and two parts (厂, 又), but nothing in the data says how they sit: its layout is a guess.
+    expect(set.lexicon["反"]).toBeDefined();
+    expect(decompose(glyphs.get("反")!, { known: content.context.known })).toMatchObject({ components: ["厂", "又"], layoutGuessed: true });
+    const withGuess = buildContent(glyphs, { ...set, families: [{ id: "cliff", shared: "厂", chars: ["反", "坂"] }] });
+    expect(withGuess.decks.map((deck) => [deck.id, deck.chars])).toEqual([
+      ["cliff", ["坂"]],
+      [MIXED_DECK_ID, ["坂"]],
+    ]);
+    for (const deck of content.decks) {
+      for (const char of deck.chars) expect(decompose(glyphs.get(char)!, { known: content.context.known }).layoutGuessed, char).toBe(false);
+    }
+  });
+
   it("limits splitting to the characters of the lexicon", () => {
     expect([...content.context.known].sort()).toEqual(Object.keys(set.lexicon).sort());
   });

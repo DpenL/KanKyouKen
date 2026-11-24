@@ -70,6 +70,13 @@ export interface Layout {
 export interface Decomposition {
   readonly char: string;
   readonly layout: Layout;
+  /**
+   * True when `layout` is a guess: some of the parts fitted neither a row, a column nor
+   * an enclosure and were lined up in a row or column by their centres as a last resort.
+   * The components and their strokes are as reliable as ever; the structure is not, so
+   * a host that asks the player for it should leave the character out.
+   */
+  readonly layoutGuessed: boolean;
   /** Component key (its character) for each slot of `layout`, in slot order. */
   readonly components: readonly string[];
   /** Glyph stroke indices drawn in each slot, in slot order. */

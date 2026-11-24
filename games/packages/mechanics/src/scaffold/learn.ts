@@ -51,8 +51,11 @@ export function finishDemo(state: LearnState, plan: LearnPlan): LearnStep {
  * A correct stroke advances; finishing the last stroke completes a repetition, and the
  * last repetition completes the stage. Any other verdict leaves the learner on the same
  * stroke (wrong strokes are simply tried again, with no other penalty). When the stage
- * sets `hintAfterErrors`, every that-many consecutive wrong attempts raise the hint
- * level by one, up to level 2. The hint is cleared by the next correct stroke.
+ * sets `hintAfterErrors`, the hint follows the run of wrong attempts at this stroke:
+ * level 1 once that many in a row were wrong, level 2 at twice as many. A hint the
+ * learner asked for is never lowered and does not shorten the run: after a requested
+ * level 1, level 2 still comes at twice `hintAfterErrors`. The hint is cleared by the
+ * next correct stroke.
  *
  * Only valid while the current stage is a trace stage; `strokeCount` must be positive.
  */

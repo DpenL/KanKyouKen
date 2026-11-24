@@ -163,6 +163,19 @@ describe("review ladder", () => {
     expect(reviewItem(top, 0, 0).level).toBe(top.level);
   });
 
+  it("brings a level from outside the ladder back onto it", () => {
+    const top = DEFAULT_LADDER.intervalsMs.length - 1;
+    // One mistake keeps the rung, so only the clamp can move these.
+    expect(reviewItem({ item: "木", level: 42, dueAt: 0 }, 1, 1000)).toEqual({
+      item: "木",
+      level: top,
+      dueAt: 1000 + DEFAULT_LADDER.intervalsMs[top]!,
+    });
+    expect(reviewItem({ item: "木", level: -3, dueAt: 0 }, 1, 1000).level).toBe(0);
+    expect(reviewItem({ item: "木", level: Number.NaN, dueAt: 0 }, 1, 1000).level).toBe(0);
+    expect(reviewItem({ item: "木", level: 42, dueAt: 0 }, 5, 1000).level).toBe(top - 1);
+  });
+
   it("lists due items, most overdue first", () => {
     const items = [
       { item: "a", level: 0, dueAt: 50 },

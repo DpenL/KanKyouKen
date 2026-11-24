@@ -219,12 +219,11 @@ describe("createStrokeCapture", () => {
     ]);
   });
 
-  it("ignores secondary pointers, other buttons and a second pointer during a stroke", () => {
+  it("ignores other buttons and every other pointer during a stroke", () => {
     const { svg, dispatch } = createTarget();
     const rec = record();
     createStrokeCapture(svg, rec.handlers);
 
-    dispatch("pointerdown", { isPrimary: false, pointerId: 9, pointerType: "touch" });
     dispatch("pointerdown", { button: 2 });
     expect(rec.log).toEqual([]);
 
@@ -232,6 +231,10 @@ describe("createStrokeCapture", () => {
     dispatch("pointerdown", { ...at(900, 900), pointerId: 1, pointerType: "mouse" });
     dispatch("pointermove", { ...at(900, 800), pointerId: 1, pointerType: "mouse" });
     dispatch("pointerup", { ...at(900, 800), pointerId: 1, pointerType: "mouse" });
+    // A second finger landing on the square while the first one writes.
+    dispatch("pointerdown", { ...at(700, 700), isPrimary: false, pointerId: 9, pointerType: "touch" });
+    dispatch("pointermove", { ...at(700, 600), isPrimary: false, pointerId: 9, pointerType: "touch" });
+    dispatch("pointerup", { ...at(700, 600), isPrimary: false, pointerId: 9, pointerType: "touch" });
     dispatch("pointermove", { ...at(100, 300), pointerId: 4, pointerType: "touch" });
     dispatch("pointerup", { ...at(100, 500), pointerId: 4, pointerType: "touch" });
 
@@ -241,6 +244,48 @@ describe("createStrokeCapture", () => {
       [100, 300],
       [100, 500],
     ]);
+  });
+
+  it("lets a finger write while a thumb or palm rests elsewhere on the page", () => {
+    const { svg, dispatch } = createTarget();
+    const rec = record();
+    createStrokeCapture(svg, rec.handlers);
+
+    // The resting touch went down outside the SVG, so the target never heard of it; the browser
+    // made it the primary pointer, and the finger that writes is therefore not primary.
+    const finger = { isPrimary: false, pointerId: 7, pointerType: "touch" };
+    for (const y of [200, 600]) {
+      dispatch("pointerdown", { ...at(100, y), ...finger });
+      dispatch("pointermove", { ...at(500, y), ...finger });
+      dispatch("pointerup", { ...at(900, y), ...finger });
+    }
+    expect(rec.log).toEqual(["start", "move", "end", "start", "move", "end"]);
+    expect(rec.ends.map((stroke) => stroke.map((s) => [s.x, s.y]))).toEqual([
+      [
+        [100, 200],
+        [500, 200],
+        [900, 200],
+      ],
+      [
+        [100, 600],
+        [500, 600],
+        [900, 600],
+      ],
+    ]);
+  });
+
+  it("does not take the resting hand coming down again for a missed pen-up", () => {
+    const { svg, dispatch } = createTarget();
+    const rec = record();
+    createStrokeCapture(svg, rec.handlers);
+
+    dispatch("pointerdown", { ...at(100, 100), isPrimary: false, pointerId: 7, pointerType: "touch" });
+    // The palm lifts and lands on the square: a new primary touch while the finger is still writing.
+    dispatch("pointerdown", { ...at(800, 900), isPrimary: true, pointerId: 8, pointerType: "touch" });
+    dispatch("pointermove", { ...at(100, 500), isPrimary: false, pointerId: 7, pointerType: "touch" });
+    dispatch("pointerup", { ...at(100, 900), isPrimary: false, pointerId: 7, pointerType: "touch" });
+    expect(rec.log).toEqual(["start", "move", "end"]);
+    expect(rec.ends[0]!.map((s) => s.y)).toEqual([100, 500, 900]);
   });
 
   it("asks `enabled` on pen-down only", () => {

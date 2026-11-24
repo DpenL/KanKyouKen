@@ -23,6 +23,34 @@ export function findComponents(glyph: Glyph, element: string): ComponentNode[] {
 }
 
 /**
+ * The runs of components written in separate goes (nodes with `part`), by node id.
+ *
+ * Runs belong together when they name the same element and sit below the same named
+ * group, groups without a name looked through (囗 before and after 木 in 困). The value
+ * is a key shared by the runs that belong together. A node with `part` whose partner
+ * runs are somewhere else in the tree (亠 above 王 in 主, where the second run of 亠 is
+ * filed inside 王) is NOT listed: on its own it is a fragment, not the component, and
+ * callers treat it like a group without a name.
+ */
+export function splitRuns(root: ComponentNode): Map<string, string> {
+  const byKey = new Map<string, string[]>();
+  const visit = (node: ComponentNode, scope: string): void => {
+    if (node.element !== undefined && node.part !== undefined) {
+      const key = `${scope}#${node.element}`;
+      byKey.set(key, [...(byKey.get(key) ?? []), node.id]);
+    }
+    const below = node.element !== undefined ? node.id : scope;
+    for (const child of node.children) visit(child, below);
+  };
+  visit(root, root.id);
+  const runs = new Map<string, string>();
+  for (const [key, ids] of byKey) {
+    if (ids.length > 1) for (const id of ids) runs.set(id, key);
+  }
+  return runs;
+}
+
+/**
  * Stroke class without its variant marker: "㇑a" -> "㇑", "㇐" -> "㇐".
  * Sources sometimes give alternatives ("㇔/㇀"); the first one is used.
  */
@@ -92,18 +120,29 @@ interface Owner {
  * 胡 with its tree 古(十, 口) + 月 yields 十, 口, 月. A character with no identified
  * component below the root is one unit named after the character itself. A component
  * written in separate parts (囗 around 木 in 困) yields one unit per run, with `offset`
- * continuing where the previous run stopped.
+ * continuing where the previous run stopped. Such a run is a unit as a whole even when
+ * the source names something inside it (一 as the first run of 二 in 五), so that the
+ * offsets add up; a run whose partners are filed elsewhere in the tree (see
+ * `splitRuns`) does not count as its component at all, only what is inside it does.
  */
 export function segmentUnits(glyph: Glyph, options: SegmentOptions = {}): GlyphUnit[] {
   const { alphabet } = options;
   const owners = new Array<Owner | undefined>(glyph.strokes.length);
+  const runs = splitRuns(glyph.root);
+  const fragment = (node: ComponentNode): boolean => node.part !== undefined && !runs.has(node.id);
   const identifiable = (node: ComponentNode): boolean =>
-    node.element !== undefined && (alphabet === undefined || alphabet.has(node.element));
+    node.element !== undefined && !fragment(node) && (alphabet === undefined || alphabet.has(node.element));
 
   // Returns true when the subtree produced at least one identified component.
-  const assign = (node: ComponentNode, isRoot: boolean, partScope: string): boolean => {
+  const assign = (node: ComponentNode, isRoot: boolean): boolean => {
+    const run = runs.get(node.id);
+    if (run !== undefined && identifiable(node)) {
+      // Runs of one split component share an instance so that their offsets continue.
+      for (const s of node.strokes) owners[s] = { component: node.element!, instance: run, nodeId: node.id };
+      return true;
+    }
     let found = false;
-    for (const child of node.children) found = assign(child, false, `${partScope}/${node.id}`) || found;
+    for (const child of node.children) found = assign(child, false) || found;
     if (found) {
       for (const s of node.strokes) {
         owners[s] ??= { component: null, instance: `loose:${node.id}`, nodeId: null };
@@ -112,14 +151,12 @@ export function segmentUnits(glyph: Glyph, options: SegmentOptions = {}): GlyphU
     }
     if (identifiable(node) || isRoot) {
       const component = node.element ?? glyph.char;
-      // Parts of one split component share an instance so that their offsets continue.
-      const instance = node.part !== undefined ? `${partScope}#${component}` : node.id;
-      for (const s of node.strokes) owners[s] = { component, instance, nodeId: node.id };
+      for (const s of node.strokes) owners[s] = { component, instance: node.id, nodeId: node.id };
       return true;
     }
     return false;
   };
-  assign(glyph.root, true, "");
+  assign(glyph.root, true);
 
   const units: {
     component: string | null;

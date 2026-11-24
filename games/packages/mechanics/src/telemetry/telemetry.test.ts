@@ -70,4 +70,25 @@ describe("telemetry", () => {
     a.clear();
     expect(a.events).toHaveLength(0);
   });
+
+  it("never rejects a fan-out flush, whether a sink's flush throws or rejects", async () => {
+    let flushed = 0;
+    const fan = createFanoutSink([
+      {
+        record: () => undefined,
+        flush() {
+          throw new Error("sync throw");
+        },
+      },
+      { record: () => undefined, flush: () => Promise.reject(new Error("rejected")) },
+      {
+        record: () => undefined,
+        flush: async () => {
+          flushed++;
+        },
+      },
+    ]);
+    await expect(fan.flush?.()).resolves.toBeUndefined();
+    expect(flushed).toBe(1);
+  });
 });

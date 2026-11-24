@@ -63,6 +63,134 @@ describe("decompose", () => {
     ]);
   });
 
+  describe("a structure that was not found", () => {
+    const bars: TestLine[] = [
+      [
+        [150, 300],
+        [850, 300],
+      ],
+      [
+        [100, 650],
+        [900, 650],
+      ],
+    ];
+
+    it("is not marked for cuts and enclosures that fit", () => {
+      for (const glyph of FIXTURES.values()) expect(decompose(glyph).layoutGuessed, glyph.char).toBe(false);
+    });
+
+    it("is marked as a guess when the parts fit neither a row, a column nor an enclosure", () => {
+      // Two boxes overlapping corner to corner.
+      const tangled = handGlyph("乱", [...boxLines(100, 100, 500, 500), ...boxLines(400, 400, 500, 500)], {
+        c: [leaf("甲", 0, 3), leaf("乙", 3, 3)],
+      });
+      const d = decompose(tangled);
+      expect(d.components).toEqual(["甲", "乙"]);
+      expect(d.layoutGuessed).toBe(true);
+    });
+
+    it("does not call a stroke crossing a part an enclosure (于: 亅 through 二)", () => {
+      const hook: TestLine = [
+        [500, 100],
+        [500, 900],
+        [400, 820],
+      ];
+      const d = decompose(handGlyph("于", [...bars, hook], { c: [leaf("二", 0, 2), leaf("亅", 2, 1)] }));
+      expect(d.layout.signature).not.toContain("E:");
+      expect(d.components.join("")).toBe("二亅");
+      expect(d.layoutGuessed).toBe(true);
+    });
+
+    it("does not call a block beside a dot an enclosure (玉: 王 and 丶)", () => {
+      const king: TestLine[] = [
+        [
+          [150, 150],
+          [850, 150],
+        ],
+        [
+          [500, 150],
+          [500, 850],
+        ],
+        [
+          [200, 500],
+          [800, 500],
+        ],
+        [
+          [100, 850],
+          [900, 850],
+        ],
+      ];
+      const dot: TestLine = [
+        [640, 620],
+        [720, 720],
+      ];
+      const d = decompose(handGlyph("玉", [...king, dot], { c: [leaf("王", 0, 4), leaf("丶", 4, 1)] }));
+      expect(d.layout.signature).not.toContain("E:");
+      expect(d.layoutGuessed).toBe(true);
+    });
+
+    it("still finds the enclosures that strokes or the source's label show", () => {
+      expect(decompose(fixture("困")).layout.signature).toBe("E:full(S)");
+      // A hanging wrap whose left side is one slanted stroke: only the label says what it is.
+      const cliff: TestLine[] = [
+        [
+          [150, 150],
+          [900, 150],
+        ],
+        [
+          [450, 150],
+          [100, 900],
+        ],
+      ];
+      const inner = crossLines(450, 400, 400, 450);
+      const labelled = handGlyph("反", [...cliff, ...inner], { c: [{ e: "厂", s: [0, 1], pd: "tare" }, leaf("又", 2, 2)] });
+      expect(decompose(labelled)).toMatchObject({ layout: { signature: "E:top-left(S)" }, layoutGuessed: false });
+      const unlabelled = handGlyph("反", [...cliff, ...inner], { c: [leaf("厂", 0, 2), leaf("又", 2, 2)] });
+      expect(decompose(unlabelled).layoutGuessed).toBe(true);
+    });
+  });
+
+  describe("a component whose runs the source files in different places", () => {
+    const bar = (y: number): TestLine => [
+      [100, y],
+      [900, y],
+    ];
+    const upright: TestLine = [
+      [500, 300],
+      [500, 900],
+    ];
+    const dot: TestLine = [
+      [450, 50],
+      [550, 150],
+    ];
+
+    it("is not named by one of its fragments (主: 丶 and 王, not 亠 and 王)", () => {
+      const lord = handGlyph("主", [dot, bar(300), upright, bar(600), bar(900)], {
+        c: [
+          { e: "亠", n: 1, p: "top", c: [leaf("丶", 0, 1)] },
+          { e: "王", p: "bottom", s: [2, 3, 4], c: [{ e: "亠", n: 2, s: [1] }] },
+        ],
+      });
+      expect(summary(lord)).toEqual([
+        "C(S,S)",
+        "丶王",
+        [[0], [1, 2, 3, 4]],
+      ]);
+    });
+
+    it("keeps a group whole when a fragment in it has strokes nobody else names", () => {
+      // 袁 as KanjiVG has it: the lid of 衣 is filed inside 土, the rest of 衣 beside 口.
+      const lines = [bar(100), upright, bar(350), ...boxLines(350, 450, 300, 150), bar(700), bar(900)];
+      const robe = handGlyph("袁", lines, {
+        c: [
+          { e: "土", p: "top", s: [0, 1], c: [{ e: "衣", n: 1, s: [2] }] },
+          { p: "bottom", c: [leaf("口", 3, 3), { e: "衣", n: 2, s: [6, 7] }] },
+        ],
+      });
+      expect(summary(robe)).toEqual(["S", "袁", [[0, 1, 2, 3, 4, 5, 6, 7]]]);
+    });
+  });
+
   it("gives a character without components a single slot keyed by the character", () => {
     expect(summary(fixture("木"))).toEqual(["S", "木", [[0, 1, 2, 3]]]);
     expect(summary(fixture("氵"))).toEqual(["S", "氵", [[0, 1, 2]]]);

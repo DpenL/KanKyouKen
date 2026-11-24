@@ -99,23 +99,34 @@ export function hungarian(matrix: readonly (readonly number[])[], goal: "max" | 
 }
 
 /**
- * Length of the longest strictly increasing subsequence (not necessarily contiguous).
- * Empty input gives 0; equal neighbours do not extend a run.
+ * Positions in `values` of one longest strictly increasing subsequence (not necessarily
+ * contiguous), in ascending order. Empty input gives none; equal neighbours do not
+ * extend a run. When several subsequences are equally long, the one whose last value is
+ * smallest is returned, traced back through the latest possible predecessors.
  */
-export function longestIncreasingRun(values: readonly number[]): number {
-  // tails[k] is the smallest value that can end an increasing subsequence of length k + 1.
+export function longestIncreasingPositions(values: readonly number[]): number[] {
+  // tails[k] is the position of the smallest value that can end an increasing subsequence of length k + 1.
   const tails: number[] = [];
-  for (const value of values) {
+  const previous: number[] = [];
+  values.forEach((value, position) => {
     let lo = 0;
     let hi = tails.length;
     while (lo < hi) {
       const mid = (lo + hi) >> 1;
-      if (tails[mid]! < value) lo = mid + 1;
+      if (values[tails[mid]!]! < value) lo = mid + 1;
       else hi = mid;
     }
-    tails[lo] = value;
-  }
-  return tails.length;
+    previous[position] = lo > 0 ? tails[lo - 1]! : -1;
+    tails[lo] = position;
+  });
+  const positions: number[] = [];
+  for (let at = tails[tails.length - 1] ?? -1; at >= 0; at = previous[at]!) positions.push(at);
+  return positions.reverse();
+}
+
+/** Length of the longest strictly increasing subsequence; see `longestIncreasingPositions`. */
+export function longestIncreasingRun(values: readonly number[]): number {
+  return longestIncreasingPositions(values).length;
 }
 
 /**

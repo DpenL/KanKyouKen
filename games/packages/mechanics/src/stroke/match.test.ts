@@ -24,6 +24,7 @@ describe("resolveMatchOptions", () => {
       minDirectionCosine: 0,
       shapeTolerance: 0.4,
       minLengthRatio: 0.4,
+      maxLengthRatio: 1.6,
       resampleCount: 24,
     };
     expect(DEFAULT_MATCH_OPTIONS).toEqual(expected);
@@ -134,7 +135,61 @@ describe("matchStroke", () => {
     expect(peak.metrics.averageDistance).toBeLessThan(0.12);
     expect(peak.metrics.shapeDistance).toBeGreaterThan(0.4);
     expect(peak.onStroke).toBe(false);
-    expect(matchStroke(line(400, 500, 500, 300, 600, 500), reference, SIZE, { shapeTolerance: 0.6 }).matched).toBe(true);
+    // The peak is also 2.2 times as long as the stroke, so the length limit is lifted to see the shape test alone.
+    const shapeOnly = { shapeTolerance: 0.6, maxLengthRatio: 3 };
+    expect(matchStroke(line(400, 500, 500, 300, 600, 500), reference, SIZE, shapeOnly).matched).toBe(true);
+  });
+
+  /** A zigzag along the line: `turns` points, every other one `amplitude` to either side, ends on the line. */
+  const zigzag = (along: readonly Point[], turns: number, amplitude: number): Point[] =>
+    penAlong(along, { count: turns }).map((p, i) => ({
+      x: p.x,
+      y: p.y + (i === 0 || i === turns - 1 ? 0 : i % 2 === 0 ? -amplitude : amplitude),
+    }));
+
+  it("rejects a scribble over the stroke by its length", () => {
+    // Two dozen turns reaching 15 % of the square to either side: nearly nine times the stroke's length.
+    // Resampled to 24 points along its own length it looks like a straight line, so every other test passes.
+    const scribble = zigzag(horizontal, 25, 150);
+    for (const leniency of [1, 1.3, 1.6]) {
+      const match = matchStroke(scribble, horizontal, SIZE, { leniency });
+      expect(match.metrics.coarseLengthRatio, `leniency ${leniency}`).toBeGreaterThan(8);
+      expect(match.onStroke, `leniency ${leniency}`).toBe(false);
+      expect(matchStroke(scribble, horizontal, SIZE, { leniency, maxLengthRatio: Infinity }).matched).toBe(true);
+    }
+    // Other densities that pass every other test at the most forgiving of those levels.
+    for (const [turns, amplitude] of [[12, 100], [36, 100], [47, 150], [48, 100], [71, 200], [96, 150]] as const) {
+      const other = zigzag(horizontal, turns, amplitude);
+      expect(matchStroke(other, horizontal, SIZE, { leniency: 1.6, maxLengthRatio: Infinity }).matched, `${turns} turns`).toBe(true);
+      expect(matchStroke(other, horizontal, SIZE, { leniency: 1.6 }).onStroke, `${turns} turns`).toBe(false);
+    }
+  });
+
+  it("does not take a trembling hand for a scribble", () => {
+    // 160 turns of 1.2 % of the square: more than twice the stroke's length on paper, a thick line to the eye.
+    const tremor = matchStroke(zigzag(horizontal, 160, 12), horizontal, SIZE);
+    expect(tremor.metrics.lengthRatio).toBeGreaterThan(2);
+    expect(tremor.metrics.coarseLengthRatio).toBeLessThan(1.2);
+    expect(tremor.matched).toBe(true);
+  });
+
+  it("applies the length limit to a stroke drawn far too long, wider for short strokes", () => {
+    // 0.3 long, drawn 0.54 long (1.8 times): each end is only 0.12 out, well inside the endpoint tolerance.
+    const reference = line(350, 500, 650, 500);
+    const long = line(230, 500, 770, 500);
+    const strict = matchStroke(long, reference, SIZE);
+    expect(strict.metrics.coarseLengthRatio).toBeCloseTo(1.8, 9);
+    expect(strict.metrics.startDistance).toBeCloseTo(0.12, 9);
+    expect(strict.onStroke).toBe(false);
+    // Leniency widens the limit like every other tolerance: 1.6 * 1.3 = 2.08.
+    expect(matchStroke(long, reference, SIZE, { leniency: 1.3 }).matched).toBe(true);
+
+    // A dot 0.05 long may be drawn three times as long: its limit is 1.6 * 0.15 / 0.05 = 4.8.
+    const dot = line(500, 500, 540, 530);
+    const dab = line(460, 470, 580, 560);
+    const match = matchStroke(dab, dot, SIZE);
+    expect(match.metrics.coarseLengthRatio).toBeCloseTo(3, 9);
+    expect(match.matched).toBe(true);
   });
 
   it("scales every tolerance with leniency", () => {
@@ -234,6 +289,7 @@ describe("matchStroke", () => {
         directionCosine: 0,
         shapeDistance: Infinity,
         lengthRatio: 0,
+        coarseLengthRatio: 0,
       });
     });
 

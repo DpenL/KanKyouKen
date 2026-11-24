@@ -65,7 +65,10 @@ that melody, in stroke order. Writing a character correctly performs its tune.
 - A character's melody is the motifs of its components in writing order — *inferred*
   (the papers describe per-stroke sound and a replayable "kanji melody").
 - Which groups count as components: the deepest named groups of the glyph's component
-  tree (`glyph/tree.ts`, `segmentUnits`) — *ours*.
+  tree (`glyph/tree.ts`, `segmentUnits`) — *ours*. A component written in separate runs
+  (囗 before and after 木 in 困) is one component whose melody continues across the
+  runs; a run that the source files away from its partners (`splitRuns`) is not taken
+  for the component.
 
 ### RT-2 Composite reuse — *stated*
 
@@ -101,7 +104,12 @@ is described.
 - How a stroke is recognised is not described in any excerpt. The matcher
   (`stroke/match.ts`: endpoint distance, mean distance to the spine, shape by Frechet
   distance, length, direction) and the four verdicts *correct / wrong-direction /
-  wrong-order / miss* are *ours*.
+  wrong-order / miss* are *ours*. Length is limited on both sides: a stub is too short
+  (`minLengthRatio`), and a drawing more than `maxLengthRatio` (1.6) times as long as
+  the stroke is a scribble, however well its ends and its resampled points sit. That
+  length is measured without detail finer than 5 % of the glyph (`SCRIBBLE_GRAIN`), so
+  a trembling hand is not taken for a scribble. Both limits widen with `leniency`, and
+  the upper one, like the shape tolerance, for strokes shorter than 15 % of the glyph.
 
 ### RT-5 Sound source: sustained voice or clip — *stated*
 
@@ -217,6 +225,18 @@ Structure correctness is reported separately from component correctness.
 - *Ours*: deriving the right structure from stroke data (`layoutFromBoxes`), the
   catalogue of structures and how wrong ones are chosen (`alternativeLayouts`). The
   original's structures were laid out by hand and cover "only a subset".
+- The derivation does not always succeed. Parts that fit neither a row, a column nor
+  an enclosure are lined up by their centres as a last resort, and the result says so:
+  `Decomposition.layoutGuessed` (from `layoutFromBoxes(...).guessed`). 原 comes out as
+  厂, 白 and 小 in a column, for example; of 440 school-grade 1 to 3 kanji converted
+  from KanjiVG, 66 are marked with the default options, and none of the 38 characters
+  in Kumiki's decks. A part counts as the outer slot of an enclosure only when the source
+  labels it as one (`tare`, `nyo`) or its own strokes run along at least two adjoining
+  sides; a stroke that crosses another part (亅 through 二 in 于) or a block beside a
+  dot (王 and 丶 in 玉) is not an enclosure, and such characters are marked as guesses
+  too. So is a hanging wrap the source does not label and whose side is one slanted
+  stroke (厂 in 反). A host that asks for the structure must leave marked characters
+  out, as Kumiki does when it builds its decks.
 
 ### ZH-3 A look-alike for every correct component — *stated*
 
@@ -248,8 +268,14 @@ the conventional one to three, because every small component "holds its own pote
 for errors".
 
 - Code: `components/decompose.ts` (`decompose`, `maxSlots`, `known`).
-- *Ours*: splitting top-down along the dataset's component tree, largest part first,
-  and only into components the learner can be expected to know.
+- *Ours*: splitting top-down along the dataset's component tree, largest part first.
+  The character's top-level parts are always used, whether the learner knows them or
+  not; `known` only limits splitting below that level, where a part is divided further
+  only when every piece is listed. With `known` set to the lexicon of the starter set,
+  as Kumiki does, 11 of the 38 deck characters therefore still contain a part that is
+  not in the lexicon (特 is 牛, 土 and 寸; 開 is 門 and 开, which has no entry and no
+  glyph of its own). A component whose runs the source files in different places is
+  never named by one of its fragments: 主 is 丶 and 王, not 亠 and 王.
 
 ### ZH-5 Partial, staged feedback — *stated*
 
@@ -341,8 +367,15 @@ alone, because "both endpoints of a user's stroke may have similar distances to 
 endpoint of the corresponding expert stroke (e.g., small strokes, long strokes with
 close endpoints)".
 
-- Code: `stroke-order`, `stroke-direction`, taken from `scoreFreeWriting`. The same
-  concern is why `matchStroke` lets the direction test decide for tiny strokes.
+- Code: `stroke-order` counts the written strokes that are in the right order relative
+  to each other (the longest such run: `orderRelative` of `scoreFreeWriting`), out of
+  the reference strokes; `AssessedStroke.orderOk` marks them. A stroke that was left
+  out costs one point and leaves the strokes after it in order, and so does one stroke
+  written too early or too late. This is not the positional count of RT-9
+  (`orderCorrect`), where a missing first stroke makes every later stroke wrong;
+  `scoreFreeWriting` keeps that one for the Radical Tunes scoring.
+- Code: `stroke-direction` is taken from `scoreFreeWriting`. The paper's concern about
+  endpoints is why `matchStroke` lets the direction test decide for tiny strokes.
 
 ### KW-4 Precision: edits, length, closeness, speed — *stated*
 
@@ -366,8 +399,17 @@ points", scaling "the template's bounding box to a size of 250 pixels" and trans
 it "to the origin"; the input gets "the same transformation algorithms".
 
 - Code: `fitToReference` (default on) maps the drawn character's bounding box onto the
-  reference's before comparing. *Ours*: an axis on which the reference is nearly flat
-  is centred rather than stretched.
+  reference's before comparing. *Ours*: an axis on which the reference or the drawing
+  is nearly flat is centred rather than stretched.
+- *Ours*: the bounding boxes only agree when the character is complete. A stroke that
+  was not written, or a stray mark beside the character, moves a box edge and with it
+  every stroke, which would hide exactly what stroke-valid and stroke-exist are there
+  to show. So when the plain fit leaves strokes unpaired, the writing is also compared
+  as drawn, fitted without each drawn stroke in turn, and fitted onto the reference
+  without each of its strokes in turn; the placement that pairs the most strokes (the
+  closest among equals) is used and then re-fitted from the paired strokes alone. One
+  missing stroke or one stray mark does not spoil the judgement of the rest; several
+  missing strokes in a small or off-centre writing still can.
 
 ### KW-6 A three-star score per metric, plus an overall score — *stated*
 

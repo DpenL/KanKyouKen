@@ -156,7 +156,7 @@ describe("layoutFromBoxes", () => {
   });
 
   it("makes one box a slot", () => {
-    expect(layoutFromBoxes([box(10, 10, 90, 90)])).toEqual({ tree: S, order: [0] });
+    expect(layoutFromBoxes([box(10, 10, 90, 90)])).toEqual({ tree: S, order: [0], guessed: false });
   });
 
   it("cuts boxes side by side into a row, left to right whatever the input order", () => {
@@ -253,6 +253,36 @@ describe("layoutFromBoxes", () => {
     expect(result.order).toEqual([0, 1, 2]);
     const turned = chain.map((b) => box(b.minY, b.minX, b.maxY, b.maxX));
     expect(signatureOf(turned)).toBe("C(S,S,S)");
+  });
+
+  it("says when the structure is a guess, wherever in the tree the last resort was used", () => {
+    const chain = [box(0, 0, 400, 400), box(250, 250, 650, 650), box(500, 100, 900, 500)];
+    expect(layoutFromBoxes(chain).guessed).toBe(true);
+    // The same chain as the right half of a row, and inside an enclosure.
+    const half = chain.map((b) => box(500 + b.minX / 2, b.minY, 500 + b.maxX / 2, b.maxY));
+    const beside = layoutFromBoxes([box(0, 0, 400, 1000), ...half]);
+    expect(layoutSignature(beside.tree)).toBe("R(S,S,S,S)");
+    expect(beside.guessed).toBe(true);
+    const within = chain.map((b) => box(200 + b.minX / 2, 200 + b.minY / 2, 200 + b.maxX / 2, 200 + b.maxY / 2));
+    const wrapped = layoutFromBoxes([box(0, 0, 1000, 1000), ...within]);
+    expect(layoutSignature(wrapped.tree)).toBe("E:full(R(S,S,S))");
+    expect(wrapped.guessed).toBe(true);
+
+    // Cuts and enclosures that were found are no guess.
+    expect(layoutFromBoxes([box(600, 0, 1000, 1000), box(0, 0, 400, 1000)]).guessed).toBe(false);
+    expect(layoutFromBoxes([box(300, 300, 700, 700), box(0, 0, 1000, 1000)]).guessed).toBe(false);
+    expect(layoutFromBoxes([box(500, 0, 1000, 1000), box(50, 550, 400, 950), box(0, 0, 450, 450)]).guessed).toBe(false);
+  });
+
+  it("takes no box for an enclosure that the caller says is none", () => {
+    const boxes = [box(300, 300, 700, 700), box(0, 0, 1000, 1000)];
+    // Not known: the clearance test decides, as without hints.
+    expect(layoutSignature(layoutFromBoxes(boxes, [undefined, undefined]).tree)).toBe("E:full(S)");
+    expect(layoutSignature(layoutFromBoxes(boxes, [undefined, "top"]).tree)).toBe("E:top(S)");
+    // No enclosure: the big box is not replaced by the small one as the outer slot either.
+    const refused = layoutFromBoxes(boxes, ["full", null]);
+    expect(layoutSignature(refused.tree)).toBe("R(S,S)");
+    expect(refused.guessed).toBe(true);
   });
 
   it("copes with boxes that have no width or no height", () => {

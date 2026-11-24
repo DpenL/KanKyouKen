@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 import { fixture, FIXTURES } from "../glyph/fixtures";
 import type { Point } from "../util/geometry";
 import { createRng } from "../util/rng";
-import { DEFAULT_MIN_ATTRIBUTION_SCORE, hungarian, longestIncreasingRun, scoreFreeWriting } from "./free";
+import {
+  DEFAULT_MIN_ATTRIBUTION_SCORE,
+  hungarian,
+  longestIncreasingPositions,
+  longestIncreasingRun,
+  scoreFreeWriting,
+} from "./free";
 import { matchStroke } from "./match";
 import { glyphOf, penAlong } from "./test-helpers";
 
@@ -132,6 +138,15 @@ describe("longestIncreasingRun", () => {
 
   it("does not count equal values as increasing", () => {
     expect(longestIncreasingRun([2, 2, 2])).toBe(1);
+  });
+
+  it("names the positions of one longest run", () => {
+    expect(longestIncreasingPositions([])).toEqual([]);
+    expect(longestIncreasingPositions([1, 2, 3, 4])).toEqual([0, 1, 2, 3]);
+    // Values 0, 2, 3: the swapped first stroke is the one left out.
+    expect(longestIncreasingPositions([1, 0, 2, 3])).toEqual([1, 2, 3]);
+    expect(longestIncreasingPositions([4, 0, 5, 1, 6, 2, 3])).toEqual([1, 3, 5, 6]);
+    expect(longestIncreasingPositions([2, 2, 2])).toHaveLength(1);
   });
 });
 

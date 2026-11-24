@@ -2,7 +2,10 @@
  * Glyph build: converts the KanjiVG files for every character of a set definition into
  * generated/<set>.glyphs.json, and writes the license notice next to it.
  *
- *   npm run build -w @kankyouken/glyph-data
+ *   npm run data        (from the workspace root; the package's own script is "generate")
+ *
+ * The script is deliberately not called "build": the generated files are committed, and
+ * the workspace-wide `npm run build` must work without the network.
  *
  * KanjiVG files come from the directory in KANJIVG_DIR (a checkout's "kanji" folder)
  * when it is set. Otherwise each file is downloaded once from the pinned revision on

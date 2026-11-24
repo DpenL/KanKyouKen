@@ -7,7 +7,7 @@
 import { strokesBox } from "../glyph/tree";
 import type { Glyph } from "../glyph/types";
 import { boundingBox, boxHeight, boxWidth, polylineLength, type Box } from "../util/geometry";
-import { scoreFreeWriting } from "./free";
+import { longestIncreasingPositions, scoreFreeWriting } from "./free";
 import { matchStroke } from "./match";
 import type {
   AssessedStroke,
@@ -15,6 +15,7 @@ import type {
   AssessmentMetricId,
   AssessmentThresholds,
   DrawnStroke,
+  FreeWritingScore,
   MetricResult,
   Stars,
   StrokeSample,
@@ -40,7 +41,11 @@ export const DEFAULT_ASSESSMENT_THRESHOLDS: AssessmentThresholds = {
 /** Glyph sizes per second assumed for the reference when no recorded durations are given. */
 export const DEFAULT_REFERENCE_PACE = 1.5;
 
-/** An axis of the reference thinner than this fraction of the glyph is not used for scaling (一 has no height to fit to). */
+/**
+ * An axis is not used for scaling when the reference is thinner on it than this fraction
+ * of the glyph (一 has no height to fit to), or the drawing thinner than this fraction of
+ * its own longer side (a lone horizontal stroke has no height to stretch).
+ */
 const MIN_FIT_EXTENT = 0.15;
 
 const GROUPS: Readonly<Record<AssessmentMetricId, AssessmentGroup>> = {
@@ -70,15 +75,14 @@ function starsForShare(value: number, outOf: number, shares: AssessmentThreshold
 const within = (value: number, range: readonly [number, number]): boolean => value >= range[0] && value <= range[1];
 
 /**
- * Move and scale the drawn strokes so that their bounding box lands on `target`. An
- * axis on which either box is (nearly) flat is only centred, never scaled.
+ * The move and per-axis scaling that lands the box `source` on the box `target`. An axis
+ * on which either box is (nearly) flat is only centred, never scaled.
  */
-function fitStrokes(drawn: readonly DrawnStroke[], target: Box, size: number): DrawnStroke[] {
-  const points = drawn.flat().filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
-  if (points.length === 0) return drawn.map((stroke) => [...stroke]);
-  const source = boundingBox(points);
+function boxFit(source: Box, target: Box, size: number): (stroke: DrawnStroke) => StrokeSample[] {
+  const longerSide = Math.max(boxWidth(source), boxHeight(source));
   const axis = (sourceMin: number, sourceExtent: number, targetMin: number, targetExtent: number) => {
-    const scalable = sourceExtent > 0 && targetExtent >= MIN_FIT_EXTENT * size;
+    const scalable =
+      sourceExtent > 0 && sourceExtent >= MIN_FIT_EXTENT * longerSide && targetExtent >= MIN_FIT_EXTENT * size;
     const k = scalable ? targetExtent / sourceExtent : 1;
     const sourceMid = sourceMin + sourceExtent / 2;
     const targetMid = targetMin + targetExtent / 2;
@@ -86,9 +90,83 @@ function fitStrokes(drawn: readonly DrawnStroke[], target: Box, size: number): D
   };
   const fx = axis(source.minX, boxWidth(source), target.minX, boxWidth(target));
   const fy = axis(source.minY, boxHeight(source), target.minY, boxHeight(target));
-  return drawn.map((stroke) =>
-    stroke.map((p): StrokeSample => (p.t === undefined ? { x: fx(p.x), y: fy(p.y) } : { x: fx(p.x), y: fy(p.y), t: p.t })),
-  );
+  return (stroke) =>
+    stroke.map((p): StrokeSample => (p.t === undefined ? { x: fx(p.x), y: fy(p.y) } : { x: fx(p.x), y: fy(p.y), t: p.t }));
+}
+
+const sameBox = (a: Box, b: Box): boolean => a.minX === b.minX && a.minY === b.minY && a.maxX === b.maxX && a.maxY === b.maxY;
+
+/** The drawn strokes in the position they are judged in, and how they pair with the reference there. */
+interface Placement {
+  readonly strokes: readonly DrawnStroke[];
+  readonly free: FreeWritingScore;
+  /** Reference strokes that found a drawn stroke. */
+  readonly paired: number;
+  /** Mean distance of the paired drawn strokes to their reference strokes (fraction of glyph size). */
+  readonly distance: number;
+}
+
+/**
+ * Bring the drawn character onto the reference so that size and place do not count.
+ *
+ * The plain fit lands the bounding box of everything drawn on the bounding box of the
+ * whole reference. That is right for a complete character and wrong as soon as the two
+ * boxes do not hold the same strokes: a stroke that was not written, or a stray mark
+ * beside the character, moves a box edge and with it every stroke. So when the plain fit
+ * leaves a stroke unpaired on either side, other placements are tried: the writing as it
+ * was drawn, the fit without each drawn stroke in turn (a stray mark), and the fit onto
+ * the reference without each of its strokes in turn (a stroke not written). The
+ * placement that pairs the most strokes wins, the closer one among equals, and it is
+ * then re-fitted from its paired strokes alone for as long as that pairs more.
+ */
+function placeOnReference(
+  drawn: readonly DrawnStroke[],
+  glyph: Glyph,
+  place: (strokes: readonly DrawnStroke[]) => Placement,
+): Placement {
+  const usable = drawn.map((stroke) => stroke.filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y)));
+  const everyPen = drawn.map((_, pen) => pen);
+  const everyStroke = glyph.strokes.map((_, s) => s);
+  const penBox = (pens: readonly number[]): Box | null => {
+    const points = pens.flatMap((pen) => usable[pen]!);
+    return points.length === 0 ? null : boundingBox(points);
+  };
+  const asDrawn = (): Placement => place(drawn.map((stroke) => [...stroke]));
+  const fit = (source: Box | null, strokes: readonly number[]): Placement | null =>
+    source === null || strokes.length === 0 ? null : place(drawn.map(boxFit(source, strokesBox(glyph, strokes), glyph.size)));
+
+  const wholeDrawn = penBox(everyPen);
+  const wholeReference = strokesBox(glyph, everyStroke);
+  let best = fit(wholeDrawn, everyStroke) ?? asDrawn();
+  if (wholeDrawn === null || (best.free.missing.length === 0 && best.free.extra.length === 0)) return best;
+
+  const consider = (candidate: Placement | null): void => {
+    if (candidate === null) return;
+    if (candidate.paired > best.paired || (candidate.paired === best.paired && candidate.distance < best.distance)) best = candidate;
+  };
+  consider(asDrawn());
+  for (const stray of everyPen) {
+    const rest = penBox(everyPen.filter((pen) => pen !== stray));
+    // A stroke inside the box of the others does not move the fit: nothing new to try.
+    if (rest !== null && !sameBox(rest, wholeDrawn)) consider(fit(rest, everyStroke));
+  }
+  for (const unwritten of everyStroke) {
+    const rest = everyStroke.filter((s) => s !== unwritten);
+    if (rest.length > 0 && !sameBox(strokesBox(glyph, rest), wholeReference)) consider(fit(wholeDrawn, rest));
+  }
+
+  for (;;) {
+    const pens: number[] = [];
+    const strokes: number[] = [];
+    best.free.assignment.forEach((stroke, pen) => {
+      if (stroke === null) return;
+      pens.push(pen);
+      strokes.push(stroke);
+    });
+    const refined = fit(penBox(pens), strokes);
+    if (refined === null || refined.paired <= best.paired) return best;
+    best = refined;
+  }
 }
 
 /** Pen-down to pen-up time of a stroke, or null when its first or last sample carries no timestamp. */
@@ -101,16 +179,21 @@ function strokeDuration(stroke: DrawnStroke): number | null {
 /**
  * Assess a character written without guidance against its reference glyph.
  *
- * Drawn strokes are first fitted to the reference character's bounding box (unless
- * `fitToReference` is false) and attributed one to one to reference strokes
+ * Drawn strokes are first brought onto the reference character (`placeOnReference`,
+ * unless `fitToReference` is false) and attributed one to one to reference strokes
  * (`scoreFreeWriting`). The metrics:
  *  - stroke-match: attributed pairs, out of the larger of the two stroke counts.
  *  - stroke-valid: reference strokes that were drawn, out of the reference strokes
  *    (anything short of all means strokes are missing).
  *  - stroke-exist: drawn strokes that belong, out of the drawn strokes (anything short
  *    of all means extra strokes).
- *  - stroke-order, stroke-direction: reference strokes drawn at their position and in
- *    their direction, out of the reference strokes.
+ *  - stroke-order: written strokes that are in the right order relative to each other
+ *    (the longest such run), out of the reference strokes. A stroke that was not
+ *    written costs one point and leaves the strokes after it in order; so does one
+ *    stroke written too early or too late. This is `orderRelative`, not the positional
+ *    `orderCorrect` of `scoreFreeWriting`.
+ *  - stroke-direction: reference strokes drawn in their direction, out of the reference
+ *    strokes.
  *  - stroke-edit: the number of edits the host reports. Unavailable without `edits`.
  *  - stroke-length, stroke-closeness: matched strokes whose length ratio and whose mean
  *    distance to the reference are within tolerance, out of the matched strokes.
@@ -128,13 +211,27 @@ export function assessWriting(drawn: readonly DrawnStroke[], glyph: Glyph, optio
   const thresholds: AssessmentThresholds = { ...DEFAULT_ASSESSMENT_THRESHOLDS, ...options.thresholds };
   const strokeCount = glyph.strokes.length;
   const everyStroke = glyph.strokes.map((_, s) => s);
-  const fitted =
-    options.fitToReference === false || strokeCount === 0 ? drawn.map((s) => [...s]) : fitStrokes(drawn, strokesBox(glyph, everyStroke), glyph.size);
-
-  const free = scoreFreeWriting(fitted, glyph, {
+  const freeOptions = {
     ...(options.match ? { match: options.match } : {}),
     ...(options.minScore !== undefined ? { minScore: options.minScore } : {}),
-  });
+  };
+  const place = (strokes: readonly DrawnStroke[]): Placement => {
+    const free = scoreFreeWriting(strokes, glyph, freeOptions);
+    let paired = 0;
+    let distanceSum = 0;
+    free.assignment.forEach((stroke, pen) => {
+      if (stroke === null) return;
+      paired++;
+      distanceSum += matchStroke(strokes[pen]!, glyph.strokes[stroke]!.median, glyph.size, options.match).metrics.averageDistance;
+    });
+    return { strokes, free, paired, distance: paired === 0 ? Infinity : distanceSum / paired };
+  };
+  const { strokes: fitted, free } =
+    options.fitToReference === false || strokeCount === 0 ? place(drawn.map((s) => [...s])) : placeOnReference(drawn, glyph, place);
+
+  // The written strokes that are in the right order relative to each other, as reference strokes.
+  const written = free.assignment.filter((stroke): stroke is number => stroke !== null);
+  const inOrder = new Set(longestIncreasingPositions(written).map((position) => written[position]!));
 
   const pace = options.referencePace !== undefined && options.referencePace > 0 ? options.referencePace : DEFAULT_REFERENCE_PACE;
   const referenceDuration = (stroke: number): number => {
@@ -162,7 +259,7 @@ export function assessWriting(drawn: readonly DrawnStroke[], glyph: Glyph, optio
     return {
       stroke: s.stroke,
       drawnIndex: pen,
-      orderOk: s.orderOk,
+      orderOk: inOrder.has(s.stroke),
       directionOk: s.directionOk,
       lengthRatio: metrics.lengthRatio,
       closeness: metrics.averageDistance,
@@ -221,7 +318,7 @@ export function assessWriting(drawn: readonly DrawnStroke[], glyph: Glyph, optio
     "stroke-match": count("stroke-match", matched.length, Math.max(strokeCount, drawn.length)),
     "stroke-valid": count("stroke-valid", strokeCount - free.missing.length, strokeCount),
     "stroke-exist": count("stroke-exist", drawn.length - free.extra.length, drawn.length),
-    "stroke-order": count("stroke-order", free.orderCorrect, strokeCount),
+    "stroke-order": count("stroke-order", inOrder.size, strokeCount),
     "stroke-direction": count("stroke-direction", free.directionCorrect, strokeCount),
     "stroke-edit": edit,
     "stroke-length": count(

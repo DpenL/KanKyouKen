@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { canReport, readLaunchParams } from "./params";
+import type { CollectorStatus } from "../telemetry/sink";
+import { RECORDING_NOTICE_ATTRIBUTE, createRecordingNotice, mountRecordingNotice, recordingMessage } from "./notice";
+import { canReport, readLaunchParams, storeKeyFor, studyLinkState } from "./params";
 import { createLocalStore, type KeyValueStorage } from "./store";
 
 function fakeStorage(initial: Record<string, string> = {}): KeyValueStorage & { data: Record<string, string> } {
@@ -35,6 +37,135 @@ describe("launch params", () => {
     expect(canReport(p)).toBe(false);
     expect(readLaunchParams("")).toEqual({ debug: false });
     expect(readLaunchParams("?study=s&participant=p&session=z").study).toEqual({ studyId: "s", participantId: "p", sessionId: "z" });
+  });
+});
+
+describe("study links", () => {
+  const FULL = "?study=s1&participant=p1&session=x&api=https://x.test/functions/v1";
+
+  it("tells a complete link, no link and an incomplete one apart", () => {
+    expect(studyLinkState(readLaunchParams(FULL, "#token=t"))).toBe("complete");
+    expect(readLaunchParams(FULL, "#token=t").missing).toBeUndefined();
+
+    // Plain play, also with the keys that are not about reporting.
+    for (const search of ["", "?debug", "?seed=abc&condition=sfx&debug=1"]) {
+      const params = readLaunchParams(search);
+      expect(studyLinkState(params), search).toBe("none");
+      expect(params.missing, search).toBeUndefined();
+    }
+
+    // The fragment with the token was lost on the way.
+    const noToken = readLaunchParams(FULL);
+    expect(studyLinkState(noToken)).toBe("incomplete");
+    expect(noToken.missing).toEqual(["token"]);
+    expect(canReport(noToken)).toBe(false);
+
+    // Anything that points to a study counts, however little of it is left.
+    expect(readLaunchParams("?study=s1").missing).toEqual(["participant", "api", "token"]);
+    expect(readLaunchParams("?participant=p1&api=https://x.test").missing).toEqual(["study", "token"]);
+    expect(readLaunchParams("", "#token=t").missing).toEqual(["study", "participant", "api"]);
+    expect(readLaunchParams("?session=x").missing).toEqual(["study", "participant", "api", "token"]);
+    for (const search of ["?study=s1", "?participant=p1", "?session=x", "?api=https://x.test", "?token=t", "?study=&token=t"]) {
+      expect(studyLinkState(readLaunchParams(search)), search).toBe("incomplete");
+    }
+    // Parameters put together by hand rather than read from a link.
+    expect(studyLinkState({ debug: false, token: "t" })).toBe("incomplete");
+    expect(studyLinkState({ debug: false })).toBe("none");
+  });
+
+  it("keeps a participant's settings apart from everybody else's on the device", () => {
+    expect(storeKeyFor("kk.game.v1", readLaunchParams(FULL, "#token=t"))).toBe("kk.game.v1:s1:p1");
+    expect(storeKeyFor("kk.game.v1", readLaunchParams(FULL.replace("p1", "p2"), "#token=t"))).toBe("kk.game.v1:s1:p2");
+    // Plain play, and links that cannot be recorded anyway, keep the plain key.
+    expect(storeKeyFor("kk.game.v1", readLaunchParams("?seed=abc"))).toBe("kk.game.v1");
+    expect(storeKeyFor("kk.game.v1", readLaunchParams(FULL))).toBe("kk.game.v1");
+  });
+});
+
+describe("recording notice", () => {
+  const FULL = "?study=s1&participant=p1&api=https://x.test/functions/v1";
+  const complete = readLaunchParams(FULL, "#token=t");
+  const status = (state: CollectorStatus["state"], dropped = 0): CollectorStatus => ({ state, pending: 3, dropped });
+
+  /** The little of a document the notice needs. */
+  function fakePage() {
+    const created: { tag: string; attributes: Record<string, string>; style: Record<string, string>; hidden: boolean; textContent: string }[] = [];
+    const doc = {
+      createElement(tag: string) {
+        const attributes: Record<string, string> = {};
+        const element = { tag, attributes, style: {}, hidden: false, textContent: "", setAttribute: (name: string, value: string) => void (attributes[name] = value) };
+        created.push(element);
+        return element as unknown as HTMLElement;
+      },
+    } as unknown as Document;
+    const appended: unknown[] = [];
+    const host = { appendChild: <T>(node: T): T => (appended.push(node), node) } as unknown as Node;
+    return { doc, host, created, appended };
+  }
+
+  it("says nothing in plain play and while a study session is being recorded", () => {
+    expect(recordingMessage(readLaunchParams(""))).toBeNull();
+    expect(recordingMessage(readLaunchParams("?seed=abc&debug"), status("retrying", 2))).toBeNull();
+    expect(recordingMessage(complete)).toBeNull();
+    expect(recordingMessage(complete, status("recording"))).toBeNull();
+  });
+
+  it("says that a session is not being recorded, and why", () => {
+    expect(recordingMessage(readLaunchParams(FULL))).toMatch(/Not being recorded.*incomplete \(no token\)/);
+    expect(recordingMessage(readLaunchParams("?study=s1"))).toContain("(no participant, no api, no token)");
+    expect(recordingMessage({ debug: false, token: "t" })).toMatch(/Not being recorded.*incomplete\./);
+    expect(recordingMessage(complete, status("rejected"))).toMatch(/Not being recorded.*not accepted/);
+    expect(recordingMessage(complete, status("retrying"))).toMatch(/cannot be sent.*kept on this device/);
+    // Events that could not be kept are owned up to in every state.
+    expect(recordingMessage(complete, status("retrying", 1))).toContain("1 event could not be kept.");
+    expect(recordingMessage(complete, status("rejected", 12))).toContain("12 events could not be kept.");
+    expect(recordingMessage(complete, status("recording", 2))).toBe("Recording, but 2 events could not be kept.");
+  });
+
+  it("is a status region that takes no room and lets clicks through", () => {
+    const { doc, created } = fakePage();
+    const notice = createRecordingNotice(doc);
+    const element = created[0]!;
+    expect(notice.element).toBe(element);
+    expect(element.tag).toBe("div");
+    expect(element.attributes).toEqual({ role: "status", [RECORDING_NOTICE_ATTRIBUTE]: "" });
+    expect(element.style).toMatchObject({ position: "fixed", pointerEvents: "none" });
+    expect(element.hidden).toBe(true);
+    notice.show("Not recorded");
+    expect([element.hidden, element.textContent]).toEqual([false, "Not recorded"]);
+    notice.show(null);
+    expect([element.hidden, element.textContent]).toEqual([true, ""]);
+  });
+
+  it("adds nothing to the page in plain play", () => {
+    const { doc, host, created, appended } = fakePage();
+    const update = mountRecordingNotice(readLaunchParams("?seed=abc"), host, doc);
+    update(status("rejected", 5));
+    expect(created).toEqual([]);
+    expect(appended).toEqual([]);
+    // Nor does it need a page to be there at all (these tests run without a DOM).
+    expect(() => mountRecordingNotice(readLaunchParams("?debug"))(status("retrying"))).not.toThrow();
+  });
+
+  it("announces an incomplete link at once", () => {
+    const { doc, host, created, appended } = fakePage();
+    mountRecordingNotice(readLaunchParams(FULL), host, doc);
+    expect(appended).toEqual([created[0]]);
+    expect(created[0]!.hidden).toBe(false);
+    expect(created[0]!.textContent).toContain("Not being recorded");
+  });
+
+  it("follows the collector sink for a complete link", () => {
+    const { doc, host, created } = fakePage();
+    const update = mountRecordingNotice(complete, host, doc);
+    const element = created[0]!;
+    expect(element.hidden).toBe(true);
+    update(status("retrying"));
+    expect([element.hidden, element.textContent]).toEqual([false, recordingMessage(complete, status("retrying"))]);
+    update(status("recording"));
+    expect(element.hidden).toBe(true);
+    update(status("rejected"));
+    expect(element.textContent).toContain("not accepted");
   });
 });
 

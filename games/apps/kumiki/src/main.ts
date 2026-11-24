@@ -1,7 +1,7 @@
 import { loadStarterJa } from "@kankyouken/glyph-data";
 import { gameEvent, type GameEvent } from "@kankyouken/mechanics/telemetry";
 import { createRng } from "@kankyouken/mechanics/util";
-import { createLocalStore, readLaunchParams } from "@kankyouken/web-kit/app";
+import { createLocalStore, readLaunchParams, storeKeyFor } from "@kankyouken/web-kit/app";
 import { installGlyphCss } from "@kankyouken/web-kit/render";
 import { buildContent } from "./content";
 import { DEFAULT_SAVED, STORE_KEY, cleanSaved, type Saved } from "./saved";
@@ -31,7 +31,8 @@ function start(root: HTMLElement): void {
   const rng = createRng(seed);
   const { glyphs, set } = loadStarterJa();
   const content = buildContent(glyphs, set);
-  const store = createLocalStore<Saved>(STORE_KEY, DEFAULT_SAVED, undefined, cleanSaved);
+  // A study participant gets settings and best scores of their own, whoever used the device before.
+  const store = createLocalStore<Saved>(storeKeyFor(STORE_KEY, params), DEFAULT_SAVED, undefined, cleanSaved);
   const telemetry = createTelemetry(params);
   const sound = createSound(glyphs, rng.fork("sound"), store.get());
   const probe: Probe = { screen: "", puzzle: null, state: null, board: null };
