@@ -1103,7 +1103,10 @@ button:disabled {
     bottom: 0;
     z-index: 4;
     padding: 6px 0 max(12px, env(safe-area-inset-bottom));
-    background: linear-gradient(to top, var(--cloth-deep) 55%, transparent);
+  }
+
+  .assembly > .actions .ghost {
+    background: var(--cloth);
   }
 }
 

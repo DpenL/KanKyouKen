@@ -1,12 +1,11 @@
 /** The home screen: mode switch, decks, and the way to the exam, settings and credits. */
 
-import type { Glyph } from "@kankyouken/mechanics/glyph";
 import type { Deck } from "../content";
 import type { Mode } from "../round";
 import { bestScore } from "../saved";
 import type { App } from "./app";
 import { button, h } from "./dom";
-import { tileShape } from "./shapes";
+import { drawnChar } from "./shapes";
 
 export interface HomeActions {
   play(deck: Deck, mode: Mode): void;
@@ -19,14 +18,6 @@ const MODES: readonly { readonly id: Mode; readonly title: string; readonly line
   { id: "learn", title: "Learn", line: "You see the character first. Unlimited tries." },
   { id: "review", title: "Review", line: "Meaning and reading only. Five lives." },
 ];
-
-/** A character drawn from the glyph data, so it looks the same whatever fonts the device has. */
-export function drawnChar(glyph: Glyph | undefined, char: string, className: string): HTMLElement {
-  const box = h("span", { class: className, lang: "ja", role: "img", "aria-label": char });
-  if (glyph === undefined) box.textContent = char;
-  else box.append(tileShape(glyph));
-  return box;
-}
 
 /** The block on a deck's card: its shared component, or for the Mixed deck a mosaic of all of them. */
 function emblem(app: App, deck: Deck): HTMLElement {

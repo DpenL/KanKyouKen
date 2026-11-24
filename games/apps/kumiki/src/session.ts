@@ -39,10 +39,6 @@ export function currentChar(session: Session): string | null {
   return session.queue[session.index] ?? null;
 }
 
-export function isFinished(session: Session): boolean {
-  return session.index >= session.queue.length;
-}
-
 /** Record a finished round and move on. A character the player failed goes to the end of the deck, once. */
 export function finishRound(session: Session, result: RoundResult): Session {
   const retry = !result.solved && !session.retried.includes(result.char);

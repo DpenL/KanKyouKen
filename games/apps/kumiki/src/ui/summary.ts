@@ -5,7 +5,7 @@ import type { Session } from "../session";
 import { summarize } from "../session";
 import type { App } from "./app";
 import { button, h } from "./dom";
-import { drawnChar } from "./home";
+import { drawnChar } from "./shapes";
 
 export interface SummaryOptions {
   readonly deck: Deck;

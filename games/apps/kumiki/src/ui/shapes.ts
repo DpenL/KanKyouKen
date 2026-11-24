@@ -3,7 +3,7 @@
 import type { ComponentTile, Layout, Rect } from "@kankyouken/mechanics/components";
 import type { Glyph } from "@kankyouken/mechanics/glyph";
 import { loopsPath, missAnchor, slotOutline, stretchBox, tileBox } from "../frame";
-import { svg } from "./dom";
+import { h, svg } from "./dom";
 
 /** Side of a frame in its own SVG units. */
 const FRAME = 100;
@@ -26,6 +26,14 @@ function strokePaths(glyph: Glyph): SVGPathElement[] {
 /** A component shape in a square, aspect ratio kept: what a tray tile shows. */
 export function tileShape(glyph: Glyph): SVGSVGElement {
   return svg("svg", { class: "shape", viewBox: viewBox(tileBox(glyph)), "aria-hidden": "true" }, ...strokePaths(glyph));
+}
+
+/** A character drawn from the glyph data, so it looks the same whatever fonts the device has. */
+export function drawnChar(glyph: Glyph | undefined, char: string, className: string): HTMLElement {
+  const box = h("span", { class: className, lang: "ja", role: "img", "aria-label": char });
+  if (glyph === undefined) box.textContent = char;
+  else box.append(tileShape(glyph));
+  return box;
 }
 
 /** A component shape inside a rectangle of the frame: stretched over it, or centred with its aspect ratio kept. */

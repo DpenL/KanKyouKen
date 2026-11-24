@@ -18,6 +18,8 @@ export interface WritingUi {
   setStage(label: string, pips?: readonly Pip[]): void;
   /** One chip per melody unit of the character; null removes them. */
   setChips(melody: GlyphMelody | null): void;
+  /** What tapping a chip does (it gets the unit's index); null makes the chips inert. */
+  setChipAction(action: ((unit: number) => void) | null): void;
   highlightUnit(unit: number | null): void;
   setMessage(text: string): void;
   setActions(...buttons: HTMLElement[]): void;
@@ -61,6 +63,7 @@ export function createWritingUi(onBack: () => void): WritingUi {
   const side = el("div", { class: "side" }, gloss, stage, chips, message, actions);
 
   const root = el("section", { class: "screen writing" }, top, frame, side);
+  let chipAction: ((unit: number) => void) | null = null;
 
   return {
     root,
@@ -87,19 +90,26 @@ export function createWritingUi(onBack: () => void): WritingUi {
       chips.replaceChildren(
         ...(melody?.units ?? []).map((unit, index) => {
           const timbre = melody?.strokes[unit.strokes[0] ?? -1]?.timbre ?? "";
+          const name = unit.component ?? "loose strokes";
           const chip = el(
-            "li",
-            { class: "chip", "data-tone": toneOf(timbre), "data-unit": String(index) },
+            "button",
+            { type: "button", class: "chip", "data-tone": toneOf(timbre), "data-unit": String(index), "aria-label": `Play ${name}` },
             el("span", { class: "chip-glyph", lang: "ja" }, unit.component ?? "・"),
           );
           chip.insertAdjacentHTML("beforeend", NOTE_ICON);
-          return chip;
+          chip.disabled = chipAction === null;
+          chip.addEventListener("click", () => chipAction?.(index));
+          return el("li", {}, chip);
         }),
       );
       chips.hidden = melody === null;
     },
+    setChipAction(action) {
+      chipAction = action;
+      for (const chip of chips.querySelectorAll("button")) chip.disabled = action === null;
+    },
     highlightUnit(unit) {
-      for (const chip of chips.children) chip.toggleAttribute("data-current", chip.getAttribute("data-unit") === String(unit));
+      for (const chip of chips.querySelectorAll(".chip")) chip.toggleAttribute("data-current", chip.getAttribute("data-unit") === String(unit));
     },
     setMessage(text) {
       message.textContent = text;

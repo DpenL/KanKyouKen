@@ -50,12 +50,12 @@ export function startTimedMode(env: Env, ui: WritingUi, lesson: Lesson, onDone: 
       rep: null,
       expected: current === null ? null : expected,
       medians: current?.glyph.strokes.map((stroke) => stroke.median) ?? null,
-      glyphSize: current?.glyph.size ?? null,
     });
   };
 
   const finishRound = (): void => {
     if (ticker !== null) window.clearInterval(ticker);
+    env.sound.cue("complete");
     const mistakes = countMistakes(round.results);
     env.emit(
       gameEvent("timed_round_result", { ts: Date.now(), task: TASK }, {
@@ -136,6 +136,7 @@ export function startTimedMode(env: Env, ui: WritingUi, lesson: Lesson, onDone: 
         points: round.results.at(-1)?.points ?? 0,
       }),
     );
+    env.sound.cue("tick");
     board.enabled = false;
     tracer.end();
     current = null;
@@ -149,6 +150,7 @@ export function startTimedMode(env: Env, ui: WritingUi, lesson: Lesson, onDone: 
   ui.setStatus(statusItem("Time", time), statusItem("Score", score));
   ui.setGloss({ meaning: "", reading: "" });
   ui.setChips(null);
+  ui.setChipAction(null);
   ui.setStage("");
   ui.setMessage("");
   ui.setActions();

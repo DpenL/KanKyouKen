@@ -37,7 +37,7 @@ interface Active {
 }
 
 /** The slot drawn at a point of the viewport, if any. */
-export function slotAt(x: number, y: number): SlotRef | null {
+function slotAt(x: number, y: number): SlotRef | null {
   for (const element of document.elementsFromPoint(x, y)) {
     const slot = element.closest("[data-slot][data-layout]");
     if (slot === null) continue;

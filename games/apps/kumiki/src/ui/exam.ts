@@ -7,7 +7,7 @@ import { examTotals, type Exam } from "../exam";
 import type { App } from "./app";
 import { createBoardView } from "./board-view";
 import { backButton, button, h } from "./dom";
-import { drawnChar } from "./home";
+import { drawnChar } from "./shapes";
 
 export interface ExamItemOptions {
   readonly puzzle: AssemblyPuzzle;

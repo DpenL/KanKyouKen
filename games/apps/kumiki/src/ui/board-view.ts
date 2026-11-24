@@ -155,7 +155,11 @@ export function createBoardView(root: HTMLElement, host: BoardHost): BoardView {
     if (!(event.target instanceof Element)) return;
     const tile = event.target.closest(".tile");
     if (tile !== null) {
-      activateTile(tile.getAttribute("data-tile") ?? "");
+      const id = tile.getAttribute("data-tile") ?? "";
+      const focused = document.activeElement === tile;
+      activateTile(id);
+      // The redraw replaced the button; keep the keyboard where it was.
+      if (focused) tray.querySelector<HTMLElement>(`.tile[data-tile="${id}"]`)?.focus();
       return;
     }
     const slot = slotRef(event.target.closest(".slot"));

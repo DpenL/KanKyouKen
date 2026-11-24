@@ -57,7 +57,7 @@ body {
   line-height: 1.45;
   /* Washi: long, faint horizontal fibres from stretched noise over the paper colour. */
   background-color: var(--paper);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='360'%3E%3Cfilter id='f' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.014 0.55' numOctaves='3' seed='11' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.42 0 0 0 0 0.34 0 0 0 0 0.22 0.34 0 0 0 -0.08'/%3E%3C/filter%3E%3Crect width='360' height='360' filter='url(%23f)'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Cfilter id='f' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.03 0.34' numOctaves='3' seed='11' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.45 0 0 0 0 0.36 0 0 0 0 0.24 0.2 0 0 0 -0.055'/%3E%3C/filter%3E%3Cfilter id='g' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' seed='4' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.4 0 0 0 0 0.33 0 0 0 0 0.22 0.11 0 0 0 -0.03'/%3E%3C/filter%3E%3Crect width='400' height='400' filter='url(%23f)'/%3E%3Crect width='400' height='400' filter='url(%23g)'/%3E%3C/svg%3E");
 }
 
 [lang="ja"] {
@@ -172,7 +172,7 @@ p {
   text-transform: uppercase;
 }
 .home-tagline {
-  max-width: 26rem;
+  max-width: 32rem;
   margin-top: 0.6rem;
   color: var(--ink-soft);
 }
@@ -325,6 +325,8 @@ p {
   grid-area: board;
   position: relative;
   container-type: inline-size;
+  -webkit-user-select: none;
+  user-select: none;
   justify-self: center;
   width: min(100%, max(13rem, 100dvh - 22.5rem));
   aspect-ratio: 1;
@@ -492,18 +494,27 @@ p {
   padding: 0;
   list-style: none;
 }
+.chips li {
+  display: flex;
+}
 .chip {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.3rem;
-  min-width: 3.4rem;
+  min-width: 3.6rem;
   height: 2.75rem;
   padding: 0 0.7rem 0 0.8rem;
   border: 1.5px solid var(--tone);
   border-radius: 999px;
   background: color-mix(in srgb, var(--tone) 12%, var(--paper-raised));
   color: var(--tone);
+  font: inherit;
+  cursor: pointer;
   transition: background-color 0.2s, color 0.2s, transform 0.2s;
+}
+.chip:disabled {
+  cursor: default;
 }
 .chip-glyph {
   color: var(--ink);
@@ -720,6 +731,9 @@ p {
 .field-label {
   padding: 0;
   font-weight: 600;
+}
+legend.field-label {
+  margin-bottom: 0.45rem;
 }
 .options {
   display: grid;

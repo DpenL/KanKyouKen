@@ -1,15 +1,12 @@
 import type { GlyphMelody, StrokeAudioMode, TuningConfig } from "@kankyouken/mechanics/melody";
-import { scheduleMelody } from "@kankyouken/mechanics/melody";
 import type { Rng } from "@kankyouken/mechanics/util";
 import { PLAY_LEAD_SECONDS } from "@kankyouken/web-kit/audio";
-import type { StrokeCue } from "./playback";
-import { runCues, strokeCues } from "./playback";
+import type { ScoreOptions, StrokeCue } from "./playback";
+import { melodyNotes, runCues, strokeCues } from "./playback";
 import type { Sound } from "./sound";
 
-export interface PerformOptions {
+export interface PerformOptions extends ScoreOptions {
   readonly mode: StrokeAudioMode;
-  /** Beats per minute; the library's default when omitted. */
-  readonly tempo?: number;
   /** A stroke's note begins: animate it for `cue.durationMs`. */
   onStroke(cue: StrokeCue): void;
   /** The melody has run its length (not called when the performance is stopped). */
@@ -31,10 +28,9 @@ export function createPerformer(sound: Sound, tuning: () => TuningConfig, rng: R
   return {
     perform(melody, options) {
       stop();
-      const playback = options.tempo === undefined ? {} : { tempo: options.tempo };
-      const audio = sound.play(scheduleMelody(melody, options.mode, tuning(), rng, playback));
+      const audio = sound.play(melodyNotes(melody, options.mode, tuning(), rng, options));
       // The port schedules audio slightly ahead of time; the visuals wait just as long.
-      const cues = strokeCues(melody, tuning(), rng, playback).map((cue) => ({
+      const cues = strokeCues(melody, tuning(), rng, options).map((cue) => ({
         ...cue,
         startMs: cue.startMs + PLAY_LEAD_SECONDS * 1000,
       }));

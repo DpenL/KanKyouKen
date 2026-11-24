@@ -6,7 +6,7 @@ import { canCheck, check, isOver, moveTile, potentialScore, returnTile, takeHint
 import type { App } from "./app";
 import { createBoardView } from "./board-view";
 import { backButton, button, h } from "./dom";
-import { createGlyphBoard } from "./glyph-board";
+import { createGlyphBoard, type GlyphBoard } from "./glyph-board";
 
 /** How long the hint keeps the character on show. */
 const HINT_MS = 2500;
@@ -21,7 +21,7 @@ export interface AssemblyOptions {
   readonly banked: number;
   quit(): void;
   /** A check was made; `data` is the payload of its event. */
-  checked(round: Round, data: CheckData): void;
+  checked(data: CheckData): void;
   hinted(round: Round): void;
   /** The round is solved or failed and its last feedback has been shown. */
   done(round: Round): void;
@@ -30,6 +30,7 @@ export interface AssemblyOptions {
 export function assemblyScreen(app: App, options: AssemblyOptions): { screen: HTMLElement; leave(): void } {
   let round = options.round;
   let hintTimer: number | undefined;
+  let hintBoard: GlyphBoard | null = null;
   let doneTimer: number | undefined;
   let lostLife = false;
   const entry = app.content.lexicon.get(round.char);
@@ -117,7 +118,7 @@ export function assemblyScreen(app: App, options: AssemblyOptions): { screen: HT
     if (outcome === null) return;
     lostLife = outcome.round.state.livesLeft !== round.state.livesLeft;
     round = outcome.round;
-    options.checked(round, outcome.data);
+    options.checked(outcome.data);
     if (!round.state.solved) app.sound.cue("error");
     boardView.refresh();
     renderStatus();
@@ -125,21 +126,25 @@ export function assemblyScreen(app: App, options: AssemblyOptions): { screen: HT
     if (isOver(round)) doneTimer = window.setTimeout(() => options.done(round), OUTCOME_DELAY_MS);
   }
 
+  function hideHint(): void {
+    window.clearTimeout(hintTimer);
+    hint.hidden = true;
+    hint.replaceChildren();
+    hintBoard?.dispose();
+    hintBoard = null;
+  }
+
   function onHint(): void {
-    if (isOver(round) || !hint.hidden) return;
+    if (isOver(round) || hintBoard !== null) return;
     round = takeHint(round);
     options.hinted(round);
     app.sound.cue("hint");
-    const board = createGlyphBoard(glyph, "The character");
-    board.view.setAllStrokes("done");
-    hint.replaceChildren(board.element);
+    hintBoard = createGlyphBoard(glyph, "The character");
+    hintBoard.view.setAllStrokes("done");
+    hint.replaceChildren(hintBoard.element);
     hint.hidden = false;
     renderStatus();
-    hintTimer = window.setTimeout(() => {
-      hint.hidden = true;
-      hint.replaceChildren();
-      board.dispose();
-    }, HINT_MS);
+    hintTimer = window.setTimeout(hideHint, HINT_MS);
   }
 
   screen.append(
@@ -167,7 +172,7 @@ export function assemblyScreen(app: App, options: AssemblyOptions): { screen: HT
   return {
     screen,
     leave() {
-      window.clearTimeout(hintTimer);
+      hideHint();
       window.clearTimeout(doneTimer);
       boardView.dispose();
     },

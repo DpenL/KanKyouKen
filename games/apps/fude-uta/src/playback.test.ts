@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildMelodist, glyphOf, loadContent } from "./content";
 import { createPerformer } from "./performer";
 import type { StrokeCue } from "./playback";
-import { runCues, strokeCues } from "./playback";
+import { melodyNotes, runCues, strokeCues } from "./playback";
 import type { Sound } from "./sound";
 
 const content = loadContent();
@@ -39,6 +39,38 @@ describe("strokeCues", () => {
     const fast = strokeCues(rest, tuning, createRng(1), { tempo: 120 });
     const slow = strokeCues(rest, tuning, createRng(1), { tempo: 60 });
     expect(slow.at(-1)?.startMs).toBeCloseTo((fast.at(-1)?.startMs ?? 0) * 2);
+  });
+});
+
+describe("melodyNotes", () => {
+  it("is the library's schedule for the whole character", () => {
+    expect(melodyNotes(rest, "melody", tuning, createRng(1))).toEqual(scheduleMelody(rest, "melody", tuning, createRng(1)));
+    expect(melodyNotes(rest, "sfx", tuning, createRng(1), { tempo: 90 })).toEqual(
+      scheduleMelody(rest, "sfx", tuning, createRng(1), { tempo: 90 }),
+    );
+    expect(melodyNotes(rest, "silent", tuning, createRng(1))).toEqual([]);
+  });
+
+  it("excerpts one component's motif, starting at once and keeping its rhythm", () => {
+    const whole = melodyNotes(rest, "melody", tuning, createRng(1));
+    const unit = rest.units[1]?.strokes ?? [];
+    const motif = melodyNotes(rest, "melody", tuning, createRng(1), { strokes: unit });
+    expect(motif.map((note) => note.stroke)).toEqual([...unit]);
+    expect(motif[0]?.start).toBe(0);
+    const shift = whole[unit[0] ?? -1]?.start ?? 0;
+    expect(shift).toBeGreaterThan(0);
+    motif.forEach((note, i) => {
+      const original = whole[unit[i] ?? -1];
+      expect(note.start).toBeCloseTo((original?.start ?? 0) - shift);
+      expect(note.voice).toEqual(original?.voice);
+    });
+  });
+
+  it("gives matching cues for an excerpt", () => {
+    const unit = rest.units[0]?.strokes ?? [];
+    const cues = strokeCues(rest, tuning, createRng(1), { strokes: unit });
+    expect(cues.map((cue) => cue.stroke)).toEqual([...unit]);
+    expect(cues[0]?.startMs).toBe(0);
   });
 });
 
@@ -125,6 +157,17 @@ describe("timed playback", () => {
     expect(sound.played[0]).toEqual([]);
     vi.runAllTimers();
     expect(strokes).toHaveLength(rest.strokes.length);
+  });
+
+  it("performs a single component when asked to", () => {
+    const sound = fakeSound();
+    const performer = createPerformer(sound, () => tuning, createRng(7));
+    const unit = rest.units[1]?.strokes ?? [];
+    const strokes: number[] = [];
+    performer.perform(rest, { mode: "melody", strokes: unit, onStroke: (cue) => strokes.push(cue.stroke) });
+    expect(sound.played[0]?.map((note) => note.stroke)).toEqual([...unit]);
+    vi.runAllTimers();
+    expect(strokes).toEqual([...unit]);
   });
 
   it("stops sound and visuals together, and a new performance replaces the old one", () => {

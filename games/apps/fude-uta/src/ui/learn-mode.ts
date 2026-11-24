@@ -48,7 +48,6 @@ export function startLearnMode(env: Env, ui: WritingUi, lesson: Lesson, onDone: 
       rep: state.rep,
       expected: state.expected,
       medians: item.glyph.strokes.map((stroke) => stroke.median),
-      glyphSize: item.glyph.size,
     });
   };
 
@@ -60,17 +59,35 @@ export function startLearnMode(env: Env, ui: WritingUi, lesson: Lesson, onDone: 
     probe(task);
   };
 
-  const listen = (): void => {
-    env.emit(gameEvent("melody_listen", where(), { audio_mode: env.audioMode() }));
+  const unitOf = (stroke: number): number | null => item.melody.strokes[stroke]?.unit ?? null;
+
+  /** Play the melody, or one unit of it, while its strokes pulse; afterwards the chip of the awaited stroke is lit again. */
+  const sing = (unit?: number): void => {
+    const strokes = unit === undefined ? undefined : item.melody.units[unit]?.strokes;
     env.performer.perform(item.melody, {
       mode: env.audioMode(),
+      ...(strokes === undefined ? {} : { strokes }),
       onStroke(cue) {
-        ui.highlightUnit(item.melody.strokes[cue.stroke]?.unit ?? null);
+        ui.highlightUnit(unitOf(cue.stroke));
         board.pulse(cue.stroke, cue.durationMs);
       },
-      onEnd: () => ui.highlightUnit(item.melody.strokes[state.expected]?.unit ?? null),
+      onEnd: () => ui.highlightUnit(state.done ? null : unitOf(state.expected)),
     });
   };
+
+  const listen = (): void => {
+    env.emit(gameEvent("melody_listen", where(), { audio_mode: env.audioMode(), part: "all" }));
+    sing();
+  };
+
+  const listenToUnit = (unit: number): void => {
+    const component = item.melody.units[unit]?.component ?? null;
+    env.emit(gameEvent("melody_listen", where(), { audio_mode: env.audioMode(), part: "unit", unit, component }));
+    sing(unit);
+  };
+
+  /** Chips play their component's motif, except where that would interrupt (the demo) or be silent. */
+  const chipsPlay = (on: boolean): void => ui.setChipAction(on && env.audioMode() !== "silent" ? listenToUnit : null);
 
   const showHint = (effect: Extract<LearnEffect, { type: "hint" }>, auto: boolean): void => {
     env.sound.cue("hint");
@@ -102,6 +119,7 @@ export function startLearnMode(env: Env, ui: WritingUi, lesson: Lesson, onDone: 
   const beginRep = (stage: TraceStage): void => {
     tracer.begin({ glyph: item.glyph, melody: item.melody, guide: stage.guide }, state.expected, state.hint);
     board.enabled = true;
+    chipsPlay(true);
     traceActions(state.hint);
     showStage();
   };
@@ -113,6 +131,7 @@ export function startLearnMode(env: Env, ui: WritingUi, lesson: Lesson, onDone: 
     board.view.setGlyph(item.glyph);
     board.view.showGhost(true);
     board.setTone(null);
+    chipsPlay(false);
     showStage();
 
     let showing = true;
@@ -132,7 +151,7 @@ export function startLearnMode(env: Env, ui: WritingUi, lesson: Lesson, onDone: 
       mode: withAudio ? env.audioMode() : "silent",
       tempo: DEMO_TEMPO,
       onStroke(cue) {
-        ui.highlightUnit(item.melody.strokes[cue.stroke]?.unit ?? null);
+        ui.highlightUnit(unitOf(cue.stroke));
         const drawn = prefersReducedMotion() ? Promise.resolve() : board.view.animateStroke(cue.stroke, cue.durationMs);
         // A cancelled animation resolves too; by then the board may already show the next stage.
         void drawn.then(() => {
@@ -158,15 +177,8 @@ export function startLearnMode(env: Env, ui: WritingUi, lesson: Lesson, onDone: 
     ui.setStage("Well written", planPips(plan, state));
     ui.setMessage("");
     probe("complete");
-    env.sound.cue("complete");
-    env.performer.perform(item.melody, {
-      mode: env.audioMode(),
-      onStroke(cue) {
-        ui.highlightUnit(item.melody.strokes[cue.stroke]?.unit ?? null);
-        board.pulse(cue.stroke, cue.durationMs);
-      },
-      onEnd: () => ui.highlightUnit(null),
-    });
+    chipsPlay(true);
+    sing();
     const last = index === lesson.chars.length - 1;
     ui.setActions(
       button(
@@ -231,6 +243,7 @@ export function startLearnMode(env: Env, ui: WritingUi, lesson: Lesson, onDone: 
     board.enabled = false;
     tracer.end();
     ui.highlightUnit(null);
+    chipsPlay(false);
     probe("rest");
     timers.after(AFTER_REP_MS, () => {
       const next = currentStage(state, plan);

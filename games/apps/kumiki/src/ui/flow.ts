@@ -72,7 +72,7 @@ export function startFlow(app: App): void {
         progress: progress(),
         banked: summarize(session).score,
         quit: home,
-        checked: (_, data) => app.record(choiceAttemptEvent(at(char), data)),
+        checked: (data) => app.record(choiceAttemptEvent(at(char), data)),
         hinted: (current) => app.record(gameEvent("hint_shown", at(char), { hint: "character", hints_used: current.state.hintsUsed })),
         done: reveal,
       });

@@ -108,7 +108,6 @@ export function startRecallMode(env: Env, ui: WritingUi, lesson: Lesson, onDone:
       stage: TASK,
       char,
       medians: glyph.strokes.map((stroke) => stroke.median),
-      glyphSize: glyph.size,
     });
     env.emit(gameEvent("item_start", where(), { position: index, stroke_count: glyph.strokes.length, cue_melody: cue.melody }));
     show();

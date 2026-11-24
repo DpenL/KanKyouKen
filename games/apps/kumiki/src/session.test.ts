@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { currentChar, finishRound, isFinished, startSession, summarize } from "./session";
+import { currentChar, finishRound, startSession, summarize } from "./session";
 
 const solved = (char: string, attempts = 1, hints = 0, score = 100) => ({ char, solved: true, attempts, hints, score });
 const failed = (char: string) => ({ char, solved: false, attempts: 5, hints: 0, score: 0 });
@@ -10,10 +10,8 @@ describe("session", () => {
     expect(currentChar(session)).toBe("a");
     session = finishRound(session, solved("a"));
     expect(currentChar(session)).toBe("b");
-    expect(isFinished(session)).toBe(false);
     session = finishRound(session, solved("b"));
     expect(currentChar(session)).toBeNull();
-    expect(isFinished(session)).toBe(true);
   });
 
   it("sends a failed character to the end of the deck, once", () => {
@@ -24,7 +22,7 @@ describe("session", () => {
     expect(currentChar(session)).toBe("a");
     session = finishRound(session, failed("a"));
     expect(session.queue).toEqual(["a", "b", "a"]);
-    expect(isFinished(session)).toBe(true);
+    expect(currentChar(session)).toBeNull();
   });
 
   it("totals score, first tries and hints", () => {

@@ -23,7 +23,7 @@ import type { Content } from "./content";
 /** "learn": the character is shown first and tries are unlimited. "review": meaning and reading only, five lives. */
 export type Mode = "learn" | "review";
 
-export const PUZZLE_OPTIONS: PuzzleOptions = { layoutChoices: 4, lookAlikesPerComponent: 2, trayRows: 3, traySize: 12 };
+const PUZZLE_OPTIONS: PuzzleOptions = { layoutChoices: 4, lookAlikesPerComponent: 2, trayRows: 3, traySize: 12 };
 
 export function rulesFor(mode: Mode): AssemblyRules {
   return mode === "learn" ? { ...DEFAULT_RULES, lives: null } : DEFAULT_RULES;

@@ -117,7 +117,7 @@ test("a character is learned stage by stage, and writing it performs it", async 
         [stage, rep] as const,
       );
       await expect(page.locator(".stage-label")).toHaveText(`${label} · ${rep + 1} of ${reps}`);
-      await expect(page.locator(".board .kk-dotted")).toHaveCount(stage === "trace:dotted" ? 1 : 0);
+      await expect(page.locator(".board .kk-dotted-line")).toHaveCount(stage === "trace:dotted" ? 1 : 0);
       await expect(page.locator(".chip[data-current]")).toHaveCount(1);
       await writeRepetition(page);
     }
@@ -165,21 +165,42 @@ test("a character is learned stage by stage, and writing it performs it", async 
   expect(rejected.map((event) => event.data?.["correct"])).toEqual([false, false]);
   expect(rejected.map((event) => event.data?.["attempt"])).toEqual([1, 2]);
 
-  // Hints: first where the stroke starts, then the stroke itself (already dotted here).
-  await page.getByRole("button", { name: "Hint" }).click();
-  await expect(page.locator('.board .kk-dot[data-start="true"]')).toHaveCount(1);
-  expect((await events(page, "hint_shown"))[0]?.data).toMatchObject({ level: 1, stroke_index: 0, auto: false });
-
   await drawStroke(page, 0);
   await expect(page.locator('.board .kk-stroke[data-stroke="0"]')).toHaveAttribute("data-state", "done");
   await expect(page.locator(".message")).toHaveText("");
   expect((await state(page)).expected).toBe(1);
-  const accepted = (await events(page, "stroke_attempt")).at(-1);
-  expect(accepted?.data).toMatchObject({ correct: true, attempt: 3, hint_level: 1, stroke_index: 0 });
+  expect((await events(page, "stroke_attempt")).at(-1)?.data).toMatchObject({ correct: true, attempt: 3, stroke_index: 0 });
+  await drawStroke(page, 1);
+
+  // On a blank square, hints show first where the stroke starts, then the stroke itself.
+  await page.waitForFunction(() => {
+    const now = (window as unknown as { __kk: DebugHandle }).__kk.state;
+    return now.stage === "trace:dotted" && now.rep === 1 && now.expected === 0;
+  });
+  await writeRepetition(page);
+  await waitForStage(page, "trace:none", "十");
+  await expect(page.locator(".board .kk-dot, .board .kk-dotted-line")).toHaveCount(0);
+  await page.getByRole("button", { name: "Hint" }).click();
+  await expect(page.locator('.board .kk-dot[data-start="true"]')).toHaveCount(1);
+  await expect(page.locator(".board .kk-dotted-line")).toHaveCount(0);
+  await page.getByRole("button", { name: "Hint" }).click();
+  await expect(page.locator(".board .kk-dotted-line")).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Hint" })).toBeDisabled();
+  expect((await events(page, "hint_shown")).map((event) => event.data)).toMatchObject([
+    { level: 1, stroke_index: 0, auto: false },
+    { level: 2, stroke_index: 0, auto: false },
+  ]);
+  await drawStroke(page, 0);
+  await expect(page.locator(".board .kk-dot, .board .kk-dotted-line")).toHaveCount(0);
+  expect((await events(page, "stroke_attempt")).at(-1)?.data).toMatchObject({ correct: true, hint_level: 2, guide: "none" });
 
   // Listening is recorded, and going back leads home.
   await page.getByRole("button", { name: "Listen" }).click();
-  expect(await events(page, "melody_listen")).toHaveLength(1);
+  await page.getByRole("button", { name: "Play 十" }).click();
+  expect((await events(page, "melody_listen")).map((event) => event.data)).toMatchObject([
+    { part: "all", audio_mode: "melody" },
+    { part: "unit", unit: 0, component: "十" },
+  ]);
   await page.getByRole("button", { name: "Back to lessons" }).click();
   await expect(page.locator(".lesson-card")).toHaveCount(6);
 });

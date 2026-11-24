@@ -9,14 +9,13 @@ import type { Sound } from "./sound";
 /** What the screen currently asks of the player; exposed read-only as `window.__kk` in debug mode. */
 export interface Probe {
   screen: "home" | "learn" | "timed" | "results" | "recall" | "recall-summary";
-  /** "demo", "trace:<guide>", "complete", "timed", "recall", or null between activities. */
+  /** "demo", "trace:<guide>", "rest" (a finished repetition on show), "complete", "timed", "recall"; null in between. */
   stage: string | null;
   char: string | null;
   rep: number | null;
   expected: number | null;
   /** Stroke medians of the current character, in glyph space. */
   medians: readonly (readonly Point[])[] | null;
-  glyphSize: number | null;
 }
 
 export const IDLE_PROBE: Omit<Probe, "screen"> = {
@@ -25,7 +24,6 @@ export const IDLE_PROBE: Omit<Probe, "screen"> = {
   rep: null,
   expected: null,
   medians: null,
-  glyphSize: null,
 };
 
 /** Everything the screens share. */
