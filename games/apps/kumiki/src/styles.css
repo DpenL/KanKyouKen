@@ -22,7 +22,8 @@
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --serif-ja: "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif CJK JP", "Noto Serif JP", serif;
   --tile: clamp(52px, 8.4dvh, 78px);
-  --frame: clamp(118px, 21dvh, 172px);
+  /* Wide enough that a slot of a three-way split is still a 44 px target. */
+  --frame: clamp(164px, 21dvh, 176px);
   --gap: 10px;
   --kk-ink: var(--ink);
 }
@@ -505,7 +506,7 @@ button:disabled {
 .structure {
   position: relative;
   aspect-ratio: 1;
-  padding: 4px;
+  padding: 2px;
   border: 2px solid transparent;
   border-radius: 12px;
   transition:
@@ -1042,7 +1043,7 @@ button:disabled {
 
 @media (max-width: 760px) {
   :root {
-    --frame: clamp(112px, 18.6dvh, 160px);
+    --frame: clamp(140px, calc((100vw - 34px) / 2), 166px);
     --tile: clamp(50px, 7.6dvh, 74px);
     --gap: 8px;
   }

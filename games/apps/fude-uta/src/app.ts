@@ -1,5 +1,5 @@
 import type { Lesson } from "@kankyouken/glyph-data";
-import type { Melodist } from "@kankyouken/mechanics/melody";
+import type { Melodist, StrokeAudioMode } from "@kankyouken/mechanics/melody";
 import { gameEvent } from "@kankyouken/mechanics/telemetry";
 import { createRng } from "@kankyouken/mechanics/util";
 import { createLocalStore, readLaunchParams } from "@kankyouken/web-kit/app";
@@ -42,7 +42,7 @@ export function startApp(root: HTMLElement): void {
 
   let settings = sanitizeSettings(store.get().settings);
   let melodist: Melodist = buildMelodist(content, settings.timbreMode);
-  const audioMode = (): ReturnType<Env["audioMode"]> => effectiveAudioMode(settings, params.condition);
+  const audioMode = (): StrokeAudioMode => effectiveAudioMode(settings, params.condition);
 
   const sound = createSound({ volume: () => settings.volume, cuesEnabled: () => audioMode() !== "silent" });
   const env: Env = {

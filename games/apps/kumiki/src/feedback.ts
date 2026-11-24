@@ -23,7 +23,7 @@ export function feedbackLines(feedback: AssemblyFeedback): FeedbackLine[] {
           text: anyInCorrectPosition ? "at least one in place" : "none in place",
           tone: anyInCorrectPosition ? (feedback.solved ? "good" : "partial") : "bad",
         }
-      : { label: "Position", text: "cannot be judged until the structure is right", tone: "unknown" },
+      : { label: "Position", text: "cannot be judged yet", tone: "unknown" },
   ];
 }
 

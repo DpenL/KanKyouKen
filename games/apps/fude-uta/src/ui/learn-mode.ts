@@ -91,6 +91,7 @@ export function startLearnMode(env: Env, ui: WritingUi, lesson: Lesson, onDone: 
 
   const showHint = (effect: Extract<LearnEffect, { type: "hint" }>, auto: boolean): void => {
     env.sound.cue("hint");
+    board.beckon();
     env.emit(
       gameEvent("hint_shown", where(), {
         level: effect.level,

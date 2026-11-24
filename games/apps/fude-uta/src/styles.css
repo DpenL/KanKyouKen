@@ -49,6 +49,7 @@ html {
 
 body {
   margin: 0;
+  min-height: 100vh;
   min-height: 100dvh;
   overflow-x: hidden;
   color: var(--ink);
@@ -69,6 +70,8 @@ h2,
 p {
   margin: 0;
 }
+
+/* Older browsers take the `vh` and plain-colour declarations that precede `dvh` and `color-mix()` ones. */
 
 :focus-visible {
   outline: 2px solid var(--ink);
@@ -246,6 +249,7 @@ p {
   align-content: start;
   gap: 0.55rem;
   max-width: 40rem;
+  min-height: 100vh;
   min-height: 100dvh;
   padding: 0.35rem 1rem 1rem;
 }
@@ -328,6 +332,7 @@ p {
   -webkit-user-select: none;
   user-select: none;
   justify-self: center;
+  width: min(100%, max(13rem, 100vh - 22.5rem));
   width: min(100%, max(13rem, 100dvh - 22.5rem));
   aspect-ratio: 1;
 }
@@ -381,6 +386,23 @@ p {
 .board .kk-arrow {
   color: var(--ink-soft);
 }
+.board .kk-arrow-label {
+  font-size: 62px;
+}
+/* An accepted stroke's ink simply fades while the proper stroke settles in its place. */
+.board .kk-ink-flash.kk-ok {
+  color: var(--kk-ink);
+}
+.board svg[data-beckon] .kk-dotted-start,
+.board svg[data-beckon] .kk-dot[data-start="true"] {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: fu-beckon var(--fu-duration, 700ms) ease-out;
+}
+
+.board .kk-ghost-stroke[data-pulse] {
+  animation: fu-pulse-ghost var(--fu-duration, 400ms) ease-out;
+}
 
 @keyframes fu-settle {
   from {
@@ -392,6 +414,16 @@ p {
   30% {
     stroke-width: 74px;
     opacity: 0.72;
+  }
+}
+@keyframes fu-beckon {
+  35% {
+    transform: scale(1.8);
+  }
+}
+@keyframes fu-pulse-ghost {
+  30% {
+    color: var(--kk-guide);
   }
 }
 
@@ -507,6 +539,7 @@ p {
   padding: 0 0.7rem 0 0.8rem;
   border: 1.5px solid var(--tone);
   border-radius: 999px;
+  background: var(--paper-raised);
   background: color-mix(in srgb, var(--tone) 12%, var(--paper-raised));
   color: var(--tone);
   font: inherit;
@@ -563,6 +596,7 @@ p {
     padding: 0.5rem 1.5rem 1.5rem;
   }
   .board-frame {
+    width: min(100%, 100vh - 6.5rem);
     width: min(100%, 100dvh - 6.5rem);
   }
   .side {
@@ -683,6 +717,7 @@ p {
 
 .sheet {
   width: min(34rem, 100vw - 1.5rem);
+  max-height: calc(100vh - 1.5rem);
   max-height: calc(100dvh - 1.5rem);
   padding: 0;
   border: 1px solid var(--line);

@@ -170,7 +170,7 @@ test("review: a wrong check is marked, then the character is assembled by draggi
   const feedback = page.locator(".feedback");
   await expect(feedback).toContainText("Structure: wrong");
   await expect(feedback).toContainText(`Components: 0 of ${info.solution.length} belong`);
-  await expect(feedback).toContainText("Position: cannot be judged until the structure is right");
+  await expect(feedback).toContainText("Position: cannot be judged yet");
   await expect(page.locator(`.structure[data-layout="${wrongLayout}"]`)).toHaveAttribute("data-mark", "wrong");
   await expect(page.locator(`.structure[data-layout="${wrongLayout}"] .mark-badge`)).toHaveText("✕");
   await expect(page.locator(`.structure[data-layout="${info.correctLayout}"]`)).toHaveAttribute("data-mark", "untried");
@@ -310,6 +310,17 @@ test.describe("on a phone", () => {
     await page.locator(".deck").first().tap();
     await expect(page.locator(".tray .tile")).toHaveCount(12);
     expect(await fits()).toBe(true);
+
+    // Everything that is tapped is at least 44 px in both directions.
+    const smallest = await page.evaluate(() =>
+      Math.min(
+        ...[...document.querySelectorAll(".slot-shape, .tray .tile, .screen button")].map((element) => {
+          const box = element.getBoundingClientRect();
+          return Math.min(box.width, box.height);
+        }),
+      ),
+    );
+    expect(smallest).toBeGreaterThanOrEqual(44);
 
     const info = await puzzleInfo(page);
     const tile = solvingTiles(info)[0]!;

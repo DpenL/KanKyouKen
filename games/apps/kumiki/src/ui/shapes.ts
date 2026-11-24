@@ -7,6 +7,8 @@ import { h, svg } from "./dom";
 
 /** Side of a frame in its own SVG units. */
 const FRAME = 100;
+/** Room around the frame for the slots' outlines, in the same units. */
+const FRAME_MARGIN = 2;
 /** Space between neighbouring slots, as a fraction of the frame. */
 const SLOT_GAP = 0.035;
 /** Room between a slot's outline and the shape stretched into it. */
@@ -66,10 +68,9 @@ export interface FrameContent {
  * character, and small marks for tiles that were wrong in a slot.
  */
 export function frameDrawing(layout: Layout, layoutIndex: number, content: FrameContent): SVGSVGElement {
-  const pad = 3;
   const root = svg("svg", {
     class: "frame",
-    viewBox: `${-pad} ${-pad} ${FRAME + 2 * pad} ${FRAME + 2 * pad}`,
+    viewBox: `${-FRAME_MARGIN} ${-FRAME_MARGIN} ${FRAME + 2 * FRAME_MARGIN} ${FRAME + 2 * FRAME_MARGIN}`,
   });
   const shapes = svg("g", { class: "frame-shapes" });
   const marks = svg("g", { class: "frame-misses" });
