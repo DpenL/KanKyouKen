@@ -22,6 +22,7 @@ export type CoreEventType =
   | "recall_result"
   | "timed_round_result"
   | "choice_attempt"
+  | "writing_assessment"
   | "review_scheduled";
 
 export interface GameEvent {
@@ -88,6 +89,21 @@ export interface ChoiceAttemptData {
   /** Where in the character the choice belonged, if the task has slots. */
   readonly slot?: string;
   readonly attempt: number;
+}
+
+/** Payload of a `writing_assessment` event (a whole character assessed on the ten writing metrics). */
+export interface WritingAssessmentData {
+  /** Every structure and technique metric earned three stars. */
+  readonly correct: boolean;
+  readonly response_time_ms: number;
+  /** Overall score, 0..1. */
+  readonly score: number;
+  /** Stars per metric id; unavailable metrics are left out. */
+  readonly stars: Readonly<Record<string, number>>;
+  readonly stroke_count: number;
+  readonly drawn_count: number;
+  /** Undo and clear actions, or null when not counted. */
+  readonly edits: number | null;
 }
 
 /** Static facts about the client, sent with every event. */

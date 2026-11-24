@@ -1,8 +1,9 @@
 # Mechanics catalogue
 
-This workspace re-implements, from scratch, the mechanics of two research games by
-Oleksandra Keehl and colleagues, as an engine-agnostic library that other games can
-reuse:
+This workspace re-implements, from scratch, mechanics from published research as an
+engine-agnostic library that other games can reuse. Parts 1 and 2 come from two
+research games by Oleksandra Keehl and colleagues; Part 3 comes from a writing tutor
+by Paul Taele and colleagues:
 
 - **Radical Tunes**: kanji stroke tracing in which every radical owns a melody.
   Keehl & Melcer, FDG 2019 (DOI 10.1145/3337722.3337764); extended in "Music to My
@@ -12,14 +13,17 @@ reuse:
   Melcer, FDG 2022 (DOI 10.1145/3555858.3555875).
 - Both are chapters of Keehl's 2023 UC Santa Cruz dissertation, *Evidence-based
   gamification and mnemonics for logographic writing systems* (eScholarship 57z2740k).
+- **Kanji Workbook**: a writing tutor that scores handwriting the way instructors do.
+  Taele, Koh & Hammond, AAAI/IAAI 2020 (arXiv 2504.13888).
 
 Nothing of the original games is copied: no names, art, audio, level data or code. The
 two games in `apps/` are original games built on the same mechanics.
 
 ## How reliable this catalogue is
 
-**The papers could not be opened while this was written.** Every statement about them
-below was reconstructed from search-engine excerpts of the indexed PDFs, cross-checked
+**The Radical Tunes and Zen Hanzi papers could not be opened while Parts 1 and 2 were
+written.** (Part 3 is different: it was written from the full text of its paper.) Every
+statement about them below was reconstructed from search-engine excerpts of the indexed PDFs, cross-checked
 between independent passes. The rules marked *stated* were returned as near-verbatim
 quotations by several differently worded queries and agree with each other, but wording,
 numbers and figure references have not been checked against the PDFs. Before citing
@@ -282,6 +286,120 @@ single-stroke look-alikes frustrated some players.
 
 ---
 
+## Part 3. Instructor-style writing assessment (from Kanji Workbook)
+
+Source: Paul Taele, Jung In Koh, Tracy Hammond, "Kanji Workbook: A Writing-Based
+Intelligent Tutoring System for Learning Proper Japanese Kanji Writing Technique with
+Instructor-Emulated Assessment", AAAI/IAAI 2020, arXiv 2504.13888. **This part was
+written from the paper's full text**, so *stated* here means read in the paper, and the
+quotations are verbatim.
+
+Code for all of it: `stroke/assess.ts` (`assessWriting`), contract in section 4 of
+`stroke/types.ts`.
+
+### KW-1 Ten metrics in three groups — *stated*
+
+The paper expands the usual order-and-direction checks "to a total of ten metrics",
+derived from instructor interviews and classroom observations, "grouped together into
+the following types: structure, technique, and precision".
+
+- Structure: "stroke match, stroke valid, and stroke exist".
+- Technique: "stroke order and stroke direction".
+- Precision: "stroke edit, stroke speed, stroke length, stroke closeness, and symbol
+  speed".
+- Code: `AssessmentMetricId`, `AssessmentGroup`; one `MetricResult` per metric.
+
+### KW-2 Structure: matched, missing and extraneous strokes — *stated*
+
+- Stroke match "assesses how many correct matches exist between the user's input
+  strokes and the expert's model strokes".
+- Stroke valid "assesses how many model strokes correctly match to the user's
+  corresponding input strokes", which shows "whether a student has missing correct
+  strokes".
+- Stroke exist "assesses how many input strokes correctly match to the expert's
+  corresponding model strokes", which shows "whether a student has extraneous strokes".
+- *Ours*: how strokes are paired. The paper pairs them with a Hausdorff-distance
+  template matcher in the manner of the $P recogniser; this library reuses its own
+  one-to-one attribution (`scoreFreeWriting`). The counts and what each is out of are
+  ours too.
+
+### KW-3 Technique: order and direction — *stated*
+
+Stroke order "assesses how many of the user's input strokes are written in temporal
+correct order"; stroke direction likewise for direction. The paper decides which end of
+a stroke is which by the distance error over the whole stroke rather than the endpoints
+alone, because "both endpoints of a user's stroke may have similar distances to an
+endpoint of the corresponding expert stroke (e.g., small strokes, long strokes with
+close endpoints)".
+
+- Code: `stroke-order`, `stroke-direction`, taken from `scoreFreeWriting`. The same
+  concern is why `matchStroke` lets the direction test decide for tiny strokes.
+
+### KW-4 Precision: edits, length, closeness, speed — *stated*
+
+- Stroke edit "assesses how many times the student edits their input strokes during
+  their character writing session".
+- Stroke length and closeness "assess the stroke length and spatial distances,
+  respectively, between each matched pair of input and model strokes".
+- Stroke and symbol speed "assess the differences in relative writing time duration
+  between the input and models' strokes and characters, respectively".
+- Thresholds were "empirically derived from the expert model templates"; the paper
+  gives no numbers. Every threshold in `DEFAULT_ASSESSMENT_THRESHOLDS` is *ours*.
+- *Ours*: the edit count is supplied by the host (`edits`). Speed needs a model's
+  timing; the paper's models were recorded from an expert, this library's glyph data
+  has no timing, so the reference is stroke length at a fixed pace (`referencePace`)
+  unless recorded durations are passed in (`referenceDurationsMs`).
+
+### KW-5 Bring writing and model to a common size and place first — *stated*
+
+Model templates are normalised by resampling each stroke "into 64 equally-spaced
+points", scaling "the template's bounding box to a size of 250 pixels" and translating
+it "to the origin"; the input gets "the same transformation algorithms".
+
+- Code: `fitToReference` (default on) maps the drawn character's bounding box onto the
+  reference's before comparing. *Ours*: an axis on which the reference is nearly flat
+  is centred rather than stretched.
+
+### KW-6 A three-star score per metric, plus an overall score — *stated*
+
+The results view shows, per metric, an animation button and "three stars for providing
+a three-point score", and the process ends with "calculate the input data's
+performance score".
+
+- Code: `MetricResult.stars`, `WritingAssessment.score`. The star rules and the score
+  formula (mean of stars over the available metrics) are *ours*.
+
+### KW-7 Practice and quiz modes — *stated*, not implemented here
+
+Practice mode: trace over "a semi-transparent visualization" of the character, with
+Demo and Steps animations, Clear, Undo and Assess. Quiz mode: forward only, no
+supplementary information, and "a comprehensive assessment of their lesson-wide
+character writing performance at the end of the lesson".
+
+- The pieces exist elsewhere in this library (demo and outline guide in `scaffold`,
+  the from-memory round in Fude Uta), but no game here shows the ten metrics yet.
+
+### What this library does not do
+
+- No expert-recorded templates: shapes come from KanjiVG, timing is assumed.
+- No per-metric feedback animations or colour key.
+- No lesson-wide quiz summary.
+
+### What the study found
+
+Deployed for nine months in first- and second-year university Japanese courses, 94
+students (44 using the tutor, 50 not). Mean test scores on a 100-point scale were 92.70
+for the tutor group and 86.48 for the control group (two-tailed t-test, p = .046); the
+first-year tutor group was ahead by 9.10 points (p = .048), the second-year groups
+differed by 0.51. The paper does not say how students were assigned to the two groups,
+and the tests had a "strong emphasis on vocabulary and sentence writing", so this is
+evidence about course grades, not directly about handwriting. In the interaction study students
+found the star ratings useful but less intuitive: some "felt that the ratings were
+overly strict", and the ratings for stroke speed, order, closeness and length were the
+least intuitive. Worth remembering before putting ten star rows in front of a learner.
+
+---
+
 ## Conditions as configuration
 
 | Switch | Values | Where |
@@ -296,6 +414,7 @@ single-stroke look-alikes frustrated some players.
 | Assembly rules | lives, score, costs | `components` → `AssemblyRules` |
 | Tray | look-alikes per component, malformed shapes, size | `components` → `PuzzleOptions` |
 | Decomposition | max slots, known components | `components` → `DecomposeOptions` |
+| Writing assessment | fit to reference, edit count, reference timing, thresholds | `stroke` → `WritingAssessmentOptions` |
 
 ## Open questions
 

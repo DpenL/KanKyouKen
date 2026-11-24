@@ -243,3 +243,114 @@ export interface DotCoverageScore {
     readonly directionOk: boolean;
   }[];
 }
+
+// ---------------------------------------------------------------------------
+// 4. Writing assessment (instructor-style metrics)
+// ---------------------------------------------------------------------------
+//
+// Ten metrics in three groups, after Kanji Workbook (Taele, Koh & Hammond, AAAI/IAAI
+// 2020), which derived them from interviews with writing instructors:
+//   structure: stroke match, stroke valid (exposes missing strokes), stroke exist
+//              (exposes extraneous strokes);
+//   technique: stroke order, stroke direction;
+//   precision: stroke edit, stroke length, stroke closeness, stroke speed, symbol speed.
+// From the paper: the metrics and their grouping, comparing the writing with a model
+// after bringing both to a common size and position, and a three-star score per metric.
+// Ours: how strokes are matched (the paper uses Hausdorff and Euclidean template
+// matching), every threshold (the paper derived its own from an expert's recordings and
+// gives no numbers), the reference timing when no expert recording exists, and the
+// overall score.
+
+export type AssessmentMetricId =
+  | "stroke-match"
+  | "stroke-valid"
+  | "stroke-exist"
+  | "stroke-order"
+  | "stroke-direction"
+  | "stroke-edit"
+  | "stroke-length"
+  | "stroke-closeness"
+  | "stroke-speed"
+  | "symbol-speed";
+
+export type AssessmentGroup = "structure" | "technique" | "precision";
+
+export type Stars = 0 | 1 | 2 | 3;
+
+export interface MetricResult {
+  readonly id: AssessmentMetricId;
+  readonly group: AssessmentGroup;
+  /** False when the inputs the metric needs are missing (no timestamps, no edit count). */
+  readonly available: boolean;
+  /** A count for count metrics, the number of edits for stroke-edit, a duration ratio for symbol-speed. */
+  readonly value: number;
+  /** What a count is out of; null for metrics that are not counts. */
+  readonly outOf: number | null;
+  readonly stars: Stars;
+  /** Why the metric is unavailable, when it is. */
+  readonly note?: string;
+}
+
+/** What was found for one REFERENCE stroke. */
+export interface AssessedStroke {
+  readonly stroke: number;
+  /** Index of the drawn stroke attributed to it, or null if it is missing. */
+  readonly drawnIndex: number | null;
+  readonly orderOk: boolean;
+  readonly directionOk: boolean;
+  /** Drawn length / reference length, or null if missing. */
+  readonly lengthRatio: number | null;
+  /** Mean distance of the drawn stroke to the reference, as a fraction of glyph size; null if missing. */
+  readonly closeness: number | null;
+  /** Drawn duration / reference duration; null if missing or untimed. */
+  readonly durationRatio: number | null;
+}
+
+/** Every number here is our own choice; see the note at the top of this section. */
+export interface AssessmentThresholds {
+  /** Share of a count needed for three, two and one star. */
+  readonly countShares: readonly [number, number, number];
+  /** Most edits that still earn three, two and one star. */
+  readonly maxEdits: readonly [number, number, number];
+  /** A matched stroke's length is fine when drawn / reference lies in this range. */
+  readonly lengthRatio: readonly [number, number];
+  /** A matched stroke is close enough when its mean distance to the reference is at most this fraction of glyph size. */
+  readonly closeness: number;
+  /** A matched stroke's speed is fine when drawn / reference duration lies in this range. */
+  readonly strokeSpeedRatio: readonly [number, number];
+  /** Ranges of total duration ratio that earn three, two and one star. */
+  readonly symbolSpeedRatio: readonly [readonly [number, number], readonly [number, number], readonly [number, number]];
+  /** Pause assumed between strokes when the reference total time is derived, in milliseconds. */
+  readonly strokeGapMs: number;
+}
+
+export interface WritingAssessmentOptions {
+  readonly match?: Partial<MatchOptions>;
+  /** As in `FreeWritingOptions`. */
+  readonly minScore?: number;
+  /**
+   * Scale and move the drawn character so that its bounding box matches the reference
+   * character's before comparing, so writing that is smaller or off-centre is judged on
+   * its shape. Default true. With false, positions are compared as drawn.
+   */
+  readonly fitToReference?: boolean;
+  /** How many times the writer used undo or clear; the host counts this. Omit to leave stroke-edit unavailable. */
+  readonly edits?: number;
+  /** Reference duration of each reference stroke in milliseconds, e.g. from an expert recording. */
+  readonly referenceDurationsMs?: readonly number[];
+  /** Used when no reference durations are given: writing speed in glyph sizes per second. Default 1.5. */
+  readonly referencePace?: number;
+  readonly thresholds?: Partial<AssessmentThresholds>;
+}
+
+export interface WritingAssessment {
+  readonly metrics: Readonly<Record<AssessmentMetricId, MetricResult>>;
+  /** One entry per reference stroke. */
+  readonly strokes: readonly AssessedStroke[];
+  /** Reference strokes nobody drew. */
+  readonly missing: readonly number[];
+  /** Drawn strokes that match no reference stroke. */
+  readonly extra: readonly number[];
+  /** Mean of stars / 3 over the available metrics, 0..1. */
+  readonly score: number;
+}
