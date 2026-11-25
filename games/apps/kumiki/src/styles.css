@@ -21,9 +21,15 @@
   --partial: #f6c453;
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --serif-ja: "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif CJK JP", "Noto Serif JP", serif;
-  --tile: clamp(52px, 8.4dvh, 78px);
+  /*
+   * The height the game has: the screen less the recording notice, which takes its own
+   * room at the top of the page when a study session is not being recorded. Everything
+   * that is sized to the screen's height uses this instead of dvh.
+   */
+  --screen: calc(100dvh - var(--kk-recording-notice-height, 0px));
+  --tile: clamp(52px, calc(var(--screen) * 0.084), 78px);
   /* Wide enough that a slot of a three-way split is still a 44 px target. */
-  --frame: clamp(164px, 21dvh, 176px);
+  --frame: clamp(164px, calc(var(--screen) * 0.21), 176px);
   --gap: 10px;
   --kk-ink: var(--ink);
 }
@@ -58,7 +64,7 @@ body {
 #app {
   display: flex;
   justify-content: center;
-  min-height: 100dvh;
+  min-height: var(--screen);
 }
 
 h1,
@@ -505,7 +511,7 @@ button:disabled {
 }
 
 .frames[data-count="1"] {
-  grid-template-columns: min(250px, 30dvh, 70vw);
+  grid-template-columns: min(250px, calc(var(--screen) * 0.3), 70vw);
 }
 
 .structure {
@@ -822,7 +828,7 @@ button:disabled {
 /* ---------- Whole characters ---------- */
 
 .glyph-board {
-  width: min(280px, 62vw, 36dvh);
+  width: min(280px, 62vw, calc(var(--screen) * 0.36));
   aspect-ratio: 1;
   margin: 0 auto;
   border-radius: 16px;
@@ -1049,7 +1055,12 @@ button:disabled {
 @media (max-width: 760px) {
   :root {
     --frame: clamp(140px, calc((100vw - 34px) / 2), 166px);
-    --tile: clamp(50px, 7.6dvh, 74px);
+    /*
+     * The board is about 652px plus three rows of tiles high; the tiles shrink so that it
+     * fits screens a little taller than the short-screen layout below, and the height the
+     * recording notice takes, which that layout's media query cannot see.
+     */
+    --tile: clamp(50px, min(calc(var(--screen) * 0.076), calc((var(--screen) - 652px) / 3)), 74px);
     --gap: 8px;
   }
 
@@ -1058,7 +1069,7 @@ button:disabled {
   }
 
   .frames[data-count="1"] {
-    grid-template-columns: min(230px, 30dvh, 70vw);
+    grid-template-columns: min(230px, calc(var(--screen) * 0.3), 70vw);
   }
 
   /* The back button and the status share one row, so the board fits a phone screen. */
@@ -1133,7 +1144,7 @@ button:disabled {
 @media (max-width: 760px) and (max-height: 819px) {
   :root {
     --tile: min(51px, calc((100vw - 64px) / 6));
-    --frame: clamp(88px, calc((100dvh - 272px - 2 * var(--tile)) / 2), min(166px, calc((100vw - 34px) / 2)));
+    --frame: clamp(88px, calc((var(--screen) - 272px - 2 * var(--tile)) / 2), min(166px, calc((100vw - 34px) / 2)));
   }
 
   .assembly .tray {
@@ -1166,7 +1177,7 @@ button:disabled {
   }
 
   .frames[data-count="1"] {
-    grid-template-columns: min(230px, calc(100dvh - 270px - 2 * var(--tile)), 70vw);
+    grid-template-columns: min(230px, calc(var(--screen) - 270px - 2 * var(--tile)), 70vw);
   }
 }
 

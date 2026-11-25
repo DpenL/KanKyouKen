@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CollectorStatus } from "../telemetry/sink";
-import { RECORDING_NOTICE_ATTRIBUTE, createRecordingNotice, mountRecordingNotice, recordingMessage } from "./notice";
+import { RECORDING_NOTICE_ATTRIBUTE, RECORDING_NOTICE_HEIGHT_PROPERTY, createRecordingNotice, mountRecordingNotice, recordingMessage } from "./notice";
 import { canReport, participantStoreKey, readLaunchParams, storeKeyFor, studyLinkState } from "./params";
 import { createLocalStore, type KeyValueStorage } from "./store";
 
@@ -97,22 +97,37 @@ describe("study links", () => {
 describe("recording notice", () => {
   const FULL = "?study=s1&participant=p1&api=https://x.test/functions/v1";
   const complete = readLaunchParams(FULL, "#token=t");
-  const status = (state: CollectorStatus["state"], dropped = 0): CollectorStatus => ({ state, pending: 3, dropped });
+  const status = (state: CollectorStatus["state"], dropped = 0, stored = 3): CollectorStatus => ({ state, pending: 3, dropped, stored });
 
-  /** The little of a document the notice needs. */
+  /** The little of a document the notice needs; every element is 36 px high when shown. */
   function fakePage() {
     const created: { tag: string; attributes: Record<string, string>; style: Record<string, string>; hidden: boolean; textContent: string }[] = [];
+    const rootProperties: Record<string, string> = {};
+    const ownerDocument = { documentElement: { style: { setProperty: (name: string, value: string) => void (rootProperties[name] = value) } } };
     const doc = {
       createElement(tag: string) {
         const attributes: Record<string, string> = {};
-        const element = { tag, attributes, style: {}, hidden: false, textContent: "", setAttribute: (name: string, value: string) => void (attributes[name] = value) };
+        const element = {
+          tag,
+          attributes,
+          style: {},
+          hidden: false,
+          textContent: "",
+          offsetHeight: 36,
+          ownerDocument,
+          setAttribute: (name: string, value: string) => void (attributes[name] = value),
+        };
         created.push(element);
         return element as unknown as HTMLElement;
       },
     } as unknown as Document;
     const appended: unknown[] = [];
-    const host = { appendChild: <T>(node: T): T => (appended.push(node), node) } as unknown as Node;
-    return { doc, host, created, appended };
+    const before: unknown[] = [];
+    const host = {
+      firstChild: "the game",
+      insertBefore: <T>(node: T, child: unknown): T => (appended.push(node), before.push(child), node),
+    } as unknown as Node;
+    return { doc, host, created, appended, before, rootProperties };
   }
 
   it("says nothing in plain play and while a study session is being recorded", () => {
@@ -128,20 +143,27 @@ describe("recording notice", () => {
     expect(recordingMessage({ debug: false, token: "t" })).toMatch(/Not being recorded.*incomplete\./);
     expect(recordingMessage(complete, status("rejected"))).toMatch(/Not being recorded.*not accepted/);
     expect(recordingMessage(complete, status("retrying"))).toMatch(/cannot be sent.*kept on this device/);
+    // Only while storage holds every event does the notice say so.
+    expect(recordingMessage(complete, status("retrying", 0, 0))).toBe(
+      "Results cannot be sent right now, and this device cannot keep them. Please keep this page open until they are sent.",
+    );
+    expect(recordingMessage(complete, status("retrying", 0, 1))).toMatch(/cannot keep them all\. Please keep this page open/);
+    expect(recordingMessage(complete, status("retrying", 0, 1))).not.toContain("kept on this device");
     // Events that could not be kept are owned up to in every state.
     expect(recordingMessage(complete, status("retrying", 1))).toContain("1 event could not be kept.");
     expect(recordingMessage(complete, status("rejected", 12))).toContain("12 events could not be kept.");
     expect(recordingMessage(complete, status("recording", 2))).toBe("Recording, but 2 events could not be kept.");
   });
 
-  it("is a status region that takes no room and lets clicks through", () => {
+  it("is a status region that takes its own room instead of lying over the game", () => {
     const { doc, created } = fakePage();
     const notice = createRecordingNotice(doc);
     const element = created[0]!;
     expect(notice.element).toBe(element);
     expect(element.tag).toBe("div");
     expect(element.attributes).toEqual({ role: "status", [RECORDING_NOTICE_ATTRIBUTE]: "" });
-    expect(element.style).toMatchObject({ position: "fixed", pointerEvents: "none" });
+    expect(element.style).toMatchObject({ display: "block" });
+    expect(element.style).not.toHaveProperty("position");
     expect(element.hidden).toBe(true);
     notice.show("Not recorded");
     expect([element.hidden, element.textContent]).toEqual([false, "Not recorded"]);
@@ -159,23 +181,28 @@ describe("recording notice", () => {
     expect(() => mountRecordingNotice(readLaunchParams("?debug"))(status("retrying"))).not.toThrow();
   });
 
-  it("announces an incomplete link at once", () => {
-    const { doc, host, created, appended } = fakePage();
+  it("announces an incomplete link at once, above the game, and says how much room it takes", () => {
+    const { doc, host, created, appended, before, rootProperties } = fakePage();
     mountRecordingNotice(readLaunchParams(FULL), host, doc);
     expect(appended).toEqual([created[0]]);
+    expect(before).toEqual(["the game"]);
     expect(created[0]!.hidden).toBe(false);
     expect(created[0]!.textContent).toContain("Not being recorded");
+    expect(rootProperties).toEqual({ [RECORDING_NOTICE_HEIGHT_PROPERTY]: "36px" });
   });
 
   it("follows the collector sink for a complete link", () => {
-    const { doc, host, created } = fakePage();
+    const { doc, host, created, rootProperties } = fakePage();
     const update = mountRecordingNotice(complete, host, doc);
     const element = created[0]!;
     expect(element.hidden).toBe(true);
+    expect(rootProperties[RECORDING_NOTICE_HEIGHT_PROPERTY]).toBe("0px");
     update(status("retrying"));
     expect([element.hidden, element.textContent]).toEqual([false, recordingMessage(complete, status("retrying"))]);
+    expect(rootProperties[RECORDING_NOTICE_HEIGHT_PROPERTY]).toBe("36px");
     update(status("recording"));
     expect(element.hidden).toBe(true);
+    expect(rootProperties[RECORDING_NOTICE_HEIGHT_PROPERTY]).toBe("0px");
     update(status("rejected"));
     expect(element.textContent).toContain("not accepted");
   });

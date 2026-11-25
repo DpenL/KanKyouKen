@@ -68,14 +68,20 @@ Each scored action becomes one event with `event_type`, `item_id` (the character
 
 - **A link with only some of the four values** (typically the `#token=...` fragment was
   lost on the way) still lets the participant play, but nothing can be recorded. Both
-  games then show a notice along the top of the screen for the whole session: "Not
-  being recorded: the study link is incomplete (no token)". A link with none of the
-  values is plain offline play and shows nothing.
+  games then show a notice across the top of the page for the whole session: "Not
+  being recorded: the study link is incomplete (no token)". It takes its own room
+  there, above the game, so it hides no control (its height is in the CSS property
+  `--kk-recording-notice-height` on the root element, for a game that sizes itself to
+  the screen, as Kumiki does). A link with none of the values is plain offline play
+  and shows nothing.
 - **No connection, no answer within 30 seconds, a server error, throttling or a wrong
   `api` address** (network failure, 5xx, 429, 408, 404, 405): events are kept, in
   `localStorage` too, and sent again with a growing delay (1 s doubling up to 60 s) for
   as long as the page is open, and at the next launch of the same study and participant
-  in that browser. The notice says that results are kept on the device and sent later.
+  in that browser. The notice says that results are kept on the device and sent later
+  while the browser's storage holds all of them; when it is full or turned off, the
+  notice says that the device cannot keep them and asks to keep the page open until they
+  are sent (`CollectorStatus.stored` tells how many are stored).
 - **A token the collector refuses** (401, 403): nothing more is sent with it, the notice
   says that the session is not being recorded, and the events stay stored for a launch
   with a token that works.
@@ -90,21 +96,38 @@ Each scored action becomes one event with `event_type`, `item_id` (the character
   recording order, so order by `ts`.
 - At most 500 events are held. Beyond that, single actions (stroke and choice attempts,
   hints, listens) are dropped before results, and those before `session_start` and
-  `session_end`; the notice then says how many events could not be kept.
+  `session_end`; the notice then says how many events could not be kept, and the gap
+  shows in the delivered data (see "lost events" below).
 
 ### Reading the data: duplicates
 
 Delivery is **at-least-once**. An event can arrive more than once: when a request
-succeeds but its answer does not come back in time, and for whatever was on the wire
-when the page closed, which is `session_end` in practice, sent again at the next launch.
+succeeds but its answer does not come back in time, for whatever was on the wire
+when the page closed, which is `session_end` in practice, sent again at the next launch,
+and when a participant has two tabs open and the newer one takes over the backlog the
+older one still holds.
 The collector inserts every request it gets. Every event therefore carries a
 client-generated id in its payload, `payload.client_event_id` (a UUID, the same across
 every attempt and page load): rows that share it are one event. Keep one row per id
-before counting anything, for example
+before counting anything, and every row that has no id (recorded by an older build) as
+it is, for example
 
 ```sql
-select distinct on (payload->>'client_event_id') * from events order by payload->>'client_event_id', created_at;
+select distinct on (coalesce(payload->>'client_event_id', id::text)) *
+from events
+order by coalesce(payload->>'client_event_id', id::text), created_at;
 ```
+
+### Reading the data: lost events
+
+Every event also carries its running number within its page load,
+`payload.client_event_seq`: 1, 2, 3, ... in the order the game recorded the events,
+including those that were then dropped (at the 500-event bound, as unstorable, or
+refused). After removing duplicates, a gap in the numbers of one page load is that many
+lost events. A page load starts again at 1, so a session launched twice has two runs
+that each begin at 1 (with its `session_start`); events stored and sent at a later
+launch keep the number of the page load that recorded them. Order by `ts` within a
+session to see the runs.
 
 ### Shared devices
 
@@ -114,7 +137,10 @@ settings and best scores under a storage key of their own per study and particip
 `@kankyouken/web-kit/app`), so a participant does not start from the previous
 participant's choices. Plain play keeps the plain key. The unsent-event
 backlog is kept per study and participant as well
-(`kankyouken:events:<study>:<participant>`).
+(`kankyouken:events:<study>:<participant>`). Both games, and several tabs, of one
+participant share that backlog: each keeps what the others stored and takes out only
+what it delivered or dropped itself, and the next launch sends whatever earlier tabs
+left.
 
 Fude Uta does the same with its settings and stars
 (`kk.fude-uta.v1:<study>:<participant>`). A study `condition` still fixes only the sound

@@ -32,6 +32,8 @@ export function startFlow(app: App): void {
    * leaving the game. `abandon` records that the run was left unfinished.
    */
   let inRun = false;
+  const isRunEntry = (state: unknown): boolean =>
+    typeof state === "object" && state !== null && (state as { kumiki?: unknown }).kumiki === "run";
   let abandon: (() => void) | null = null;
   /** Steps back in history that the game asked for itself and must not act on. */
   let ownSteps = 0;
@@ -49,12 +51,20 @@ export function startFlow(app: App): void {
   const endRun = (): void => {
     abandon = null;
   };
-  window.addEventListener("popstate", () => {
+  window.addEventListener("popstate", (event) => {
     if (ownSteps > 0) {
       ownSteps--;
       return;
     }
-    if (!inRun) return;
+    if (!inRun) {
+      // Forward onto the entry of a run that was left: there is no run to go back to, and
+      // standing on its entry would leave the next Back with nothing to do. Step off it.
+      if (isRunEntry(event.state)) {
+        ownSteps++;
+        history.back();
+      }
+      return;
+    }
     inRun = false;
     abandon?.();
     abandon = null;

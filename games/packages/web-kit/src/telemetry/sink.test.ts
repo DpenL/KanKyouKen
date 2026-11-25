@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { CollectorBody, GameEvent } from "@kankyouken/mechanics/telemetry";
-import { EVENT_ID_KEY, createEventId, toCollectorBody, withEventId } from "./body";
+import { EVENT_ID_KEY, EVENT_SEQ_KEY, createEventId, toCollectorBody, withEventId } from "./body";
 import {
   CollectorError,
   MAX_RETRY_DELAY_MS,
@@ -212,8 +212,8 @@ describe("createCollectorSink: sending", () => {
     expect(init.method).toBe("POST");
     expect(init.keepalive).toBe(true);
     expect(init.headers).toEqual({ "Content-Type": "application/json", Authorization: "Bearer tok" });
-    // The collector's columns as `toCollectorBody` maps them, plus the event's id in the payload.
-    expect(body).toEqual({ ...toCollectorBody(event(1), STUDY, CLIENT), payload: { n: 1, client_event_id: "id-1" } });
+    // The collector's columns as `toCollectorBody` maps them, plus the event's id and running number in the payload.
+    expect(body).toEqual({ ...toCollectorBody(event(1), STUDY, CLIENT), payload: { n: 1, client_event_seq: 1, client_event_id: "id-1" } });
     expect(sink.pending).toBe(0);
     expect(sink.dropped).toBe(0);
   });
@@ -382,7 +382,7 @@ describe("createCollectorSink: retries", () => {
       timers.fire();
     }
     await settle();
-    expect(sink.status).toEqual({ state: "retrying", pending: 2, dropped: 0 });
+    expect(sink.status).toEqual({ state: "retrying", pending: 2, dropped: 0, stored: 2 });
     expect(storedNs(storage)).toEqual([1, 2]);
     expect(errors).toEqual([]);
   });
@@ -487,7 +487,7 @@ describe("createCollectorSink: an event the collector keeps refusing", () => {
     // Event 2 was refused twice, event 3 got through, 2 was refused once more and stepped aside.
     expect(collector.ns()).toEqual([1, 3, 4, 5]);
     expect(collector.calls()).toBe(7);
-    expect(sink.status).toEqual({ state: "recording", pending: 1, dropped: 0 });
+    expect(sink.status).toEqual({ state: "recording", pending: 1, dropped: 0, stored: 1 });
     expect(storedNs(storage)).toEqual([]);
     const stored = JSON.parse(storage.items.get(defaultStorageKey(STUDY))!) as { setAside: { body: CollectorBody; tries: number }[] };
     expect(stored.setAside.map((entry) => [entry.body.payload?.n, entry.tries])).toEqual([[2, 0]]);
@@ -502,7 +502,7 @@ describe("createCollectorSink: an event the collector keeps refusing", () => {
       await settle();
       expect(collector.calls()).toBe(7 + attempt);
     }
-    expect(sink.status).toEqual({ state: "recording", pending: 0, dropped: 1 });
+    expect(sink.status).toEqual({ state: "recording", pending: 0, dropped: 1, stored: 0 });
     expect(errors.map((e) => [e.error.reason, e.body.payload?.n])).toEqual([["stuck", 2]]);
     expect(storage.items.size).toBe(0);
     expect(timers.count).toBe(0);
@@ -529,7 +529,7 @@ describe("createCollectorSink: an event the collector keeps refusing", () => {
     timers.fire();
     await settle();
     expect(collector.ns()).toEqual([2, 3, 1]);
-    expect(sink.status).toEqual({ state: "recording", pending: 0, dropped: 0 });
+    expect(sink.status).toEqual({ state: "recording", pending: 0, dropped: 0, stored: 0 });
     expect(errors).toEqual([]);
   });
 
@@ -551,7 +551,7 @@ describe("createCollectorSink: an event the collector keeps refusing", () => {
     expect(new Set(net.sentNs().slice(0, 30))).toEqual(new Set([1, 2, 3]));
     expect(net.sentNs().slice(30)).toHaveLength(3);
     expect(new Set(net.sentNs().slice(30))).toEqual(new Set([1, 2, 3]));
-    expect(sink.status).toEqual({ state: "recording", pending: 0, dropped: 0 });
+    expect(sink.status).toEqual({ state: "recording", pending: 0, dropped: 0, stored: 0 });
     expect(errors).toEqual([]);
     expect(storage.items.size).toBe(0);
   });
@@ -607,7 +607,7 @@ describe("createCollectorSink: a token the collector refuses", () => {
     for (const n of [1, 2, 3]) sink.record(event(n));
     await settle();
     expect(net.requests).toHaveLength(1);
-    expect(sink.status).toEqual({ state: "rejected", pending: 3, dropped: 0 });
+    expect(sink.status).toEqual({ state: "rejected", pending: 3, dropped: 0, stored: 3 });
 
     // However long the page stays open, the refused token is not tried again and nothing is thrown away.
     for (let i = 0; i < 12; i++) {
@@ -617,7 +617,7 @@ describe("createCollectorSink: a token the collector refuses", () => {
     sink.record(event(4));
     await sink.flush();
     expect(net.requests).toHaveLength(1);
-    expect(sink.status).toEqual({ state: "rejected", pending: 4, dropped: 0 });
+    expect(sink.status).toEqual({ state: "rejected", pending: 4, dropped: 0, stored: 4 });
     expect(errors).toEqual([]);
     expect(storedNs(storage)).toEqual([1, 2, 3, 4]);
     expect(statuses.map((s) => s.state)).toEqual(["rejected"]);
@@ -663,7 +663,7 @@ describe("createCollectorSink: a request that never answers", () => {
     timers.fire(); // the timeout
     await settle();
     expect(signals[0]!.aborted).toBe(true);
-    expect(sink.status).toEqual({ state: "retrying", pending: 2, dropped: 0 });
+    expect(sink.status).toEqual({ state: "retrying", pending: 2, dropped: 0, stored: 0 });
     expect(timers.delays).toEqual([1000]);
 
     // flush skips the wait; its attempt hangs as well, and the timeout releases flush too.
@@ -908,7 +908,7 @@ describe("createCollectorSink: overflow", () => {
       ["overflow", "deck_complete", 6],
     ]);
     await settle();
-    expect(sink.status).toEqual({ state: "retrying", pending: 4, dropped: 5 });
+    expect(sink.status).toEqual({ state: "retrying", pending: 4, dropped: 5, stored: 0 });
     sink.record(event(10, { type: "session_start" }));
     expect(errors.at(-1)!.body.payload?.n).toBe(1);
   });
@@ -1025,7 +1025,11 @@ describe("createCollectorSink: persistence", () => {
   /** Storage with room for two events of these tests; writing anything longer fails, as a full localStorage does. */
   function createFullStorage() {
     const storage = createStorage();
-    const room = JSON.stringify({ v: 1, events: [1, 2].map((n) => withEventId(toCollectorBody(event(n), STUDY, CLIENT), () => `id-${n}`)) }).length;
+    const stored = (n: number): CollectorBody => {
+      const body = toCollectorBody(event(n), STUDY, CLIENT);
+      return withEventId({ ...body, payload: { ...body.payload, [EVENT_SEQ_KEY]: n } }, () => `id-${n}`);
+    };
+    const room = JSON.stringify({ v: 1, events: [stored(1), stored(2)] }).length;
     return {
       ...storage,
       setItem: (key: string, value: string): void => {
@@ -1089,6 +1093,77 @@ describe("createCollectorSink: persistence", () => {
     expect(storage.items.size).toBe(0);
   });
 
+  it("says in its status how many of the events storage holds, and reports when that falls short", async () => {
+    const storage = createFullStorage();
+    const { sink, net, timers, statuses } = setup({ storage }, [new TypeError("Failed to fetch")]);
+    sink.record(event(1));
+    await settle();
+    for (const n of [2, 3, 4, 5, 6]) sink.record(event(n));
+    expect(sink.status).toEqual({ state: "retrying", pending: 6, dropped: 0, stored: 2 });
+    // Reported once when sending failed, and once more when storage could no longer hold every event.
+    expect(statuses).toEqual([
+      { state: "retrying", pending: 1, dropped: 0, stored: 1 },
+      { state: "retrying", pending: 3, dropped: 0, stored: 2 },
+    ]);
+
+    timers.fire();
+    await settle();
+    expect(net.sentNs()).toEqual([1, 1, 2, 3, 4, 5, 6]);
+    expect(sink.status).toEqual({ state: "recording", pending: 0, dropped: 0, stored: 0 });
+
+    // Without storage nothing outlives the page.
+    const memoryOnly = setup({}, [new TypeError("Failed to fetch")]);
+    memoryOnly.sink.record(event(1));
+    await settle();
+    expect(memoryOnly.sink.status).toEqual({ state: "retrying", pending: 1, dropped: 0, stored: 0 });
+  });
+
+  it("keeps what other tabs stored under the same key, and a new tab sends it all", async () => {
+    // Two tabs of one participant whose token is refused, so nothing is delivered (the verifier's scenario).
+    const storage = createStorage();
+    const tab = (name: string, reply: Reply) => {
+      let ids = 0;
+      return setup({ storage, newId: () => `${name}-${++ids}` }, [], reply);
+    };
+    const a = tab("a", 401);
+    a.sink.record(event(1));
+    a.sink.record(event(2));
+    await settle();
+    const b = tab("b", 401);
+    b.sink.record(event(101));
+    b.sink.record(event(102));
+    await settle();
+    a.sink.record(event(3));
+    b.sink.record(event(103, { type: "session_end" }));
+    b.sink.dispose();
+    a.sink.record(event(4, { type: "session_end" }));
+    a.sink.dispose();
+    expect([...storedNs(storage)].sort((x, y) => Number(x) - Number(y))).toEqual([1, 2, 3, 4, 101, 102, 103]);
+
+    // The next launch, with a token that works, sends every event of both tabs once.
+    const c = tab("c", 201);
+    await c.sink.flush();
+    expect([...c.net.sentNs()].sort((x, y) => Number(x) - Number(y))).toEqual([1, 2, 3, 4, 101, 102, 103]);
+    expect(storage.items.size).toBe(0);
+  });
+
+  it("takes out of storage only what it delivered itself, not what another tab still holds", async () => {
+    const storage = createStorage();
+    let aIds = 0;
+    const a = setup({ storage, newId: () => `a-${++aIds}`, getToken: () => null });
+    a.sink.record(event(1));
+    let bIds = 0;
+    const b = setup({ storage, newId: () => `b-${++bIds}` });
+    // B took over A's stored event when it started; A, still open, records another one.
+    a.sink.record(event(2));
+    b.sink.record(event(101));
+    await b.sink.flush();
+    expect(b.net.sentNs()).toEqual([1, 101]);
+    // A's second event, which B never held, is still stored; the first, which B delivered, is not
+    // (A still holds it and may send it again, with the same id).
+    expect(storedNs(storage)).toEqual([2]);
+  });
+
   it("uses a custom storage key", () => {
     const storage = createStorage();
     const { sink } = setup({ storage, storageKey: "my-key", getToken: () => null });
@@ -1110,10 +1185,34 @@ describe("createCollectorSink: event ids", () => {
     expect(EVENT_ID_KEY).toBe("client_event_id");
     for (const id of ids) expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
     expect(new Set(ids).size).toBe(3);
-    expect(net.requests[1]!.body.payload).toEqual({ client_event_id: ids[1] });
-    expect(net.requests[0]!.body.payload).toEqual({ n: 1, client_event_id: ids[0] });
+    expect(net.requests[1]!.body.payload).toEqual({ client_event_seq: 2, client_event_id: ids[1] });
+    expect(net.requests[0]!.body.payload).toEqual({ n: 1, client_event_seq: 1, client_event_id: ids[0] });
     // The game's own event object is left alone.
     expect(data).toEqual({ n: 1 });
+  });
+
+  it("numbers the events of a page load, the dropped ones too, so that a gap in what arrives shows", async () => {
+    const storage = createStorage();
+    const seqs = (requests: readonly { readonly body: CollectorBody }[]): unknown[] => requests.map((r) => r.body.payload?.[EVENT_SEQ_KEY]);
+    const before = setup({ storage, maxQueue: 3 }, [], 503);
+    before.sink.record(event(1));
+    before.sink.record(event(2, { data: { big: 2n } })); // cannot be serialised: dropped
+    for (const n of [3, 4, 5, 6]) before.sink.record(event(n)); // two more than fit while the collector is down
+    await settle();
+    expect(before.sink.dropped).toBe(3);
+    before.sink.dispose();
+
+    // The next page load sends what was kept, with its numbers, and numbers its own events from 1 again.
+    const after = setup({ storage });
+    after.sink.record(event(7));
+    await after.sink.flush();
+    expect(EVENT_SEQ_KEY).toBe("client_event_seq");
+    expect(after.net.sentNs()).toEqual([4, 5, 6, 7]);
+    expect(seqs(after.net.requests)).toEqual([4, 5, 6, 1]);
+    // An event that brings its own number keeps it.
+    after.sink.record(event(8, { data: { [EVENT_SEQ_KEY]: 41 } }));
+    await after.sink.flush();
+    expect(seqs(after.net.requests).at(-1)).toBe(41);
   });
 
   it("keeps the id through every attempt and through a reload, so duplicates can be told", async () => {
@@ -1162,7 +1261,7 @@ describe("createCollectorSink: event ids", () => {
 describe("createCollectorSink: status", () => {
   it("starts as recording and reports only changes of state or of the dropped count", async () => {
     const { sink, timers, statuses } = setup({ maxQueue: 2 }, [201, 503, 503, 201, 400]);
-    expect(sink.status).toEqual({ state: "recording", pending: 0, dropped: 0 });
+    expect(sink.status).toEqual({ state: "recording", pending: 0, dropped: 0, stored: 0 });
     sink.record(event(1));
     await sink.flush();
     expect(statuses).toEqual([]);
@@ -1176,12 +1275,12 @@ describe("createCollectorSink: status", () => {
     timers.fire();
     await settle();
     expect(statuses).toEqual([
-      { state: "retrying", pending: 1, dropped: 0 },
-      { state: "retrying", pending: 2, dropped: 1 },
-      { state: "recording", pending: 1, dropped: 1 },
-      { state: "recording", pending: 0, dropped: 2 },
+      { state: "retrying", pending: 1, dropped: 0, stored: 0 },
+      { state: "retrying", pending: 2, dropped: 1, stored: 0 },
+      { state: "recording", pending: 1, dropped: 1, stored: 0 },
+      { state: "recording", pending: 0, dropped: 2, stored: 0 },
     ]);
-    expect(sink.status).toEqual({ state: "recording", pending: 0, dropped: 2 });
+    expect(sink.status).toEqual({ state: "recording", pending: 0, dropped: 2, stored: 0 });
   });
 
   it("keeps going when the status handler throws", async () => {

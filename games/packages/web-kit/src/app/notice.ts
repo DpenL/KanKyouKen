@@ -15,17 +15,20 @@ import { studyLinkState, type LaunchParams } from "./params";
 export const RECORDING_NOTICE_ATTRIBUTE = "data-kk-recording-notice";
 
 /**
- * A strip along the top edge that is laid over the page: it takes no room in the layout
- * and lets every tap and click through, so the game under it plays as before. It does
- * cover what the game shows in its top two lines or so; the texts are kept short for
- * that reason.
+ * The custom property, set on the document's root element, that holds the height the
+ * notice takes at the top of the page (`0px` while it is hidden). A game that sizes
+ * itself to the height of the screen subtracts it, so that nothing it shows is pushed
+ * below the screen.
+ */
+export const RECORDING_NOTICE_HEIGHT_PROPERTY = "--kk-recording-notice-height";
+
+/**
+ * A strip across the top of the page that takes its own room there, above the game:
+ * laid over the page, it hid the controls along the top of a game screen (its texts wrap
+ * to two lines on a phone) for the whole of a session that is not being recorded.
  */
 const NOTICE_STYLE: Readonly<Record<string, string>> = {
-  position: "fixed",
-  top: "0",
-  left: "0",
-  right: "0",
-  zIndex: "2147483000",
+  display: "block",
   boxSizing: "border-box",
   margin: "0",
   padding: "max(2px, env(safe-area-inset-top)) 8px 2px",
@@ -34,7 +37,6 @@ const NOTICE_STYLE: Readonly<Record<string, string>> = {
   color: "#4a3200",
   background: "rgba(255, 236, 179, 0.96)",
   borderBottom: "1px solid #d9a441",
-  pointerEvents: "none",
 };
 
 export interface RecordingNotice {
@@ -66,7 +68,8 @@ export function createRecordingNotice(doc: Pick<Document, "createElement"> = doc
 /**
  * What to tell the player about recording, or null when there is nothing to tell: plain
  * play without a study link, or a study link whose events are getting through.
- * `status` is the collector sink's, for a complete link.
+ * `status` is the collector sink's, for a complete link. While events cannot be sent, it
+ * says that they are kept on the device only when storage holds all of them.
  */
 export function recordingMessage(params: LaunchParams, status?: CollectorStatus): string | null {
   const link = studyLinkState(params);
@@ -81,26 +84,43 @@ export function recordingMessage(params: LaunchParams, status?: CollectorStatus)
     return `Not being recorded: the study link was not accepted. Please tell the researcher.${lost}`;
   }
   if (status.state === "retrying") {
-    return `Results cannot be sent right now. They are kept on this device and sent later.${lost}`;
+    if (status.stored >= status.pending) return `Results cannot be sent right now. They are kept on this device and sent later.${lost}`;
+    // Storage is full or refuses: what it does not hold is lost if the page closes.
+    const them = status.stored === 0 ? "them" : "them all";
+    return `Results cannot be sent right now, and this device cannot keep ${them}. Please keep this page open until they are sent.${lost}`;
   }
   return lost === "" ? null : `Recording, but${lost.toLowerCase()}`;
 }
 
 /**
- * Put a recording notice into `host` (the page's body by default) and keep it up to
- * date. An incomplete study link is announced at once and for good. For a complete
- * link, pass the returned function to the collector sink as `onStatus`. Without a study
- * link nothing is added to the page, the page is not even looked at (so this is safe to
- * call where there is none), and the function does nothing.
+ * Put a recording notice at the top of `host` (the page's body by default), before
+ * everything else in it, and keep it up to date. An incomplete study link is announced
+ * at once and for good. For a complete link, pass the returned function to the
+ * collector sink as `onStatus`. The height the notice takes is kept in
+ * `RECORDING_NOTICE_HEIGHT_PROPERTY` on the document's root element, also as the text
+ * wraps differently when the window changes size. Without a study link nothing is added
+ * to the page, the page is not even looked at (so this is safe to call where there is
+ * none), and the function does nothing.
  */
 export function mountRecordingNotice(
   params: LaunchParams,
-  host?: Pick<Node, "appendChild">,
+  host?: Pick<Node, "insertBefore" | "firstChild">,
   doc?: Pick<Document, "createElement">,
 ): (status: CollectorStatus) => void {
   if (studyLinkState(params) === "none") return () => undefined;
   const notice = createRecordingNotice(doc ?? document);
-  (host ?? document.body).appendChild(notice.element);
-  notice.show(recordingMessage(params));
-  return (status) => notice.show(recordingMessage(params, status));
+  const { element } = notice;
+  const into = host ?? document.body;
+  into.insertBefore(element, into.firstChild);
+  const root = element.ownerDocument?.documentElement;
+  const publishHeight = (): void => {
+    root?.style.setProperty(RECORDING_NOTICE_HEIGHT_PROPERTY, `${element.hidden ? 0 : element.offsetHeight}px`);
+  };
+  if (root !== undefined && typeof ResizeObserver === "function") new ResizeObserver(publishHeight).observe(element);
+  const show = (message: string | null): void => {
+    notice.show(message);
+    publishHeight();
+  };
+  show(recordingMessage(params));
+  return (status) => show(recordingMessage(params, status));
 }

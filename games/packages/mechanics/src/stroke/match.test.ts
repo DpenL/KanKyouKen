@@ -25,6 +25,8 @@ describe("resolveMatchOptions", () => {
       shapeTolerance: 0.4,
       minLengthRatio: 0.4,
       maxLengthRatio: 1.6,
+      maxBacktrackRatio: 0.5,
+      maxExtraTurning: 4 * Math.PI,
       resampleCount: 24,
     };
     expect(DEFAULT_MATCH_OPTIONS).toEqual(expected);
@@ -147,6 +149,9 @@ describe("matchStroke", () => {
       y: p.y + (i === 0 || i === turns - 1 ? 0 : i % 2 === 0 ? -amplitude : amplitude),
     }));
 
+  /** The three scribble tests switched off, to show that nothing else would refuse a drawing. */
+  const noScribbleTests = { maxLengthRatio: Infinity, maxBacktrackRatio: Infinity, maxExtraTurning: Infinity };
+
   it("rejects a scribble over the stroke by its length", () => {
     // Two dozen turns reaching 15 % of the square to either side: nearly nine times the stroke's length.
     // Resampled to 24 points along its own length it looks like a straight line, so every other test passes.
@@ -155,13 +160,105 @@ describe("matchStroke", () => {
       const match = matchStroke(scribble, horizontal, SIZE, { leniency });
       expect(match.metrics.coarseLengthRatio, `leniency ${leniency}`).toBeGreaterThan(8);
       expect(match.onStroke, `leniency ${leniency}`).toBe(false);
-      expect(matchStroke(scribble, horizontal, SIZE, { leniency, maxLengthRatio: Infinity }).matched).toBe(true);
+      expect(matchStroke(scribble, horizontal, SIZE, { leniency, maxBacktrackRatio: Infinity, maxExtraTurning: Infinity }).onStroke).toBe(false);
+      expect(matchStroke(scribble, horizontal, SIZE, { leniency, ...noScribbleTests }).matched).toBe(true);
     }
     // Other densities that pass every other test at the most forgiving of those levels.
     for (const [turns, amplitude] of [[12, 100], [36, 100], [47, 150], [48, 100], [71, 200], [96, 150]] as const) {
       const other = zigzag(horizontal, turns, amplitude);
-      expect(matchStroke(other, horizontal, SIZE, { leniency: 1.6, maxLengthRatio: Infinity }).matched, `${turns} turns`).toBe(true);
+      expect(matchStroke(other, horizontal, SIZE, { leniency: 1.6, ...noScribbleTests }).matched, `${turns} turns`).toBe(true);
       expect(matchStroke(other, horizontal, SIZE, { leniency: 1.6 }).onStroke, `${turns} turns`).toBe(false);
+    }
+  });
+
+  /** Corners joined by straight runs of `perLeg` pen samples each, as a pointer reports a hand moving at some speed. */
+  const sampled = (corners: readonly Point[], perLeg: number): Point[] => {
+    const out: Point[] = [corners[0]!];
+    for (let i = 1; i < corners.length; i++) {
+      const a = corners[i - 1]!;
+      const b = corners[i]!;
+      for (let j = 1; j <= perLeg; j++) out.push({ x: a.x + ((b.x - a.x) * j) / perLeg, y: a.y + ((b.y - a.y) * j) / perLeg });
+    }
+    return out;
+  };
+
+  it("refuses a spring-shaped scribble however densely the pointer sampled it", () => {
+    // 24 turns reaching 5 % of the square to either side: a spring a tenth of the square wide.
+    // Before, pen samples 14 to a leg made it about 1.7 times as long as the stroke and it was accepted.
+    const spring = zigzag(horizontal, 26, 50);
+    const sparse = matchStroke(sampled(spring, 3), horizontal, SIZE, { leniency: 1.3 });
+    const dense = matchStroke(sampled(spring, 14), horizontal, SIZE, { leniency: 1.3 });
+    expect(dense.metrics.coarseLengthRatio).toBeCloseTo(sparse.metrics.coarseLengthRatio, 9);
+    expect(dense.metrics.backtrackRatio).toBeCloseTo(sparse.metrics.backtrackRatio, 9);
+    expect(dense.metrics.extraTurning).toBeCloseTo(sparse.metrics.extraTurning, 9);
+    expect(dense.metrics.coarseLengthRatio).toBeGreaterThan(2.5);
+    for (const leniency of [1, 1.3, 1.6]) {
+      for (const perLeg of [1, 3, 14, 40]) {
+        const match = matchStroke(sampled(spring, perLeg), horizontal, SIZE, { leniency });
+        expect(match.onStroke, `leniency ${leniency}, ${perLeg} per leg`).toBe(false);
+      }
+    }
+  });
+
+  it("refuses going over a short stroke there and back again, but not a hesitation", () => {
+    // A dot 0.07 long: the length limit is widened to 1.6 * 0.15 / 0.07 = 3.4 times, more at gentler levels.
+    const dot = line(500, 500, 550, 550);
+    const there = penAlong(dot, { count: 12 });
+    const back = penAlong(dot, { count: 12, reverse: true });
+    const passes = [...there, ...back.slice(1), ...there.slice(1)];
+    for (const leniency of [1, 1.3, 1.6]) {
+      const match = matchStroke(passes, dot, SIZE, { leniency });
+      expect(match.metrics.backtrackRatio, `leniency ${leniency}`).toBeCloseTo(1, 1);
+      expect(match.onStroke, `leniency ${leniency}`).toBe(false);
+      expect(matchStroke(passes, dot, SIZE, { leniency, maxBacktrackRatio: Infinity }).matched, `leniency ${leniency}`).toBe(true);
+    }
+    // Over a long stroke: back over the last 15 % and on to the end again.
+    const hesitation = [...penAlong(horizontal, { count: 40 }), { x: 780, y: 450 }, { x: 900, y: 450 }];
+    const match = matchStroke(hesitation, horizontal, SIZE);
+    expect(match.metrics.backtrackRatio).toBeCloseTo(0.15, 9);
+    expect(match.matched).toBe(true);
+    // Drawn backwards it is still on the stroke, only the wrong way round.
+    expect(matchStroke([...passes].reverse(), dot, SIZE)).toMatchObject({ onStroke: false });
+    expect(matchStroke(back, dot, SIZE)).toMatchObject({ onStroke: true, directionOk: false });
+  });
+
+  it("refuses loops along a stroke, which add too little length to be told by it", () => {
+    // Five loops of 5 % of the square along a stroke 0.8 long: under twice its length
+    // without fine detail, within the length limit from the default level (1.6 * 1.3) on.
+    const n = 5 * 24;
+    const loops = Array.from({ length: n + 1 }, (_, i) => {
+      const r = i === 0 || i === n ? 0 : 50;
+      const a = (i / 24) * 2 * Math.PI;
+      return { x: 100 + (800 * i) / n + Math.cos(a) * r - r, y: 450 + Math.sin(a) * r };
+    });
+    for (const leniency of [1, 1.3, 1.6]) {
+      const match = matchStroke(loops, horizontal, SIZE, { leniency });
+      expect(match.metrics.coarseLengthRatio, `leniency ${leniency}`).toBeLessThan(1.6 * 1.3);
+      expect(match.metrics.extraTurning, `leniency ${leniency}`).toBeGreaterThan(4 * Math.PI);
+      expect(match.onStroke, `leniency ${leniency}`).toBe(false);
+    }
+    for (const leniency of [1.3, 1.6]) {
+      expect(matchStroke(loops, horizontal, SIZE, { leniency, maxExtraTurning: Infinity }).matched, `leniency ${leniency}`).toBe(true);
+    }
+    // A hand that sways by 2 % of the square three times turns far less.
+    const sway = penAlong(horizontal, { count: 60 }).map((p, i) => ({ x: p.x, y: p.y + Math.sin((i / 59) * Math.PI * 6) * 20 }));
+    const swaying = matchStroke(sway, horizontal, SIZE);
+    expect(swaying.metrics.extraTurning).toBeLessThan(2 * Math.PI);
+    expect(swaying.matched).toBe(true);
+  });
+
+  it("does not take a hook, a lead-in tick or an overshoot for a scribble", () => {
+    const trace = penAlong(horizontal, { count: 40 });
+    const drawings = {
+      hook: [...trace, { x: 876, y: 482 }],
+      tick: [{ x: 80, y: 416 }, ...trace],
+      overshoot: [...trace, { x: 1060, y: 450 }],
+    };
+    for (const [name, drawing] of Object.entries(drawings)) {
+      const match = matchStroke(drawing, horizontal, SIZE);
+      expect(match.metrics.backtrackRatio, name).toBeLessThan(0.1);
+      expect(match.metrics.extraTurning, name).toBeLessThan(Math.PI);
+      expect(match.matched, name).toBe(true);
     }
   });
 
@@ -290,6 +387,8 @@ describe("matchStroke", () => {
         shapeDistance: Infinity,
         lengthRatio: 0,
         coarseLengthRatio: 0,
+        backtrackRatio: 0,
+        extraTurning: 0,
       });
     });
 

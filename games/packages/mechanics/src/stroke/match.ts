@@ -13,6 +13,8 @@ import {
   cosine,
   distance,
   distanceToPolyline,
+  distanceToSegment,
+  dot,
   frechetDistance,
   polylineLength,
   resample,
@@ -38,6 +40,8 @@ const UNMEASURABLE: MatchMetrics = Object.freeze({
   shapeDistance: Infinity,
   lengthRatio: 0,
   coarseLengthRatio: 0,
+  backtrackRatio: 0,
+  extraTurning: 0,
 });
 
 const isFinitePoint = (p: Point): boolean => Number.isFinite(p.x) && Number.isFinite(p.y);
@@ -65,23 +69,109 @@ function meanDirectionCosine(line: readonly Point[], target: readonly Point[]): 
 }
 
 /**
- * Pen movement finer than this fraction of the glyph size does not count towards
- * `MatchMetrics.coarseLengthRatio`. Large enough to iron out tremor and pointer noise,
- * small enough that a scribble (which has to leave the stroke to be one) keeps its length.
+ * Detail of a line that strays less than this fraction of the glyph size from a straight
+ * run, sideways or back along it, is ironed out before the scribble measures
+ * (`MatchMetrics.coarseLengthRatio`, `backtrackRatio`, `extraTurning`) are taken. Large
+ * enough to iron out tremor, a resting pen and pointer noise, small enough that a
+ * scribble, which has to leave the stroke or go back over it to be one, keeps its corners.
  */
-export const SCRIBBLE_GRAIN = 0.05;
+export const SCRIBBLE_GRAIN = 0.025;
 
-/** Length of the line measured from each point to the next one at least `grain` away, plus the rest to its end. */
-function coarseLength(line: readonly Point[], grain: number): number {
-  let anchor = line[0]!;
-  let length = 0;
-  for (const p of line) {
-    const step = distance(anchor, p);
-    if (step < grain) continue;
-    length += step;
-    anchor = p;
+/**
+ * The line reduced to its corners: every point is dropped that lies within `tolerance`
+ * of the straight run between the points kept around it and does not go back along that
+ * run by more than `tolerance` either (Ramer-Douglas-Peucker, made to keep reversals, so
+ * that a pen going there and back along one line keeps both ends). Points the pointer
+ * reported along a straight run are never kept, so the result does not depend on how
+ * densely it reported them.
+ */
+function simplify(line: readonly Point[], tolerance: number): Point[] {
+  if (line.length <= 2) return [...line];
+  const keep = new Uint8Array(line.length);
+  keep[0] = 1;
+  keep[line.length - 1] = 1;
+  const spans: [number, number][] = [[0, line.length - 1]];
+  for (let span = spans.pop(); span !== undefined; span = spans.pop()) {
+    const [first, last] = span;
+    const a = line[first]!;
+    const b = line[last]!;
+    const chord = distance(a, b);
+    const heading = chord === 0 ? null : { x: (b.x - a.x) / chord, y: (b.y - a.y) / chord };
+    let farthest = -1;
+    let farthestAway = tolerance;
+    let reach = 0;
+    let reachIndex = -1;
+    let turn = -1;
+    let turnBack = tolerance;
+    for (let i = first + 1; i < last; i++) {
+      const p = line[i]!;
+      const away = distanceToSegment(p, a, b);
+      if (away > farthestAway) {
+        farthestAway = away;
+        farthest = i;
+      }
+      if (heading === null) continue;
+      const along = dot(sub(p, a), heading);
+      if (along > reach) {
+        reach = along;
+        reachIndex = i;
+      } else if (reachIndex !== -1 && reach - along > turnBack) {
+        turnBack = reach - along;
+        turn = reachIndex;
+      }
+    }
+    const split = farthest !== -1 ? farthest : turn;
+    if (split === -1) continue;
+    keep[split] = 1;
+    spans.push([first, split], [split, last]);
   }
-  return length + distance(anchor, line[line.length - 1]!);
+  return line.filter((_, i) => keep[i] === 1);
+}
+
+/** Sum of the angles (radians, each 0..pi) by which the line changes direction at its points. */
+function totalTurning(line: readonly Point[]): number {
+  let total = 0;
+  let previous: Point | null = null;
+  for (let i = 1; i < line.length; i++) {
+    const step = sub(line[i]!, line[i - 1]!);
+    if (step.x === 0 && step.y === 0) continue;
+    if (previous !== null) total += Math.abs(Math.atan2(previous.x * step.y - previous.y * step.x, dot(previous, step)));
+    previous = step;
+  }
+  return total;
+}
+
+/** Unit direction of the segment of `reference` closest to `p` (zero when it has no segment with length). */
+function headingNear(p: Point, reference: readonly Point[]): Point {
+  let best = Infinity;
+  let heading = { x: 0, y: 0 };
+  for (let i = 1; i < reference.length; i++) {
+    const a = reference[i - 1]!;
+    const b = reference[i]!;
+    const length = distance(a, b);
+    if (length === 0) continue;
+    const away = distanceToSegment(p, a, b);
+    if (away < best) {
+      best = away;
+      heading = { x: (b.x - a.x) / length, y: (b.y - a.y) / length };
+    }
+  }
+  return heading;
+}
+
+/**
+ * How far `line` runs against the writing direction of `reference`: for each segment, its
+ * length against the direction of the reference where the segment's middle lies.
+ */
+function backtrack(line: readonly Point[], reference: readonly Point[]): number {
+  let total = 0;
+  for (let i = 1; i < line.length; i++) {
+    const a = line[i - 1]!;
+    const b = line[i]!;
+    const middle = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    total += Math.max(0, -dot(sub(b, a), headingNear(middle, reference)));
+  }
+  return total;
 }
 
 /**
@@ -94,7 +184,7 @@ function measure(
   size: number,
   averageDistance: number,
   lengthRatio: number,
-  coarseLengthRatio: number,
+  scribble: Pick<MatchMetrics, "coarseLengthRatio" | "backtrackRatio" | "extraTurning">,
 ): MatchMetrics {
   const targetShape = unitShape(target);
   const shapeless = polylineLength(target) === 0;
@@ -105,7 +195,7 @@ function measure(
     directionCosine: meanDirectionCosine(line, target),
     shapeDistance: shapeless ? 0 : frechetDistance(unitShape(line), targetShape),
     lengthRatio,
-    coarseLengthRatio,
+    ...scribble,
   };
 }
 
@@ -131,7 +221,9 @@ function fits(metrics: MatchMetrics, options: MatchOptions, slack: number): bool
     metrics.averageDistance <= options.averageDistanceTolerance * lenient &&
     metrics.shapeDistance <= options.shapeTolerance * lenient * slack &&
     metrics.lengthRatio >= options.minLengthRatio / lenient &&
-    metrics.coarseLengthRatio <= options.maxLengthRatio * lenient * slack
+    metrics.coarseLengthRatio <= options.maxLengthRatio * lenient * slack &&
+    metrics.backtrackRatio <= options.maxBacktrackRatio &&
+    metrics.extraTurning <= options.maxExtraTurning
   );
 }
 
@@ -170,9 +262,15 @@ function closeness(metrics: MatchMetrics, options: MatchOptions, slack: number):
  *    exactly on every tolerance scores 0, a perfect trace scores 1. The score is not
  *    zeroed when `onStroke` is false; callers that rank candidates decide that.
  *  - `metrics` always describe the stroke as drawn, never the flipped one.
- *  - A drawing more than `maxLengthRatio` times as long as the reference fits neither
- *    way, however well its resampled points sit on the stroke: that is a scribble. The
- *    length is taken without fine detail (see `SCRIBBLE_GRAIN`), so tremor is not.
+ *  - A scribble fits neither way, however well its ends and resampled points sit on the
+ *    stroke. Three measures, all taken on the drawing without its fine detail (see
+ *    `SCRIBBLE_GRAIN`, so that tremor and pointer noise do not count and the sampling
+ *    density does not matter), tell it: a drawing more than `maxLengthRatio` times as long
+ *    as the reference (a zigzag), one that goes back over the stroke by more than
+ *    `maxBacktrackRatio` of its length (there and back again), and one
+ *    that turns by more than `maxExtraTurning` beyond the reference (a spring, loops).
+ *    Only the length limit widens with leniency and for short strokes; the other two are
+ *    the same at every level.
  *  - Short reference strokes get a wider shape tolerance and upper length limit (see
  *    `SHORT_STROKE_LENGTH`).
  *
@@ -205,8 +303,22 @@ export function matchStroke(
   const drawnLength = polylineLength(pen);
   const referenceLength = polylineLength(reference);
   const lengthRatio = drawnLength === 0 ? 0 : referenceLength === 0 ? 1 : drawnLength / referenceLength;
-  const coarseLengthRatio =
-    drawnLength === 0 ? 0 : referenceLength === 0 ? 1 : coarseLength(pen, SCRIBBLE_GRAIN * size) / referenceLength;
+  const grain = SCRIBBLE_GRAIN * size;
+  const coarse = simplify(pen, grain);
+  const coarseReference = simplify(reference, grain);
+  const coarseLengthRatio = drawnLength === 0 ? 0 : referenceLength === 0 ? 1 : polylineLength(coarse) / referenceLength;
+  const extraTurning = Math.max(0, totalTurning(coarse) - totalTurning(coarseReference));
+  // Taken in the drawing's better direction, so that it tells going back over the stroke
+  // and leaves writing direction to the tests that judge it; the reference's own corners,
+  // cut by the same grain, can run a little against its direction.
+  const backtrackRatio =
+    referenceLength === 0
+      ? 0
+      : Math.max(
+          0,
+          Math.min(backtrack(coarse, reference), backtrack(reversed(coarse), reference)) -
+            backtrack(coarseReference, reference),
+        ) / referenceLength;
 
   const line = resample(pen, resolved.resampleCount);
   const target = resample(reference, resolved.resampleCount);
@@ -214,11 +326,12 @@ export function matchStroke(
   for (const p of line) distanceSum += distanceToPolyline(p, reference);
   const averageDistance = distanceSum / line.length / size;
 
-  const forward = measure(line, target, size, averageDistance, lengthRatio, coarseLengthRatio);
+  const scribble = { coarseLengthRatio, backtrackRatio, extraTurning };
+  const forward = measure(line, target, size, averageDistance, lengthRatio, scribble);
   if (drawnLength === 0) {
     return { onStroke: false, directionOk: false, matched: false, score: 0, metrics: forward };
   }
-  const backward = measure(reversed(line), target, size, averageDistance, lengthRatio, coarseLengthRatio);
+  const backward = measure(reversed(line), target, size, averageDistance, lengthRatio, scribble);
 
   const slack = shapeSlack(referenceLength / size);
   const fitsForward = fits(forward, resolved, slack);

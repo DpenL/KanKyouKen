@@ -54,9 +54,22 @@ export interface MatchOptions {
    * Max ratio drawn length / reference length, the drawn length taken without its fine
    * detail (`MatchMetrics.coarseLengthRatio`). Guards against scribbles: a dense zigzag
    * over a stroke starts and ends in the right places, stays near the spine and, once
-   * resampled, can even look straight; only its length gives it away.
+   * resampled, can even look straight; its length gives it away. Widens with leniency,
+   * and for short strokes.
    */
   readonly maxLengthRatio: number;
+  /**
+   * Max `MatchMetrics.backtrackRatio`. Guards against going over a stroke there and back
+   * again, which on a short stroke stays within the widened length limit. The same at
+   * every leniency.
+   */
+  readonly maxBacktrackRatio: number;
+  /**
+   * Max `MatchMetrics.extraTurning`, radians. Guards against a spring or loops along a
+   * long stroke, which add too little length to be told by it. The same at every
+   * leniency.
+   */
+  readonly maxExtraTurning: number;
   /** Number of points both strokes are resampled to before comparison. */
   readonly resampleCount: number;
 }
@@ -75,12 +88,28 @@ export interface MatchMetrics {
   /** drawn length / reference length. */
   readonly lengthRatio: number;
   /**
-   * The same ratio with the drawing's fine detail ironed out: pen movement counts only
-   * from one point to the next that is at least `SCRIBBLE_GRAIN` of the glyph size away.
-   * A trembling hand or a noisy pointer adds to `lengthRatio` but not to this; a scribble
-   * adds to both.
+   * The same ratio with the drawing's fine detail ironed out: the drawing is cut down to
+   * its corners, dropping every point within `SCRIBBLE_GRAIN` of the glyph size of the
+   * straight run around it, and that is measured. A trembling hand or a noisy pointer
+   * adds to `lengthRatio` but not to this; a scribble adds to both. Like the two below,
+   * it does not depend on how densely the pointer reported positions.
    */
   readonly coarseLengthRatio: number;
+  /**
+   * How far the drawing, cut down to its corners as for `coarseLengthRatio`, goes back over
+   * the reference: the length it runs against the reference's writing direction (each
+   * segment against the direction of the reference where the segment's middle lies),
+   * taken in whichever direction of drawing makes it least, beyond what the reference cut
+   * down the same way does, as a fraction of the reference's length. 0 for a faithful
+   * trace, drawn either way; about 1 for going over the stroke there, back and there again.
+   */
+  readonly backtrackRatio: number;
+  /**
+   * How much more the drawing, cut down to its corners, turns than the reference cut down
+   * the same way: the sums of the angles of all their changes of direction, the
+   * difference in radians, at least 0. About 2 pi for each loop of a spring.
+   */
+  readonly extraTurning: number;
 }
 
 export interface StrokeMatch {

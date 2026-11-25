@@ -104,12 +104,24 @@ is described.
 - How a stroke is recognised is not described in any excerpt. The matcher
   (`stroke/match.ts`: endpoint distance, mean distance to the spine, shape by Frechet
   distance, length, direction) and the four verdicts *correct / wrong-direction /
-  wrong-order / miss* are *ours*. Length is limited on both sides: a stub is too short
-  (`minLengthRatio`), and a drawing more than `maxLengthRatio` (1.6) times as long as
-  the stroke is a scribble, however well its ends and its resampled points sit. That
-  length is measured without detail finer than 5 % of the glyph (`SCRIBBLE_GRAIN`), so
-  a trembling hand is not taken for a scribble. Both limits widen with `leniency`, and
-  the upper one, like the shape tolerance, for strokes shorter than 15 % of the glyph.
+  wrong-order / miss* are *ours*. A stub is too short (`minLengthRatio`). A scribble is
+  refused however well its ends and its resampled points sit, by three measures taken on
+  the drawing cut down to its corners: every pen position within 2.5 % of the glyph
+  (`SCRIBBLE_GRAIN`) of the straight run around it is dropped, so tremor, a resting pen
+  and pointer noise do not count, and the verdict does not depend on how densely the
+  pointer reported positions. It is a scribble when, so measured, it is more than
+  `maxLengthRatio` (1.6) times as long as the stroke (a zigzag); when it runs back
+  against the stroke's direction, taken the way round that makes this least, by more
+  than half the stroke's length (`maxBacktrackRatio`: going over it there and back);
+  or when it turns by more than two full turns beyond the stroke's own turning
+  (`maxExtraTurning`, 4 pi: a spring, loops). The lower and the upper length limit
+  widen with `leniency`, and the upper one, like the shape tolerance, for strokes
+  shorter than 15 % of the glyph; the other two are the same at every level. A hook or
+  a lead-in tick at an end, an overshoot, a hesitation that goes back over the last
+  part of the stroke and on again, and a hand that sways a little all stay within
+  them. What still passes: a gentle zigzag (eight turns of up to about 10 % of the
+  glyph to either side along the longest strokes) and a wave of three wide swings
+  along a long stroke, which do not stand apart from a swaying hand by these measures.
 
 ### RT-5 Sound source: sustained voice or clip — *stated*
 

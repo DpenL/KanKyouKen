@@ -43,6 +43,14 @@ export function toCollectorBody(event: GameEvent, study: StudyContext, client: C
  */
 export const EVENT_ID_KEY = "client_event_id";
 
+/**
+ * Name of the payload field that carries an event's running number within its page load:
+ * the collector sink numbers the events it is given 1, 2, 3, ... in the order they are
+ * recorded, the ones it then drops included, so that a gap in the delivered numbers shows
+ * where events were lost. A new page load starts again at 1.
+ */
+export const EVENT_SEQ_KEY = "client_event_seq";
+
 /** A new id for one event: a random UUID, built by hand where `crypto.randomUUID` is missing (pages not served over HTTPS). */
 export function createEventId(): string {
   const source = globalThis.crypto as Crypto | undefined;

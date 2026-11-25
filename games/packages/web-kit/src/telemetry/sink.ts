@@ -30,7 +30,7 @@ import type {
   GameEvent,
   StudyContext,
 } from "@kankyouken/mechanics/telemetry";
-import { createEventId, isValidTimestamp, toCollectorBody, withEventId } from "./body";
+import { EVENT_ID_KEY, EVENT_SEQ_KEY, createEventId, isValidTimestamp, toCollectorBody, withEventId } from "./body";
 
 /** Longest wait between two attempts, whatever the backoff or the server asks for. */
 export const MAX_RETRY_DELAY_MS = 60_000;
@@ -101,6 +101,11 @@ export interface CollectorStatus {
   readonly pending: number;
   /** Events the sink gave up on since it was created, for any `DropReason`. */
   readonly dropped: number;
+  /**
+   * How many of the `pending` events are also in `storage`, so that they outlive the page.
+   * Less than `pending` when the sink has no storage, or storage is full or refuses.
+   */
+  readonly stored: number;
 }
 
 export interface CollectorSinkConfig {
@@ -140,8 +145,10 @@ export interface CollectorSinkConfig {
   /** Called once for every event the sink gives up on. May throw; the sink does not care. */
   onError?(error: unknown, body: CollectorBody): void;
   /**
-   * Called whenever `state` or `dropped` changes (not for every change of `pending`), so
-   * that an app can tell the player when a session is not being recorded. May throw.
+   * Called whenever `state` or `dropped` changes, and while events are not getting through
+   * whenever storage starts or stops holding all of them (not for every change of
+   * `pending` or `stored`), so that an app can tell the player when a session is not being
+   * recorded. May throw.
    */
   onStatus?(status: CollectorStatus): void;
 }
@@ -278,6 +285,12 @@ function readStored(storage: Pick<Storage, "getItem">, key: string): { events: C
   }
 }
 
+/** The event's `client_event_id`, if it has one. */
+function eventId(body: CollectorBody): string | undefined {
+  const id = body.payload?.[EVENT_ID_KEY];
+  return typeof id === "string" && id.length > 0 ? id : undefined;
+}
+
 function describeProblem(status: number, problem: unknown): string {
   if (typeof problem === "object" && problem !== null) {
     const { title, detail } = problem as { title?: unknown; detail?: unknown };
@@ -314,8 +327,10 @@ function readRetryAfter(response: Response, now: number): number | undefined {
  * Create a sink for the platform's event collector.
  *
  * - `record` turns the event into a request body at once (so later changes to the
- *   event's `data` do not leak in), gives it its `client_event_id` (unless the event's
- *   data brings one), queues it and returns; it never throws and never waits. An event
+ *   event's `data` do not leak in), gives it its `client_event_id` and its running
+ *   number `client_event_seq` (unless the event's data brings them), queues it and
+ *   returns; it never throws and never waits. Every event given to `record` takes a
+ *   number, also one that is dropped, so the numbers that arrive show the gaps. An event
  *   whose `ts` is not a usable time is stamped with `now()` instead of being lost. An
  *   event that cannot be serialised is dropped ("unserializable").
  * - Events go out one at a time, oldest first. What happens after an attempt depends on
@@ -355,15 +370,19 @@ function readRetryAfter(response: Response, now: number): number | undefined {
  *   the oldest among equals. So a long outage costs the detail first and the frame of
  *   the session last. Events set aside count towards `maxQueue` and `pending`.
  * - With a `storage`, the queue is written through on every change and read back when a
- *   sink is created with the same key; restored events are sent first. The stored copy
- *   is always a head of the current queue followed by the events set aside: when storage
- *   is too full for all of it, as long a head of that as fits is kept (the events set
- *   aside go first), and a copy that begins with events that have left the
- *   queue is never left behind, so an acknowledged event is not sent again after a
- *   reload. Only an event whose request was still unanswered when the page went away
- *   is (with the same `client_event_id`). Storage that is forbidden or corrupt is
- *   ignored. Two tabs sharing one key will overwrite each other's backlog; give them
- *   different keys if that matters.
+ *   sink is created with the same key; restored events are sent first. The sink's part
+ *   of the stored copy is always a head of the current queue followed by the events set
+ *   aside: when storage is too full for all of it, as long a head of that as fits is
+ *   kept (the events set aside go first), and events that have left the queue are
+ *   never left behind, so an acknowledged event is not sent again after a reload. Only
+ *   an event whose request was still unanswered when the page went away is (with the
+ *   same `client_event_id`). Storage that is forbidden or corrupt is ignored.
+ * - Several sinks may share one key: two tabs of one participant, or both games on one
+ *   origin. Every write keeps, ahead of the sink's own part, what the others stored
+ *   (every stored event with an id that this sink neither holds nor has delivered or
+ *   dropped), so no tab's backlog is overwritten; a new sink takes over everything
+ *   stored, from earlier tabs too, and sends it. An event that a tab still open holds
+ *   and a newer tab took over can then arrive twice, with the same `client_event_id`.
  * - `flush` makes sure one attempt starts after the call without sitting out a backoff
  *   wait, and resolves (it never rejects) when the queue is empty (events set aside do
  *   not count), when the sink is disposed, or when sending cannot go on right now: there
@@ -407,14 +426,21 @@ export function createCollectorSink(config: CollectorSinkConfig): CollectorSink 
   let refusedToken: string | null = null;
   /** Events have left the queue since storage was last written: the stored copy begins with events that are gone. */
   let storedCopyStale = false;
+  /** How many of this sink's events the stored copy holds. */
+  let storedCount = 0;
+  /** Ids of events that left this sink (delivered, dropped) since storage was last written. */
+  const finished = new Set<string>();
   let flushRequested = false;
   let disposed = false;
+  /** Events given to `record` so far: the running number of the last one. */
+  let recorded = 0;
 
   const held = (): number => queue.length + setAside.length;
-  const status = (): CollectorStatus => ({ state, pending: held(), dropped });
+  const status = (): CollectorStatus => ({ state, pending: held(), dropped, stored: Math.min(storedCount, held()) });
 
   const report = (): void => {
-    const current = `${state}:${dropped}`;
+    const allStored = storedCount >= held();
+    const current = state === "recording" ? `${state}:${dropped}` : `${state}:${dropped}:${allStored}`;
     if (current === reported) return;
     reported = current;
     try {
@@ -441,19 +467,29 @@ export function createCollectorSink(config: CollectorSinkConfig): CollectorSink 
 
   /**
    * Write the first `count` held events to storage, the queue first and then the events
-   * set aside; false when storage refuses (full, disabled).
+   * set aside, after what other sinks stored under the key; false when storage refuses
+   * (full, disabled).
    */
   const store = (count: number): boolean => {
     if (!storage) return false;
     try {
-      if (count === 0) {
+      const mine = new Set([...queue, ...setAside.map((entry) => entry.body)].map(eventId));
+      const theirs = (body: CollectorBody): boolean => {
+        const id = eventId(body);
+        return id !== undefined && !mine.has(id) && !finished.has(id);
+      };
+      const before = readStored(storage, storageKey);
+      const events = [...before.events.filter(theirs), ...queue.slice(0, count)];
+      const aside = [...before.setAside.filter((entry) => theirs(entry.body)), ...setAside.slice(0, Math.max(0, count - queue.length))];
+      if (events.length === 0 && aside.length === 0) {
         storage.removeItem(storageKey);
       } else {
-        const aside = setAside.slice(0, Math.max(0, count - queue.length));
-        const stored: StoredQueue = { v: 1, events: queue.slice(0, count), ...(aside.length > 0 ? { setAside: aside } : {}) };
+        const stored: StoredQueue = { v: 1, events, ...(aside.length > 0 ? { setAside: aside } : {}) };
         storage.setItem(storageKey, JSON.stringify(stored));
       }
+      finished.clear();
       storedCopyStale = false;
+      storedCount = count;
       return true;
     } catch {
       return false;
@@ -461,7 +497,10 @@ export function createCollectorSink(config: CollectorSinkConfig): CollectorSink 
   };
 
   const persist = (): void => {
-    if (!storage || store(held())) return;
+    if (!storage || store(held())) {
+      report();
+      return;
+    }
     // Not everything fits: find the longest head that does.
     let fits = 0;
     let tooMany = held();
@@ -472,7 +511,17 @@ export function createCollectorSink(config: CollectorSinkConfig): CollectorSink 
     }
     // Nothing could be written. A copy that is still a head of the queue is as good as it gets; one
     // that begins with events delivered since would send them again after a reload, so it goes.
-    if (fits === 0 && storedCopyStale) store(0);
+    if (fits === 0 && storedCopyStale) {
+      store(0);
+      storedCount = 0;
+    }
+    report();
+  };
+
+  /** Note that `body` left this sink, so that the next write takes it out of storage (an event set aside is still held). */
+  const leave = (body: CollectorBody): void => {
+    const id = eventId(body);
+    if (id !== undefined) finished.add(id);
   };
 
   /** Take `body` out of the queue. */
@@ -480,6 +529,7 @@ export function createCollectorSink(config: CollectorSinkConfig): CollectorSink 
     const index = queue.indexOf(body);
     if (index === -1) return;
     queue.splice(index, 1);
+    leave(body);
     refusals.delete(body);
     restored.delete(body);
     storedCopyStale = true;
@@ -490,6 +540,7 @@ export function createCollectorSink(config: CollectorSinkConfig): CollectorSink 
     const index = setAside.indexOf(entry);
     if (index === -1) return;
     setAside.splice(index, 1);
+    leave(entry.body);
     storedCopyStale = true;
   };
 
@@ -791,10 +842,12 @@ export function createCollectorSink(config: CollectorSinkConfig): CollectorSink 
 
     record(event: GameEvent): void {
       if (disposed) return;
+      const seq = ++recorded;
       let raw: CollectorBody;
       try {
         const timed = isValidTimestamp(event.ts) ? event : { ...event, ts: now() };
-        raw = toCollectorBody(timed, config.study, config.client);
+        const shaped = toCollectorBody(timed, config.study, config.client);
+        raw = shaped.payload?.[EVENT_SEQ_KEY] === undefined ? { ...shaped, payload: { ...shaped.payload, [EVENT_SEQ_KEY]: seq } } : shaped;
       } catch {
         dropped++;
         report();

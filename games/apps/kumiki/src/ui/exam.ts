@@ -10,9 +10,10 @@ import { backButton, button, h } from "./dom";
 import { drawnChar } from "./shapes";
 
 /**
- * How long Next stays off after an item appears. Next sits in the same place on every
- * item, so the second tap of a double tap would otherwise hand in the following
- * character before it has been seen.
+ * How long Next stays off after an item appears, and after every further press on it
+ * while it is off. Next sits in the same place on every item, so the second tap of a
+ * double tap, or the third of a burst, would otherwise hand in the following character
+ * before it has been seen; a burst is over this long after its last tap.
  */
 const NEXT_ARM_MS = 600;
 
@@ -53,9 +54,22 @@ export function examScreen(app: App, options: ExamItemOptions): { screen: HTMLEl
     handedIn = true;
     options.next(board);
   });
-  const armTimer = window.setTimeout(() => {
-    nextButton.disabled = false;
-  }, NEXT_ARM_MS);
+  let armTimer = 0;
+  const arm = (): void => {
+    window.clearTimeout(armTimer);
+    armTimer = window.setTimeout(() => {
+      nextButton.disabled = false;
+    }, NEXT_ARM_MS);
+  };
+  arm();
+  // A button that is off gets no click, but the press itself reaches the screen with the button as its target.
+  screen.addEventListener(
+    "pointerdown",
+    (event) => {
+      if (nextButton.disabled && event.target instanceof Node && nextButton.contains(event.target)) arm();
+    },
+    { capture: true },
+  );
   screen.append(
     h(
       "header",

@@ -265,6 +265,26 @@ test("review: a double click on Check is judged once", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test("after the browser's Back and Forward, Back still leads out of the next deck and then out of the game", async ({ page }) => {
+  await page.goto(DEBUG);
+  await page.locator(".deck").first().click();
+  await expect(page.locator(".home")).toHaveCount(0);
+  await page.goBack();
+  await expect(page.locator(".home")).toBeVisible();
+  // Forward cannot bring the deck back: the deck list stays, and history steps off the deck's entry.
+  await page.goForward();
+  await page.waitForFunction(() => history.state === null, undefined, { timeout: 5_000 });
+  await expect(page.locator(".home")).toBeVisible();
+
+  await page.locator(".deck").first().click();
+  await expect(page.locator(".home")).toHaveCount(0);
+  await page.goBack();
+  await expect(page.locator(".home")).toBeVisible();
+  expect(page.url()).toBe(DEBUG);
+  await page.goBack();
+  expect(page.url()).toBe("about:blank");
+});
+
 test("stored data of the wrong shape does not break the start", async ({ page }) => {
   const errors = watchConsole(page);
   await page.addInitScript(() => localStorage.setItem("kk.kumiki.v1", '{"best":null,"mode":"exam","volume":"loud"}'));
@@ -330,6 +350,18 @@ test("exam: no feedback until the end, then a score per character", async ({ pag
   await expect(page.locator(".assembly .bar-progress")).toContainText("2 /");
   expect(await events(page, "choice_attempt")).toHaveLength(1);
   expect((await kk(page)).puzzle!.target).not.toBe(first.target);
+  // Nor the third tap of a burst, which comes more than Next's 600 ms off after the first:
+  // every press on Next while it is off puts the end off.
+  const next = page.getByRole("button", { name: "Next" });
+  await expect(next).toBeEnabled();
+  await next.click();
+  await page.waitForTimeout(300);
+  await next.click({ force: true });
+  await page.waitForTimeout(300);
+  await next.click({ force: true });
+  await expect(page.locator(".assembly .bar-progress")).toContainText("3 /");
+  await page.waitForTimeout(200);
+  expect(await events(page, "choice_attempt")).toHaveLength(2);
 
   // Every other character is left empty.
   for (;;) {
@@ -413,41 +445,59 @@ test.describe("on a phone", () => {
 test.describe("on a phone with the browser's toolbars showing", () => {
   test.use({ viewport: { width: 390, height: 664 }, hasTouch: true, isMobile: true });
 
-  test("the whole board fits: nothing lies under the Check bar or below the screen", async ({ page }) => {
-    const errors = watchConsole(page);
-    await page.goto(DEBUG);
-    await page.getByRole("radio", { name: /Review/ }).tap();
-    await page.locator(".deck").first().tap();
-    await expect(page.locator(".tray .tile")).toHaveCount(12);
+  for (const [label, url] of [
+    ["", DEBUG],
+    // A study link without its api and token: the notice that the session is not being recorded stays for good.
+    [", also with the recording notice showing", `${DEBUG}&study=S1&participant=P1`],
+  ] as const) {
+    test(`the whole board fits: nothing lies under the Check bar or below the screen${label}`, async ({ page }) => {
+      const errors = watchConsole(page);
+      await page.goto(url);
+      const notice = page.locator("[data-kk-recording-notice]");
+      if (url === DEBUG) await expect(notice).toHaveCount(0);
+      else await expect(notice).toContainText("Not being recorded");
+      await page.getByRole("radio", { name: /Review/ }).tap();
+      await page.locator(".deck").first().tap();
+      await expect(page.locator(".tray .tile")).toHaveCount(12);
 
-    const layout = await page.evaluate(() => {
-      const onTop = (element: Element): boolean => {
-        const box = element.getBoundingClientRect();
-        const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
-        return hit !== null && (hit === element || element.contains(hit));
-      };
-      return {
-        scrolls: document.documentElement.scrollHeight > window.innerHeight,
-        hidden: [...document.querySelectorAll(".tray .tile, .structure, .assembly .actions button")].filter((element) => !onTop(element)).length,
-        worth: document.querySelector('[data-stat="worth"]')?.getBoundingClientRect().width ?? 0,
-      };
+      const layout = await page.evaluate(() => {
+        const onTop = (element: Element): boolean => {
+          const box = element.getBoundingClientRect();
+          const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+          return hit !== null && (hit === element || element.contains(hit));
+        };
+        return {
+          scrolls: document.documentElement.scrollHeight > window.innerHeight,
+          hidden: [...document.querySelectorAll(".tray .tile, .structure, .assembly .actions button, .assembly .back, .assembly .status")].filter(
+            (element) => !onTop(element),
+          ).length,
+          worth: document.querySelector('[data-stat="worth"]')?.getBoundingClientRect().width ?? 0,
+          // The notice lets taps through, so the test above would not see it lie over a control.
+          underNotice: [...document.querySelectorAll(".assembly button, .assembly .status, .tray .tile")].filter((element) => {
+            const notice = document.querySelector("[data-kk-recording-notice]")?.getBoundingClientRect();
+            const box = element.getBoundingClientRect();
+            return notice !== undefined && notice.height > 0 && box.top < notice.bottom && box.bottom > notice.top;
+          }).length,
+        };
+      });
+      expect(layout.scrolls).toBe(false);
+      expect(layout.hidden).toBe(0);
+      expect(layout.underNotice).toBe(0);
+      // What the round is worth stays visible, so the cost of a hint shows.
+      expect(layout.worth).toBeGreaterThan(10);
+      await expect(page.locator('[data-stat="worth"]')).toContainText("+100");
+
+      // A tile of the bottom row can be tapped, and Hint lowers what the round is worth.
+      const info = await puzzleInfo(page);
+      const last = info.tray.at(-1)!.id;
+      await page.locator(`.tray .tile[data-tile="${last}"]`).tap();
+      await expect(page.locator(`.tray .tile[data-tile="${last}"]`)).toHaveAttribute("data-selected", "true");
+      await page.getByRole("button", { name: "Hint" }).tap();
+      await expect(page.locator('[data-stat="worth"]')).toContainText("+75");
+
+      expect(errors).toEqual([]);
     });
-    expect(layout.scrolls).toBe(false);
-    expect(layout.hidden).toBe(0);
-    // What the round is worth stays visible, so the cost of a hint shows.
-    expect(layout.worth).toBeGreaterThan(10);
-    await expect(page.locator('[data-stat="worth"]')).toContainText("+100");
-
-    // A tile of the bottom row can be tapped, and Hint lowers what the round is worth.
-    const info = await puzzleInfo(page);
-    const last = info.tray.at(-1)!.id;
-    await page.locator(`.tray .tile[data-tile="${last}"]`).tap();
-    await expect(page.locator(`.tray .tile[data-tile="${last}"]`)).toHaveAttribute("data-selected", "true");
-    await page.getByRole("button", { name: "Hint" }).tap();
-    await expect(page.locator('[data-stat="worth"]')).toContainText("+75");
-
-    expect(errors).toEqual([]);
-  });
+  }
 });
 
 test.describe("a session that belongs to a study", () => {
