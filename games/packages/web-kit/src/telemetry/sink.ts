@@ -2,13 +2,17 @@
  * Event sink that delivers `GameEvent`s to the KanKyouKen event collector.
  *
  * The collector takes ONE event per POST, so the sink keeps a first-in first-out queue
- * and has at most one request on the wire. Delivery is at-least-once and in recording
- * order: an event leaves the queue only when the collector acknowledged it or said that
- * the event itself is unacceptable, or when the bounded queue overflowed. Trouble that
- * says nothing about the event (no network, no answer, a server error, a refused token)
- * never costs an event: it stays queued and stored. Every event the sink does give up
- * on is counted in `dropped` and reported through `onError`, and `status` tells an app
- * whether events are getting through.
+ * and has at most one request on the wire. Delivery is at-least-once and, as long as the
+ * collector takes every event, in recording order: an event leaves the queue only when
+ * the collector acknowledged it or said that the event itself is unacceptable, or when
+ * the bounded queue overflowed. Trouble that says nothing about the event (no network,
+ * no answer, an outage, a refused token) never costs an event: it stays queued and
+ * stored. An event the collector keeps answering with a server error while it accepts
+ * later ones (its insert fails, for example for a session it does not know) is set
+ * aside, so that it does not hold the others back, and is given up only after a few more
+ * tries far apart. Every event the sink does give up on is counted in `dropped` and
+ * reported through `onError`, and `status` tells an app whether events are getting
+ * through.
  *
  * Because an event can be delivered more than once (a request can succeed without its
  * answer ever arriving), every event carries a client-generated id in its payload,
@@ -35,13 +39,29 @@ export const MAX_RETRY_DELAY_MS = 60_000;
 export const REQUEST_TIMEOUT_MS = 30_000;
 
 /**
+ * Server errors in a row after which the event at the head of the queue no longer holds
+ * up the events behind it: from then on a later event is tried in between, to tell an
+ * event the collector cannot store from an outage.
+ */
+export const REFUSALS_BEFORE_PROBE = 2;
+
+/** Least time between two tries of an event that was set aside, also across page loads. */
+export const SET_ASIDE_RETRY_MS = 10 * 60_000;
+
+/** Tries an event that was set aside gets, after which it is given up ("stuck"). */
+export const SET_ASIDE_TRIES = 5;
+
+/**
  * Why the sink gave up on an event.
  *  - "overflow":       the queue was full and this was the event a researcher can best
  *                      do without (see `createCollectorSink`).
  *  - "rejected":       the collector said the event itself is unacceptable.
  *  - "unserializable": the event could not be turned into JSON.
+ *  - "stuck":          the collector kept answering the event with a server error while
+ *                      it accepted later events, and still did after it had been set
+ *                      aside and tried `SET_ASIDE_TRIES` more times.
  */
-export type DropReason = "overflow" | "rejected" | "unserializable";
+export type DropReason = "overflow" | "rejected" | "unserializable" | "stuck";
 
 /** The error handed to `onError` for every event the sink gives up on. */
 export class CollectorError extends Error {
@@ -141,6 +161,8 @@ export interface CollectorSink extends EventSink {
 interface RetryOutcome {
   readonly kind: "retry";
   readonly retryAfterMs?: number;
+  /** The collector answered with a server error (5xx), rather than not at all or with throttling. */
+  readonly serverError?: boolean;
 }
 
 type Outcome =
@@ -149,9 +171,20 @@ type Outcome =
   | { readonly kind: "unauthorized" }
   | RetryOutcome;
 
+/** An event that was set aside (see `createCollectorSink`). */
+interface SetAside {
+  readonly body: CollectorBody;
+  /** Tries since it was set aside that the collector answered with a server error. */
+  tries: number;
+  /** When it was set aside or last tried (`now()`), so that tries stay apart across page loads too. */
+  lastTry: number;
+}
+
 interface StoredQueue {
   readonly v: 1;
   readonly events: readonly CollectorBody[];
+  /** Events set aside; absent when there are none. */
+  readonly setAside?: readonly SetAside[];
 }
 
 /** Key under which a study participant's unsent events are kept. */
@@ -225,15 +258,23 @@ function isCollectorBody(value: unknown): value is CollectorBody {
   );
 }
 
-function readStored(storage: Pick<Storage, "getItem">, key: string): CollectorBody[] {
+function isSetAside(value: unknown): value is SetAside {
+  if (typeof value !== "object" || value === null) return false;
+  const entry = value as Record<string, unknown>;
+  return isCollectorBody(entry.body) && Number.isFinite(entry.tries) && Number.isFinite(entry.lastTry);
+}
+
+function readStored(storage: Pick<Storage, "getItem">, key: string): { events: CollectorBody[]; setAside: SetAside[] } {
+  const none = { events: [], setAside: [] };
   try {
     const text = storage.getItem(key);
-    if (text === null) return [];
+    if (text === null) return none;
     const parsed = JSON.parse(text) as Partial<StoredQueue> | null;
-    if (parsed === null || typeof parsed !== "object" || !Array.isArray(parsed.events)) return [];
-    return parsed.events.filter(isCollectorBody);
+    if (parsed === null || typeof parsed !== "object" || !Array.isArray(parsed.events)) return none;
+    const setAside = Array.isArray(parsed.setAside) ? parsed.setAside.filter(isSetAside) : [];
+    return { events: parsed.events.filter(isCollectorBody), setAside };
   } catch {
-    return [];
+    return none;
   }
 }
 
@@ -284,6 +325,21 @@ function readRetryAfter(response: Response, now: number): number | undefined {
  *     event stays at the head of the queue and is tried again after `retryDelay`, which
  *     grows with every failure in a row up to `MAX_RETRY_DELAY_MS`, for as long as the
  *     sink lives. `status.state` is "retrying" until an attempt gets through.
+ *   - A server error (5xx) can also mean that the collector cannot store this one event
+ *     (the platform's collector answers 500 whenever its insert fails). So once the head
+ *     has had `REFUSALS_BEFORE_PROBE` server errors in a row, the attempts in between go
+ *     to a later event: the oldest one recorded by this sink (not restored from
+ *     storage) that has not had them, else the oldest such restored one. While every
+ *     event is refused that is an outage, and nothing changes. When a later event is
+ *     accepted, every earlier event that had a server error is tried again at once, and
+ *     one that has another server error then is set aside: it leaves the queue, stays
+ *     stored, and is tried again only while nothing else is waiting, at most once every
+ *     `SET_ASIDE_RETRY_MS` (counted across page loads), and given up ("stuck") when the
+ *     collector has answered `SET_ASIDE_TRIES` of those tries with a server error. One
+ *     that is accepted on the second try was passing trouble: the queue goes back to
+ *     plain order. So a restored backlog of a session the collector does not know holds
+ *     up the current session's events only for a few attempts, and those events may
+ *     arrive before some of the backlog.
  *   - The token is refused (`isTokenRejection`): nothing more is sent with that token
  *     and `status.state` is "rejected". The sink keeps asking `getToken` on the backoff
  *     schedule and carries on when it yields another token; with a fixed token that
@@ -293,23 +349,26 @@ function readRetryAfter(response: Response, now: number): number | undefined {
  * - When `getToken` yields no token nothing is sent and nothing is dropped; the sink
  *   asks again on the same schedule, forever ("retrying").
  * - When more than `maxQueue` events are held, one that is not on the wire is dropped
- *   ("overflow"): a single action (a stroke or choice attempt, a hint, a listen, a
- *   demonstration, a stage change) before a result or any other event, and those
- *   before `session_start` and `session_end`; the oldest among equals. So a long outage
- *   costs the detail first and the frame of the session last.
+ *   ("overflow"): an event that was set aside before any other, then a single action (a
+ *   stroke or choice attempt, a hint, a listen, a demonstration, a stage change) before
+ *   a result or any other event, and those before `session_start` and `session_end`;
+ *   the oldest among equals. So a long outage costs the detail first and the frame of
+ *   the session last. Events set aside count towards `maxQueue` and `pending`.
  * - With a `storage`, the queue is written through on every change and read back when a
  *   sink is created with the same key; restored events are sent first. The stored copy
- *   is always a head of the current queue: when storage is too full for all of it, as
- *   long a head as fits is kept, and a copy that begins with events that have left the
+ *   is always a head of the current queue followed by the events set aside: when storage
+ *   is too full for all of it, as long a head of that as fits is kept (the events set
+ *   aside go first), and a copy that begins with events that have left the
  *   queue is never left behind, so an acknowledged event is not sent again after a
  *   reload. Only an event whose request was still unanswered when the page went away
  *   is (with the same `client_event_id`). Storage that is forbidden or corrupt is
  *   ignored. Two tabs sharing one key will overwrite each other's backlog; give them
  *   different keys if that matters.
  * - `flush` makes sure one attempt starts after the call without sitting out a backoff
- *   wait, and resolves (it never rejects) when the queue is empty, when the sink is
- *   disposed, or when sending cannot go on right now: there is no usable token, or the
- *   attempt failed and the sink is back to waiting for its next retry.
+ *   wait, and resolves (it never rejects) when the queue is empty (events set aside do
+ *   not count), when the sink is disposed, or when sending cannot go on right now: there
+ *   is no usable token, or the attempt failed and the sink is back to waiting for its
+ *   next retry.
  * - After `dispose`, `record` is ignored. A request already on the wire is allowed to
  *   finish and, if it succeeded, its event is removed from the stored queue.
  */
@@ -327,13 +386,22 @@ export function createCollectorSink(config: CollectorSinkConfig): CollectorSink 
   const newId = config.newId ?? createEventId;
 
   const queue: CollectorBody[] = [];
+  /** Events set aside, oldest first. */
+  const setAside: SetAside[] = [];
+  /** Per queued event: server errors in a row, and whether a later event was accepted after the last of them. */
+  const refusals = new Map<CollectorBody, { count: number; overtaken: boolean }>();
+  /** Queued events that came from storage rather than from this sink's `record`. */
+  const restored = new Set<CollectorBody>();
   const waiters: (() => void)[] = [];
   let dropped = 0;
   let state: CollectorState = "recording";
   let reported = "recording:0";
   let sending = false;
-  let inFlight = false;
+  /** The event whose request is on the wire. */
+  let inFlight: CollectorBody | null = null;
   let timer: { handle: unknown } | null = null;
+  /** Wakes the sink when an event set aside is due, while nothing else is held. */
+  let setAsideTimer: { handle: unknown } | null = null;
   /** Attempts and token checks that failed in a row; sets the backoff. */
   let failures = 0;
   let refusedToken: string | null = null;
@@ -342,7 +410,8 @@ export function createCollectorSink(config: CollectorSinkConfig): CollectorSink 
   let flushRequested = false;
   let disposed = false;
 
-  const status = (): CollectorStatus => ({ state, pending: queue.length, dropped });
+  const held = (): number => queue.length + setAside.length;
+  const status = (): CollectorStatus => ({ state, pending: held(), dropped });
 
   const report = (): void => {
     const current = `${state}:${dropped}`;
@@ -370,14 +439,18 @@ export function createCollectorSink(config: CollectorSinkConfig): CollectorSink 
     report();
   };
 
-  /** Write the first `count` events of the queue to storage; false when storage refuses (full, disabled). */
+  /**
+   * Write the first `count` held events to storage, the queue first and then the events
+   * set aside; false when storage refuses (full, disabled).
+   */
   const store = (count: number): boolean => {
     if (!storage) return false;
     try {
       if (count === 0) {
         storage.removeItem(storageKey);
       } else {
-        const stored: StoredQueue = { v: 1, events: queue.slice(0, count) };
+        const aside = setAside.slice(0, Math.max(0, count - queue.length));
+        const stored: StoredQueue = { v: 1, events: queue.slice(0, count), ...(aside.length > 0 ? { setAside: aside } : {}) };
         storage.setItem(storageKey, JSON.stringify(stored));
       }
       storedCopyStale = false;
@@ -388,10 +461,10 @@ export function createCollectorSink(config: CollectorSinkConfig): CollectorSink 
   };
 
   const persist = (): void => {
-    if (!storage || store(queue.length)) return;
-    // The whole queue does not fit: find the longest head that does.
+    if (!storage || store(held())) return;
+    // Not everything fits: find the longest head that does.
     let fits = 0;
-    let tooMany = queue.length;
+    let tooMany = held();
     while (tooMany - fits > 1) {
       const middle = (fits + tooMany) >> 1;
       if (store(middle)) fits = middle;
@@ -402,23 +475,92 @@ export function createCollectorSink(config: CollectorSinkConfig): CollectorSink 
     if (fits === 0 && storedCopyStale) store(0);
   };
 
-  /** Take the event at `index` out of the queue. */
-  const remove = (index: number): CollectorBody | undefined => {
-    const [removed] = queue.splice(index, 1);
-    if (removed) storedCopyStale = true;
-    return removed;
+  /** Take `body` out of the queue. */
+  const remove = (body: CollectorBody): void => {
+    const index = queue.indexOf(body);
+    if (index === -1) return;
+    queue.splice(index, 1);
+    refusals.delete(body);
+    restored.delete(body);
+    storedCopyStale = true;
+  };
+
+  /** Take `entry` out of the events set aside. */
+  const unsetAside = (entry: SetAside): void => {
+    const index = setAside.indexOf(entry);
+    if (index === -1) return;
+    setAside.splice(index, 1);
+    storedCopyStale = true;
   };
 
   const enforceCap = (): void => {
-    while (queue.length > maxQueue) {
-      let victim = -1;
-      for (let i = inFlight ? 1 : 0; i < queue.length; i++) {
-        if (victim === -1 || keepRank(queue[i]!) < keepRank(queue[victim]!)) victim = i;
+    while (held() > maxQueue) {
+      const overflow = new CollectorError("overflow", `event queue is full (${maxQueue} events)`);
+      const aside = setAside.find((entry) => entry.body !== inFlight);
+      if (aside) {
+        unsetAside(aside);
+        giveUp(aside.body, overflow);
+        continue;
       }
-      const removed = victim === -1 ? undefined : remove(victim);
-      if (!removed) return;
-      giveUp(removed, new CollectorError("overflow", `event queue is full (${maxQueue} events)`));
+      let victim: CollectorBody | undefined;
+      for (const body of queue) {
+        if (body !== inFlight && (victim === undefined || keepRank(body) < keepRank(victim))) victim = body;
+      }
+      if (victim === undefined) return;
+      remove(victim);
+      giveUp(victim, overflow);
     }
+  };
+
+  /** Whether an event set aside may be tried again now (a clock that went back counts as due). */
+  const isDue = (entry: SetAside): boolean => {
+    const since = now() - entry.lastTry;
+    return since >= SET_ASIDE_RETRY_MS || since < 0;
+  };
+
+  const refusalsOf = (body: CollectorBody): number => refusals.get(body)?.count ?? 0;
+
+  /**
+   * The queued event the next attempt is for: the first one to be tried again because a
+   * later event was accepted after its server error; else the head, unless it has had
+   * `REFUSALS_BEFORE_PROBE` server errors in a row; then the oldest event of this sink's
+   * own, else the oldest restored one, that has not; else the head after all.
+   */
+  const nextInQueue = (): CollectorBody | undefined => {
+    const head = queue[0];
+    if (head === undefined) return undefined;
+    const recheck = queue.find((body) => refusals.get(body)?.overtaken === true);
+    if (recheck) return recheck;
+    if (refusalsOf(head) < REFUSALS_BEFORE_PROBE) return head;
+    const unrefused = (body: CollectorBody): boolean => refusalsOf(body) < REFUSALS_BEFORE_PROBE;
+    return queue.find((body) => unrefused(body) && !restored.has(body)) ?? queue.find(unrefused) ?? head;
+  };
+
+  /** What the next attempt is for: a queued event, else an event set aside that is due, else nothing. */
+  const nextTarget = (): { readonly body: CollectorBody; readonly entry?: SetAside } | undefined => {
+    const body = nextInQueue();
+    if (body !== undefined) return { body };
+    const entry = setAside.find(isDue);
+    return entry === undefined ? undefined : { body: entry.body, entry };
+  };
+
+  const hasWork = (): boolean => queue.length > 0 || setAside.some(isDue);
+
+  /**
+   * The collector accepted the queued `body`. If it had refused it before, those refusals
+   * were passing trouble and are forgotten; otherwise every earlier event it refused is
+   * to be tried again at once.
+   */
+  const accepted = (body: CollectorBody): void => {
+    if (refusals.has(body)) {
+      refusals.clear();
+    } else {
+      for (const earlier of queue.slice(0, queue.indexOf(body))) {
+        const refusal = refusals.get(earlier);
+        if (refusal) refusal.overtaken = true;
+      }
+    }
+    remove(body);
   };
 
   const settle = (): void => {
@@ -431,6 +573,12 @@ export function createCollectorSink(config: CollectorSinkConfig): CollectorSink 
     timer = null;
   };
 
+  const cancelSetAsideTimer = (): void => {
+    if (setAsideTimer === null) return;
+    clearTimer(setAsideTimer.handle);
+    setAsideTimer = null;
+  };
+
   const schedule = (delayMs: number): void => {
     const scheduled: { handle: unknown } = { handle: undefined };
     timer = scheduled;
@@ -439,6 +587,19 @@ export function createCollectorSink(config: CollectorSinkConfig): CollectorSink 
       timer = null;
       kick();
     }, delayMs);
+  };
+
+  /** While nothing but events set aside is held, wake up when the first of them is due. */
+  const armSetAside = (): void => {
+    if (disposed || sending || timer !== null || setAsideTimer !== null || queue.length > 0 || setAside.length === 0) return;
+    const wait = Math.max(0, Math.min(...setAside.map((entry) => entry.lastTry + SET_ASIDE_RETRY_MS - now())));
+    const scheduled: { handle: unknown } = { handle: undefined };
+    setAsideTimer = scheduled;
+    scheduled.handle = setTimer(() => {
+      if (setAsideTimer !== scheduled) return;
+      setAsideTimer = null;
+      kick();
+    }, wait);
   };
 
   const readToken = async (): Promise<string | null> => {
@@ -469,7 +630,7 @@ export function createCollectorSink(config: CollectorSinkConfig): CollectorSink 
         error: new CollectorError("rejected", describeProblem(answer, problem), { status: answer, problem }),
       };
     }
-    return { kind: "retry", retryAfterMs: readRetryAfter(response, now()) };
+    return { kind: "retry", retryAfterMs: readRetryAfter(response, now()), serverError: answer >= 500 };
   };
 
   /** One attempt. Never rejects, and never takes longer than `requestTimeoutMs`: a request that hangs must not block the queue. */
@@ -490,13 +651,34 @@ export function createCollectorSink(config: CollectorSinkConfig): CollectorSink 
       exchange(body, token, controller?.signal).then(finish, () => finish({ kind: "retry" }));
     });
 
+  /** What a try of an event set aside comes to. It says nothing about the queue and is never waited for. */
+  const settleSetAside = (entry: SetAside, outcome: Outcome): void => {
+    if (outcome.kind === "rejected") {
+      unsetAside(entry);
+      persist();
+      giveUp(entry.body, outcome.error);
+    } else if (outcome.kind === "retry") {
+      entry.lastTry = now();
+      if (outcome.serverError === true) entry.tries++;
+      const stuck = entry.tries >= SET_ASIDE_TRIES;
+      if (stuck) unsetAside(entry);
+      persist();
+      if (stuck) {
+        giveUp(
+          entry.body,
+          new CollectorError("stuck", `event collector kept answering this event with a server error (${entry.tries} tries set aside)`),
+        );
+      }
+    }
+  };
+
   const pump = async (): Promise<void> => {
     sending = true;
     try {
-      while (!disposed && queue.length > 0) {
+      while (!disposed && hasWork()) {
         const token = await readToken();
-        const body = queue[0];
-        if (disposed || !body) break;
+        const target = nextTarget();
+        if (disposed || target === undefined) break;
         if (token === null || token === refusedToken) {
           failures++;
           schedule(retryDelay(failures, baseDelayMs));
@@ -504,41 +686,59 @@ export function createCollectorSink(config: CollectorSinkConfig): CollectorSink 
           break;
         }
 
-        inFlight = true;
+        const { body, entry } = target;
+        inFlight = body;
         const outcome = await send(body, token);
-        inFlight = false;
+        inFlight = null;
 
         // An acknowledged event is forgotten even when the sink was disposed meanwhile.
         if (outcome.kind === "sent") {
-          remove(0);
+          if (entry) unsetAside(entry);
+          else accepted(body);
           persist();
         }
         if (disposed) break;
-        if (outcome.kind === "sent" || outcome.kind === "rejected") {
-          // Either way the collector answered about the event: the way to it is open.
-          failures = 0;
-          refusedToken = null;
-          setState("recording");
-          if (outcome.kind === "rejected") {
-            remove(0);
-            persist();
-            giveUp(body, outcome.error);
-          }
-          continue;
-        }
         if (outcome.kind === "unauthorized") {
           // The next turn of the loop asks for a token again and waits unless it is a new one.
           refusedToken = token;
           failures = 0;
           continue;
         }
+        if (outcome.kind === "sent" || outcome.kind === "rejected") {
+          // Either way the collector answered about the event: the way to it is open.
+          failures = 0;
+          refusedToken = null;
+          setState("recording");
+        }
+        if (entry) {
+          settleSetAside(entry, outcome);
+          continue;
+        }
+        if (outcome.kind === "sent") continue;
+        if (outcome.kind === "rejected") {
+          remove(body);
+          persist();
+          giveUp(body, outcome.error);
+          continue;
+        }
+
+        const refusal = refusals.get(body);
+        if (outcome.serverError === true && refusal?.overtaken === true) {
+          // Refused again although a later event was accepted since: the trouble is this event.
+          remove(body);
+          setAside.push({ body, tries: 0, lastTry: now() });
+          persist();
+          continue;
+        }
+        if (outcome.serverError === true) refusals.set(body, { count: (refusal?.count ?? 0) + 1, overtaken: false });
+        else refusals.delete(body);
         failures++;
         schedule(retryDelay(failures, baseDelayMs, outcome.retryAfterMs));
         setState("retrying");
         break;
       }
     } finally {
-      inFlight = false;
+      inFlight = null;
       sending = false;
       const retryNow = flushRequested && timer !== null && !disposed;
       flushRequested = false;
@@ -546,20 +746,32 @@ export function createCollectorSink(config: CollectorSinkConfig): CollectorSink 
         cancelTimer();
         kick();
       } else {
+        armSetAside();
         settle();
       }
     }
   };
 
   function kick(): void {
-    if (disposed || sending || timer !== null || queue.length === 0) return;
+    if (disposed || sending || timer !== null) return;
+    if (!hasWork()) {
+      armSetAside();
+      return;
+    }
+    cancelSetAsideTimer();
     void pump();
   }
 
   if (storage) {
+    const stored = readStored(storage, storageKey);
     // A backlog stored before events had ids gets them now, so that later attempts agree.
-    for (const body of readStored(storage, storageKey)) queue.push(withEventId(body, newId));
-    if (queue.length > 0) {
+    for (const body of stored.events) {
+      const withId = withEventId(body, newId);
+      queue.push(withId);
+      restored.add(withId);
+    }
+    for (const { body, tries, lastTry } of stored.setAside) setAside.push({ body: withEventId(body, newId), tries, lastTry });
+    if (held() > 0) {
       enforceCap();
       persist();
     }
@@ -568,7 +780,7 @@ export function createCollectorSink(config: CollectorSinkConfig): CollectorSink 
 
   return {
     get pending() {
-      return queue.length;
+      return held();
     },
     get dropped() {
       return dropped;
@@ -618,6 +830,7 @@ export function createCollectorSink(config: CollectorSinkConfig): CollectorSink 
       if (disposed) return;
       disposed = true;
       cancelTimer();
+      cancelSetAsideTimer();
       settle();
     },
   };

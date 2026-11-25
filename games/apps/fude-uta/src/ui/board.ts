@@ -5,7 +5,7 @@ import type { GlyphView } from "@kankyouken/web-kit/render";
 import { createGlyphView } from "@kankyouken/web-kit/render";
 import type { ToneColour } from "../palette";
 import { toneOf } from "../palette";
-import { el } from "./dom";
+import { createGuard, el } from "./dom";
 
 /** The writing square: a glyph view plus pen capture. */
 export interface Board {
@@ -15,6 +15,12 @@ export interface Board {
   enabled: boolean;
   /** Who hears about the pen; null ignores it. */
   pen: StrokeCaptureHandlers | null;
+  /**
+   * A card that lay over the square has been taken away. If a click did that, the square
+   * is as new under the pointer as a button would be, and takes no pen-down until the
+   * rest of the double click has passed (`arm`, for the square).
+   */
+  uncovered(): void;
   /** The colour touched dots take: that of the component being written. */
   setTone(tone: ToneColour | null): void;
   /** Colour every stroke by its component's timbre; null goes back to plain ink. */
@@ -50,6 +56,11 @@ export function createBoard(): Board {
     }, durationMs);
   };
 
+  // A pen-down on the held square does not put the end of the hold off, as a press on a held
+  // button does: strokes follow one another faster than that, and whoever began to write
+  // early would be kept out for as long as they wrote.
+  const guard = createGuard();
+
   const hasStroke = (stroke: number): boolean => view.glyph !== null && stroke >= 0 && stroke < view.glyph.strokes.length;
 
   const board: Board = {
@@ -57,6 +68,7 @@ export function createBoard(): Board {
     view,
     enabled: false,
     pen: null,
+    uncovered: () => guard.hold(),
     setTone(tone) {
       if (tone === null) delete root.dataset["tone"];
       else root.dataset["tone"] = tone;
@@ -96,7 +108,7 @@ export function createBoard(): Board {
       onEnd: (stroke) => board.pen?.onEnd?.(stroke),
       onCancel: () => board.pen?.onCancel?.(),
     },
-    { enabled: () => board.enabled && board.pen !== null },
+    { enabled: () => board.enabled && board.pen !== null && !guard.held() },
   );
   return board;
 }

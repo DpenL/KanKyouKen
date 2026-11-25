@@ -247,13 +247,15 @@ test("a character is learned stage by stage, and writing it performs it", async 
   expect(await events(page, "demo_watched")).toHaveLength(watched);
 });
 
+/** Where a click on `target` lands; a later click at the same point meets whatever stands there by then. */
+async function centre(target: Locator): Promise<{ x: number; y: number }> {
+  const box = await target.boundingBox();
+  if (box === null) throw new Error("nothing to click");
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+}
+
 test("the second click of a double click does not act on what the first one brought on screen", async ({ page }) => {
   await page.goto(DEBUG);
-  const centre = async (target: Locator): Promise<{ x: number; y: number }> => {
-    const box = await target.boundingBox();
-    if (box === null) throw new Error("nothing to click");
-    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-  };
   const controls = (selector: string): Promise<string[]> =>
     page.locator(selector).evaluateAll((all) => all.map((each) => `${each.textContent}:${(each as HTMLButtonElement).disabled}`));
 
@@ -266,7 +268,7 @@ test("the second click of a double click does not act on what the first one brou
   await page.waitForTimeout(200);
   await expect(about).toBeVisible();
   // A click on the backdrop that is no part of a double click still closes it.
-  await expect(about.getByRole("button", { name: "Close" })).toBeEnabled();
+  await page.waitForTimeout(500);
   await page.mouse.click(5, 5);
   await expect(about).toHaveCount(0);
 
@@ -293,6 +295,105 @@ test("the second click of a double click does not act on what the first one brou
   expect(cards).toHaveLength(6);
   expect(cards.every((card) => card.endsWith(":true"))).toBe(true);
   await expect(page.locator(".lesson-card").first()).toBeEnabled();
+});
+
+test("a burst of taps acts once, however long it goes on", async ({ page }) => {
+  await page.goto(DEBUG);
+  await page.locator(".lesson-card").first().click();
+  await waitForStage(page, "demo", "一");
+
+  // Skip, then three more taps 300 ms apart on the Listen that comes up in its place: the last one 900 ms after the first.
+  await expect(page.getByRole("button", { name: "Skip" })).toBeEnabled();
+  const skip = await centre(page.getByRole("button", { name: "Skip" }));
+  for (let tap = 0; tap < 4; tap++) {
+    if (tap > 0) await page.waitForTimeout(300);
+    await page.mouse.click(skip.x, skip.y);
+  }
+  expect(await events(page, "melody_listen")).toEqual([]);
+  // Every tap on the button while it is off keeps it off; half a second after the last one it works.
+  const listen = page.getByRole("button", { name: "Listen" });
+  await expect(listen).toBeDisabled();
+  await expect(listen).toBeEnabled();
+  await listen.click();
+  expect(await events(page, "melody_listen")).toHaveLength(1);
+});
+
+test("a sheet holds only what lies where the click that opened it came down", async ({ page }) => {
+  // On a phone held sideways, the Settings button lies under a setting once the sheet is open.
+  await page.setViewportSize({ width: 664, height: 390 });
+  await page.goto(DEBUG);
+  const settings = page.locator('dialog[data-sheet="settings"]');
+  const opener = page.getByRole("button", { name: "Settings" });
+  await opener.scrollIntoViewIfNeeded();
+  const point = await centre(opener);
+  const settingAt = (): Promise<string | null> =>
+    page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest(".option")?.querySelector("input")?.value ?? null, point);
+
+  // A burst of taps: the first one opens the sheet, the others fall on that setting and must not pick it.
+  for (let tap = 0; tap < 4; tap++) {
+    if (tap > 0) await page.waitForTimeout(150);
+    await page.mouse.click(point.x, point.y);
+  }
+  expect(await settingAt()).not.toBeNull();
+  expect(await events(page, "settings_change")).toEqual([]);
+  await expect(settings.locator(`input[value="${await settingAt()}"]`)).toBeEnabled();
+  await page.keyboard.press("Escape");
+  await expect(settings).toHaveCount(0);
+  await page.waitForTimeout(500);
+
+  // Everything else in the sheet can be chosen at once, and the backdrop closes it right after a choice.
+  await page.mouse.click(point.x, point.y);
+  await page.waitForTimeout(300);
+  const chalk = settings.getByText("Chalk sound", { exact: true });
+  await chalk.scrollIntoViewIfNeeded();
+  const choice = await centre(chalk);
+  await page.mouse.click(choice.x, choice.y);
+  expect((await events(page, "settings_change")).map((event) => event.data)).toEqual([{ audioMode: "sfx", sound_on: true }]);
+  await page.waitForTimeout(300);
+  await page.mouse.click(5, 5);
+  await expect(settings).toHaveCount(0);
+});
+
+test("a quick second press on a button that only redraws its own row is taken", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("kk.fude-uta.v1", JSON.stringify({ settings: { plan: "quick" } }));
+  });
+  await page.goto(DEBUG);
+  await page.locator(".lesson-card").first().click();
+  await waitForStage(page, "demo", "一");
+  await page.getByRole("button", { name: "Skip" }).click();
+  await waitForStage(page, "trace:dotted", "一");
+  await drawStroke(page, 0);
+  await waitForStage(page, "trace:none", "一");
+
+  // Hint twice, 300 ms apart: the row it redraws keeps it where it was, and the second press shows the second level.
+  const hint = page.getByRole("button", { name: "Hint" });
+  await expect(hint).toBeEnabled();
+  const point = await centre(hint);
+  await page.mouse.click(point.x, point.y);
+  await page.waitForTimeout(300);
+  await page.mouse.click(point.x, point.y);
+  expect((await events(page, "hint_shown")).map((event) => event.data?.["level"])).toEqual([1, 2]);
+});
+
+test("after the browser's Back and Forward, Back still leads out of the next lesson and then out of the game", async ({ page }) => {
+  await page.goto(DEBUG);
+  await page.locator(".lesson-card").first().click();
+  await waitForStage(page, "demo", "一");
+  await page.goBack();
+  await expect(page.locator(".lesson-card")).toHaveCount(6);
+  // Forward cannot bring the lesson back: the lesson list stays, and history steps off the lesson's entry.
+  await page.goForward();
+  await page.waitForFunction(() => history.state === null, undefined, { timeout: 5_000 });
+  await expect(page.locator(".lesson-card")).toHaveCount(6);
+
+  await page.locator(".lesson-card").first().click();
+  await waitForStage(page, "demo", "一");
+  await page.goBack();
+  await expect(page.locator(".lesson-card")).toHaveCount(6);
+  expect(page.url()).toBe(DEBUG);
+  await page.goBack();
+  expect(page.url()).toBe("about:blank");
 });
 
 test("a failing sound layer does not hold back the lesson", async ({ page }) => {

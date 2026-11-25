@@ -88,7 +88,20 @@ export function studyLinkState(params: LaunchParams): StudyLink {
  * The storage key for a game's settings and progress: `base` in plain play,
  * `base:<study>:<participant>` when the game was opened with a complete study link, so
  * that participants who share a device do not inherit each other's settings and scores.
+ * An incomplete link that names both gets the plain key here; `participantStoreKey`
+ * keeps it apart too, and is the one to use.
  */
 export function storeKeyFor(base: string, params: LaunchParams): string {
   return canReport(params) ? `${base}:${params.study.studyId}:${params.study.participantId}` : base;
+}
+
+/**
+ * Like `storeKeyFor`, but `base:<study>:<participant>` whenever the link names a study
+ * and a participant, complete or not: a session whose link lost its `api` or token
+ * cannot be recorded, but it is still that participant's, and must neither start from
+ * nor leave behind somebody else's settings and scores. `base` in plain play and for a
+ * link that names only one of the two.
+ */
+export function participantStoreKey(base: string, params: LaunchParams): string {
+  return params.study === undefined ? base : `${base}:${params.study.studyId}:${params.study.participantId}`;
 }

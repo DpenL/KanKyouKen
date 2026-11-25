@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { CollectorStatus } from "../telemetry/sink";
 import { RECORDING_NOTICE_ATTRIBUTE, createRecordingNotice, mountRecordingNotice, recordingMessage } from "./notice";
-import { canReport, readLaunchParams, storeKeyFor, studyLinkState } from "./params";
+import { canReport, participantStoreKey, readLaunchParams, storeKeyFor, studyLinkState } from "./params";
 import { createLocalStore, type KeyValueStorage } from "./store";
 
 function fakeStorage(initial: Record<string, string> = {}): KeyValueStorage & { data: Record<string, string> } {
@@ -79,6 +79,18 @@ describe("study links", () => {
     // Plain play, and links that cannot be recorded anyway, keep the plain key.
     expect(storeKeyFor("kk.game.v1", readLaunchParams("?seed=abc"))).toBe("kk.game.v1");
     expect(storeKeyFor("kk.game.v1", readLaunchParams(FULL))).toBe("kk.game.v1");
+  });
+
+  it("keeps a participant's settings apart also when the link is incomplete", () => {
+    const key = (search: string, hash = ""): string => participantStoreKey("kk.game.v1", readLaunchParams(search, hash));
+    expect(key(FULL, "#token=t")).toBe("kk.game.v1:s1:p1");
+    expect(key(FULL)).toBe("kk.game.v1:s1:p1");
+    // The reviewer's link: study, participant and condition, no api and no token.
+    expect(key("?study=s1&participant=p2&condition=sfx")).toBe("kk.game.v1:s1:p2");
+    // Plain play, and a link that names only one of the two, keep the plain key.
+    expect(key("?seed=abc")).toBe("kk.game.v1");
+    expect(key("?study=s1&token=t")).toBe("kk.game.v1");
+    expect(key("?participant=p1&condition=sfx")).toBe("kk.game.v1");
   });
 });
 

@@ -38,10 +38,11 @@ export function startRecallMode(env: Env, ui: WritingUi, lesson: Lesson, onDone:
 
   const where = (): { ts: number; item: string; task: string } => ({ ts: Date.now(), item: state.item, task: TASK });
 
-  const listen = (): void => {
+  /** `again`: from Listen again in the action row, rather than from the "Listen first" card. */
+  const listen = (again: boolean): void => {
     state = recallListened(state);
     env.emit(gameEvent("melody_listen", where(), { audio_mode: env.audioMode(), listens: state.listens }));
-    show();
+    show(again);
     env.performer.perform(melody, { mode: env.audioMode(), onStroke: () => undefined });
   };
 
@@ -53,7 +54,7 @@ export function startRecallMode(env: Env, ui: WritingUi, lesson: Lesson, onDone:
       view.setInk(stroke);
       view.keepInk();
     }
-    show();
+    show(true);
   };
 
   const submit = (): void => {
@@ -73,8 +74,11 @@ export function startRecallMode(env: Env, ui: WritingUi, lesson: Lesson, onDone:
     }
   };
 
-  /** Bring counters, buttons and the lock in line with the item's state. */
-  const show = (): void => {
+  /**
+   * Bring counters, buttons and the lock in line with the item's state. `redraw`: a button of
+   * the action row asked for it, and the row only shows what that press changed (`WritingUi.redrawActions`).
+   */
+  const show = (redraw = false): void => {
     board.enabled = state.canWrite;
     ui.setStage(cue.showStrokeCount ? `Strokes ${state.strokesDrawn} / ${glyph.strokes.length}` : "");
     if (!state.canWrite) {
@@ -85,7 +89,7 @@ export function startRecallMode(env: Env, ui: WritingUi, lesson: Lesson, onDone:
           { class: "overlay-card" },
           el("h2", { class: "overlay-title" }, "Listen first"),
           el("p", { class: "overlay-text" }, "Hear this character's melody, then write it from memory."),
-          button("Listen", listen, "primary"),
+          button("Listen", () => listen(false), "primary"),
         ),
       );
       return;
@@ -93,8 +97,10 @@ export function startRecallMode(env: Env, ui: WritingUi, lesson: Lesson, onDone:
     ui.setOverlay(null);
     const undoButton = button("Undo", undo);
     undoButton.disabled = state.strokesDrawn === 0;
-    const replay = cue.melody === "off" ? [] : [button("Listen again", listen)];
-    ui.setActions(...replay, undoButton, button("Done", submit, "primary"));
+    const replay = cue.melody === "off" ? [] : [button("Listen again", () => listen(true))];
+    const row = [...replay, undoButton, button("Done", submit, "primary")];
+    if (redraw) ui.redrawActions(...row);
+    else ui.setActions(...row);
     Object.assign(env.probe, { rep: null, expected: state.strokesDrawn });
   };
 
@@ -125,16 +131,16 @@ export function startRecallMode(env: Env, ui: WritingUi, lesson: Lesson, onDone:
   ui.setMessage("");
   board.setTone(null);
   board.pen = {
-    onStart(sample) {
-      env.performer.stop();
-      view.setInk([sample]);
-    },
+    onStart: (sample) => view.setInk([sample]),
     onMove: (_sample, stroke) => view.setInk(stroke),
     onEnd(stroke) {
       if (isStrayTap(stroke, glyph.size)) {
         view.setInk(null);
         return;
       }
+      // Writing ends the listening. A tap does not: the last taps of a burst on Listen land
+      // here, and a melody they cut short would still be on record as listened to.
+      env.performer.stop();
       view.keepInk();
       drawn.push(stroke);
       state = recallStrokeDrawn(state);

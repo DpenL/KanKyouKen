@@ -5,6 +5,8 @@ import {
   CollectorError,
   MAX_RETRY_DELAY_MS,
   REQUEST_TIMEOUT_MS,
+  SET_ASIDE_RETRY_MS,
+  SET_ASIDE_TRIES,
   createCollectorSink,
   defaultStorageKey,
   isEventRejection,
@@ -446,6 +448,152 @@ describe("createCollectorSink: retries", () => {
     await sink.flush();
     expect(net.sentNs()).toEqual([1, 2]);
     expect(sink.dropped).toBe(1);
+  });
+});
+
+describe("createCollectorSink: an event the collector keeps refusing", () => {
+  /** A collector that answers 500 to the events `refuses` picks (its insert fails) and takes the rest. */
+  function picky(refuses: (body: CollectorBody) => boolean) {
+    const delivered: CollectorBody[] = [];
+    let calls = 0;
+    const fetchFn = (async (_url: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      calls++;
+      const body = JSON.parse(String(init?.body)) as CollectorBody;
+      if (refuses(body)) return problem(500, "Internal Server Error", "insert failed");
+      delivered.push(body);
+      return new Response("{}", { status: 201 });
+    }) as typeof fetch;
+    return { fetch: fetchFn, delivered, calls: () => calls, ns: () => delivered.map((b) => b.payload?.n) };
+  }
+
+  /** Fire timers until none is due, `limit` at most; the clock stands still unless `clock` is moved. */
+  async function drain(timers: ReturnType<typeof createTimers>, limit = 50): Promise<void> {
+    for (let i = 0; i < limit && timers.count > 0; i++) {
+      if (timers.delays.every((delay) => delay >= SET_ASIDE_RETRY_MS)) break;
+      timers.fire();
+      await settle();
+    }
+  }
+
+  it("sets it aside once a later event got through, and gives it up after a few tries far apart", async () => {
+    let clock = T0;
+    const storage = createStorage();
+    const collector = picky((body) => body.payload?.n === 2);
+    const { sink, timers, errors, statuses } = setup({ storage, fetch: collector.fetch, now: () => clock });
+    for (const n of [1, 2, 3, 4, 5]) sink.record(event(n));
+    await settle();
+    await drain(timers);
+
+    // Event 2 was refused twice, event 3 got through, 2 was refused once more and stepped aside.
+    expect(collector.ns()).toEqual([1, 3, 4, 5]);
+    expect(collector.calls()).toBe(7);
+    expect(sink.status).toEqual({ state: "recording", pending: 1, dropped: 0 });
+    expect(storedNs(storage)).toEqual([]);
+    const stored = JSON.parse(storage.items.get(defaultStorageKey(STUDY))!) as { setAside: { body: CollectorBody; tries: number }[] };
+    expect(stored.setAside.map((entry) => [entry.body.payload?.n, entry.tries])).toEqual([[2, 0]]);
+    expect(timers.delays).toEqual([SET_ASIDE_RETRY_MS]);
+    expect(statuses.at(-1)?.state).toBe("recording");
+    await expect(sink.flush()).resolves.toBeUndefined();
+
+    // It is tried again only every SET_ASIDE_RETRY_MS, and given up after SET_ASIDE_TRIES of them.
+    for (let attempt = 1; attempt <= SET_ASIDE_TRIES; attempt++) {
+      clock += SET_ASIDE_RETRY_MS;
+      timers.fire();
+      await settle();
+      expect(collector.calls()).toBe(7 + attempt);
+    }
+    expect(sink.status).toEqual({ state: "recording", pending: 0, dropped: 1 });
+    expect(errors.map((e) => [e.error.reason, e.body.payload?.n])).toEqual([["stuck", 2]]);
+    expect(storage.items.size).toBe(0);
+    expect(timers.count).toBe(0);
+  });
+
+  it("delivers an event set aside that the collector takes after all", async () => {
+    let clock = T0;
+    let broken = true;
+    const collector = picky((body) => broken && body.payload?.n === 1);
+    const { sink, timers, errors } = setup({ fetch: collector.fetch, now: () => clock });
+    for (const n of [1, 2]) sink.record(event(n));
+    await settle();
+    await drain(timers);
+    expect(collector.ns()).toEqual([2]);
+    expect(sink.pending).toBe(1);
+
+    // Recording goes on meanwhile without waiting for it.
+    sink.record(event(3));
+    await settle();
+    expect(collector.ns()).toEqual([2, 3]);
+
+    broken = false;
+    clock += SET_ASIDE_RETRY_MS;
+    timers.fire();
+    await settle();
+    expect(collector.ns()).toEqual([2, 3, 1]);
+    expect(sink.status).toEqual({ state: "recording", pending: 0, dropped: 0 });
+    expect(errors).toEqual([]);
+  });
+
+  it("sets nothing aside in an outage in which every event is refused, and keeps the order when it ends", async () => {
+    const storage = createStorage();
+    const outage: Reply[] = Array.from({ length: 30 }, () => 503);
+    const { sink, net, timers, errors } = setup({ storage }, outage);
+    for (const n of [1, 2, 3]) sink.record(event(n));
+    for (let attempt = 0; attempt < 30; attempt++) {
+      await settle();
+      expect(sink.pending).toBe(3);
+      expect(storedNs(storage)).toEqual([1, 2, 3]);
+      timers.fire();
+    }
+    await settle();
+    await drain(timers);
+
+    // Every event was tried in turn while all were refused; once the collector is back, each arrives once.
+    expect(new Set(net.sentNs().slice(0, 30))).toEqual(new Set([1, 2, 3]));
+    expect(net.sentNs().slice(30)).toHaveLength(3);
+    expect(new Set(net.sentNs().slice(30))).toEqual(new Set([1, 2, 3]));
+    expect(sink.status).toEqual({ state: "recording", pending: 0, dropped: 0 });
+    expect(errors).toEqual([]);
+    expect(storage.items.size).toBe(0);
+  });
+
+  it("does not let a restored backlog of a session the collector does not know hold up the current session", async () => {
+    const clock = T0;
+    const storage = createStorage();
+    const collector = picky((body) => body.session_id === "unknown");
+    const unknown = { ...STUDY, sessionId: "unknown" };
+    const earlier = setup({ storage, study: unknown, getToken: () => null });
+    for (const n of [1, 2, 3, 4, 5, 6, 7]) earlier.sink.record(event(n, n === 1 ? { type: "session_start" } : {}));
+    earlier.sink.dispose();
+
+    const { sink, timers, errors } = setup({ storage, fetch: collector.fetch, now: () => clock });
+    sink.record(event(11, { type: "session_start" }));
+    sink.record(event(12));
+    await settle();
+    // Two refusals of the head, then the current session's session_start gets its turn; and each
+    // event of the backlog stands in the way of the next one for two refusals at most.
+    await drain(timers, 2);
+    expect(collector.ns()).toEqual([11]);
+    await drain(timers, 2);
+    expect(collector.ns()).toEqual([11, 12]);
+
+    await drain(timers);
+    sink.record(event(13));
+    await settle();
+    await drain(timers);
+    expect(collector.ns()).toEqual([11, 12, 13]);
+    expect(sink.status.dropped).toBe(0);
+    sink.dispose();
+
+    // What could not be delivered is still stored, set aside, and the next launch does not try it again yet.
+    const relaunch = setup({ storage, fetch: collector.fetch, now: () => clock });
+    relaunch.sink.record(event(21, { type: "session_start" }));
+    await settle();
+    expect(collector.ns()).toEqual([11, 12, 13, 21]);
+    const before = collector.calls();
+    await settle();
+    expect(collector.calls()).toBe(before);
+    expect(relaunch.sink.pending).toBeGreaterThan(0);
+    expect(errors).toEqual([]);
   });
 });
 

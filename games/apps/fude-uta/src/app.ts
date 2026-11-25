@@ -2,7 +2,7 @@ import type { Lesson } from "@kankyouken/glyph-data";
 import type { Melodist, StrokeAudioMode } from "@kankyouken/mechanics/melody";
 import { gameEvent } from "@kankyouken/mechanics/telemetry";
 import { createRng } from "@kankyouken/mechanics/util";
-import { createLocalStore, readLaunchParams, storeKeyFor } from "@kankyouken/web-kit/app";
+import { createLocalStore, participantStoreKey, readLaunchParams } from "@kankyouken/web-kit/app";
 import { installGlyphCss } from "@kankyouken/web-kit/render";
 import { buildMelodist, loadContent } from "./content";
 import type { Env, Mode } from "./env";
@@ -33,7 +33,7 @@ export function startApp(root: HTMLElement): void {
   const rng = createRng(seed);
   const telemetry = createTelemetry(params);
   // A study participant gets settings and stars of their own, whoever used the device before.
-  const store = createLocalStore<Saved>(storeKeyFor(STORE_KEY, params), DEFAULT_SAVED, undefined, cleanSaved);
+  const store = createLocalStore<Saved>(participantStoreKey(STORE_KEY, params), DEFAULT_SAVED, undefined, cleanSaved);
   const content = loadContent();
   const startedAt = Date.now();
 
@@ -114,23 +114,32 @@ export function startApp(root: HTMLElement): void {
   let inLesson = false;
   /** Steps back in history that the game asked for itself and must not act on. */
   let ownSteps = 0;
+  const LESSON_ENTRY = { fudeUta: "lesson" } as const;
+  const isLessonEntry = (state: unknown): boolean =>
+    typeof state === "object" && state !== null && (state as { fudeUta?: unknown }).fudeUta === LESSON_ENTRY.fudeUta;
   const enterLesson = (): void => {
     if (inLesson) return;
     try {
-      history.pushState({ fudeUta: "lesson" }, "");
+      history.pushState(LESSON_ENTRY, "");
       inLesson = true;
     } catch {
       // No history to add to (some embedded pages): Back then leaves the game as before.
     }
   };
-  window.addEventListener("popstate", () => {
+  window.addEventListener("popstate", (event) => {
     if (ownSteps > 0) {
       ownSteps--;
       return;
     }
-    if (!inLesson) return;
-    inLesson = false;
-    showHome();
+    if (inLesson) {
+      inLesson = false;
+      showHome();
+    } else if (isLessonEntry(event.state)) {
+      // Forward onto the entry of a lesson that was left: there is no lesson to go back to,
+      // and standing on its entry would leave the next Back with nothing to do. Step off it.
+      ownSteps++;
+      history.back();
+    }
   });
 
   /** Back to the lesson list from inside the game (the Back button, the end of a lesson). */

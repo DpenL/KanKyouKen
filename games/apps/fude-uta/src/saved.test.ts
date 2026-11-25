@@ -1,4 +1,4 @@
-import { createLocalStore, readLaunchParams, storeKeyFor } from "@kankyouken/web-kit/app";
+import { createLocalStore, participantStoreKey, readLaunchParams } from "@kankyouken/web-kit/app";
 import { describe, expect, it } from "vitest";
 import type { Saved } from "./saved";
 import { DEFAULT_SAVED, STORE_KEY, cleanSaved } from "./saved";
@@ -15,7 +15,7 @@ function memoryStorage(initial: Record<string, string> = {}): Storage & { readon
 }
 
 const openStore = (search: string, storage: Storage): ReturnType<typeof createLocalStore<Saved>> =>
-  createLocalStore<Saved>(storeKeyFor(STORE_KEY, readLaunchParams(search)), DEFAULT_SAVED, storage, cleanSaved);
+  createLocalStore<Saved>(participantStoreKey(STORE_KEY, readLaunchParams(search)), DEFAULT_SAVED, storage, cleanSaved);
 
 describe("what the game remembers", () => {
   it("keeps settings and stars apart for every participant of a study, and plain play under the plain key", () => {
@@ -30,9 +30,16 @@ describe("what the game remembers", () => {
     expect(openStore(link("P1"), storage).get().settings).toMatchObject({ judging: "gentle", plan: "quick", volume: 0 });
     expect([...storage.data.keys()]).toEqual([`${STORE_KEY}:S1:P1`]);
 
-    // A link that cannot report is plain play: nothing of it must end up under a participant's key.
-    openStore("?study=S1&participant=P1", storage).patch({ stars: { "first-strokes": 1 } });
-    expect([...storage.data.keys()].sort()).toEqual([STORE_KEY, `${STORE_KEY}:S1:P1`]);
+    // A link that lost its api or token cannot report, but it is still that participant's session:
+    // it keeps to their key, so it neither starts from nor leaves behind anyone else's settings.
+    const incomplete = openStore("?study=S1&participant=P2&condition=sfx", storage);
+    expect(incomplete.get()).toEqual(DEFAULT_SAVED);
+    incomplete.patch({ stars: { "first-strokes": 1 } });
+    expect(openStore(link("P2"), storage).get().stars).toEqual({ "first-strokes": 1 });
+    expect(openStore("", storage).get()).toEqual(DEFAULT_SAVED);
+    // A link that names only one of the two is plain play.
+    openStore("?study=S1", storage).patch({ stars: { "first-strokes": 2 } });
+    expect([...storage.data.keys()].sort()).toEqual([STORE_KEY, `${STORE_KEY}:S1:P1`, `${STORE_KEY}:S1:P2`]);
   });
 
   it("starts from defaults for whatever is stored in the wrong shape", () => {

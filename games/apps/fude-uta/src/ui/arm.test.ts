@@ -63,6 +63,88 @@ describe("controls a click brought on screen", () => {
     expect(arming.holding()).toBe(false);
   });
 
+  it("stay off while they are pressed: a burst of taps is over half a second after its last tap", () => {
+    const time = fakeTime();
+    const arming = createArming(time.now, time.after);
+    const done = { disabled: false };
+    arming.clicked();
+    arming.hold([done]);
+    // Six more taps 150 ms apart, the last one 900 ms after the click that brought the button.
+    for (let tap = 0; tap < 6; tap++) {
+      time.advance(150);
+      expect(done.disabled).toBe(true);
+      arming.pressed(done);
+    }
+    time.advance(ARM_MS - 1);
+    expect(done.disabled).toBe(true);
+    expect(arming.holding()).toBe(true);
+    time.advance(1);
+    expect(done.disabled).toBe(false);
+    expect(arming.holding()).toBe(false);
+  });
+
+  it("are not kept off by a press on a control that is not held", () => {
+    const time = fakeTime();
+    const arming = createArming(time.now, time.after);
+    const done = { disabled: false };
+    const chip = { disabled: false };
+    arming.clicked();
+    arming.hold([done]);
+    time.advance(300);
+    arming.pressed(chip);
+    time.advance(ARM_MS - 300);
+    expect(done.disabled).toBe(false);
+    // Nor does a press on a control that has come back on start anything.
+    arming.pressed(done);
+    expect(arming.holding()).toBe(false);
+  });
+
+  it("are held to the end of a burst that is still running when they appear", () => {
+    const time = fakeTime();
+    const arming = createArming(time.now, time.after);
+    const skip = { disabled: false };
+    const listen = { disabled: false };
+    arming.clicked();
+    arming.hold([skip]);
+    time.advance(400);
+    arming.pressed(skip);
+    // 600 ms after the click the demonstration ends by itself, and Listen comes up where Skip was.
+    time.advance(200);
+    arming.hold([listen]);
+    expect(listen.disabled).toBe(true);
+    time.advance(299);
+    expect([skip.disabled, listen.disabled]).toEqual([true, true]);
+    time.advance(1);
+    expect([skip.disabled, listen.disabled]).toEqual([false, false]);
+  });
+
+  it("come back on when the timeout runs a little early", () => {
+    const time = fakeTime();
+    const arming = createArming(time.now, (ms, run) => time.after(Math.max(0, ms - 1), run));
+    const done = { disabled: false };
+    arming.clicked();
+    arming.hold([done]);
+    time.advance(ARM_MS - 1);
+    expect(done.disabled).toBe(true);
+    time.advance(1);
+    expect(done.disabled).toBe(false);
+  });
+
+  it("count as held to the millisecond, however late the timeout switches them back on (what the writing square goes by)", () => {
+    const time = fakeTime();
+    const arming = createArming(time.now, (ms, run) => time.after(ms + 30, run));
+    const square = { disabled: false };
+    arming.clicked();
+    arming.hold([square]);
+    time.advance(ARM_MS - 1);
+    expect(arming.holding()).toBe(true);
+    time.advance(1);
+    expect(square.disabled).toBe(true);
+    expect(arming.holding()).toBe(false);
+    time.advance(30);
+    expect(square.disabled).toBe(false);
+  });
+
   it("never switch on a control the game shows switched off", () => {
     const time = fakeTime();
     const arming = createArming(time.now, time.after);

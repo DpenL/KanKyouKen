@@ -110,9 +110,10 @@ export function startLearnMode(env: Env, ui: WritingUi, lesson: Lesson, onDone: 
   /**
    * The action row of a trace stage: Listen where there is sound, Hint where a hint can
    * show something. With `live` false the buttons are on show but off: a finished
-   * repetition rests on the board, and nothing asked for now would belong to it.
+   * repetition rests on the board, and nothing asked for now would belong to it. With
+   * `redraw` the row only shows what its own Hint changed (`WritingUi.redrawActions`).
    */
-  const traceActions = (stage: TraceStage, live = true): void => {
+  const traceActions = (stage: TraceStage, { live = true, redraw = false } = {}): void => {
     const buttons: HTMLButtonElement[] = [];
     if (env.audioMode() !== "silent") buttons.push(button("Listen", listen));
     if (hintAdds(stage.guide)) {
@@ -121,13 +122,14 @@ export function startLearnMode(env: Env, ui: WritingUi, lesson: Lesson, onDone: 
         state = step.state;
         for (const effect of step.effects) if (effect.type === "hint") showHint(effect, false);
         tracer.expect(state.expected, state.hint);
-        traceActions(stage);
+        traceActions(stage, { redraw: true });
       });
       hintButton.disabled = state.hint >= 2;
       buttons.push(hintButton);
     }
     if (!live) for (const each of buttons) each.disabled = true;
-    ui.setActions(...buttons);
+    if (redraw) ui.redrawActions(...buttons);
+    else ui.setActions(...buttons);
   };
 
   const beginRep = (stage: TraceStage): void => {
@@ -265,7 +267,7 @@ export function startLearnMode(env: Env, ui: WritingUi, lesson: Lesson, onDone: 
     tracer.end();
     ui.highlightUnit(null);
     chipsPlay(false);
-    traceActions(stage, false);
+    traceActions(stage, { live: false });
     probe("rest");
     timers.after(AFTER_REP_MS, () => {
       const next = currentStage(state, plan);

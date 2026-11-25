@@ -6,9 +6,10 @@ import type { Settings } from "./settings";
 import { DEFAULT_SETTINGS, sanitizeSettings } from "./settings";
 
 /**
- * Storage key in plain play. A session opened with a complete study link keeps its
- * settings and stars under a key of its own per study and participant (`storeKeyFor`),
- * so that participants who share a device do not start from each other's choices.
+ * Storage key in plain play. A session opened with a link that names a study and a
+ * participant, complete or not, keeps its settings and stars under a key of its own per
+ * study and participant (`participantStoreKey`), so that participants who share a device
+ * do not start from each other's choices.
  */
 export const STORE_KEY = "kk.fude-uta.v1";
 

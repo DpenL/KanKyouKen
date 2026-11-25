@@ -1,6 +1,6 @@
 import type { Option, Settings } from "../settings";
 import { AUDIO_MODE_OPTIONS, JUDGING_OPTIONS, PLAN_OPTIONS, TIMBRE_MODE_OPTIONS } from "../settings";
-import { arm, armed, el } from "./dom";
+import { armUnderPointer, createGuard, el } from "./dom";
 
 const CLOSE_ICON =
   '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
@@ -22,14 +22,20 @@ function openSheet(name: string, title: string, ...body: HTMLElement[]): void {
     el("div", { class: "sheet-body" }, ...body),
   );
   close.addEventListener("click", () => sheet.close());
-  // A click on the backdrop closes the sheet, but not the second click of the double click that opened it.
+  // A click on the backdrop closes the sheet, but not one that still belongs to the click that
+  // opened it. Choices made in the sheet meanwhile do not hold it: they are clicks of their own.
+  const backdrop = createGuard();
+  sheet.addEventListener("pointerdown", (event) => {
+    if (event.target === sheet) backdrop.pressed();
+  });
   sheet.addEventListener("click", (event) => {
-    if (event.target === sheet && armed()) sheet.close();
+    if (event.target === sheet && !backdrop.held()) sheet.close();
   });
   sheet.addEventListener("close", () => sheet.remove());
   document.body.append(sheet);
-  arm(sheet);
+  backdrop.hold();
   sheet.showModal();
+  armUnderPointer(sheet);
 }
 
 function radioField<T extends string>(

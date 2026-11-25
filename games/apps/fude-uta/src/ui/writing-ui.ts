@@ -24,7 +24,17 @@ export interface WritingUi {
   setMessage(text: string): void;
   /** Replace the action row. Buttons a click brought here cannot act until a double click is over (`arm`). */
   setActions(...buttons: HTMLElement[]): void;
-  /** A card over the writing square (round intro, "listen first"); null removes it. Its buttons are held like those of the action row. */
+  /**
+   * Replace the action row after a press on one of its own buttons changed what the row
+   * shows for the same character (Undo, Hint, Listen again): every button is back in its
+   * place with its meaning, so nothing is new under the pointer, and a quick second press on
+   * the same button is meant (three Undos take three strokes). Nothing is held.
+   */
+  redrawActions(...buttons: HTMLElement[]): void;
+  /**
+   * A card over the writing square (round intro, "listen first"); null removes it. Its
+   * buttons are held like those of the action row, and so is the square a click uncovers.
+   */
   setOverlay(content: HTMLElement | null): void;
   setSeal(visible: boolean): void;
   destroy(): void;
@@ -119,10 +129,15 @@ export function createWritingUi(onBack: () => void): WritingUi {
       actions.replaceChildren(...buttons);
       arm(actions);
     },
+    redrawActions(...buttons) {
+      actions.replaceChildren(...buttons);
+    },
     setOverlay(content) {
+      const uncovers = content === null && !overlay.hidden;
       overlay.replaceChildren(...(content === null ? [] : [content]));
       overlay.hidden = content === null;
       arm(overlay);
+      if (uncovers) board.uncovered();
     },
     setSeal(visible) {
       seal.hidden = !visible;

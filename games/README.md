@@ -79,8 +79,15 @@ Each scored action becomes one event with `event_type`, `item_id` (the character
 - **A token the collector refuses** (401, 403): nothing more is sent with it, the notice
   says that the session is not being recorded, and the events stay stored for a launch
   with a token that works.
-- **An event the collector refuses as it is** (any other 4xx) is the only kind that is
-  dropped because of an answer.
+- **An event the collector refuses as it is** (any other 4xx) is dropped at once.
+- **An event the collector cannot store** (it answers 500 whenever its insert fails, for
+  example for a session id it does not know) does not hold up the others: after two
+  server errors in a row a later event is tried in between, and once a later event was
+  accepted while this one was still refused, it is set aside. It stays stored, is tried
+  again only while nothing else is waiting and at most every 10 minutes (across launches
+  too), and is dropped, and counted, after 5 more server errors. In an outage, where
+  every event is refused, nothing is set aside or lost; events can then arrive out of
+  recording order, so order by `ts`.
 - At most 500 events are held. Beyond that, single actions (stroke and choice attempts,
   hints, listens) are dropped before results, and those before `session_start` and
   `session_end`; the notice then says how many events could not be kept.
@@ -101,10 +108,11 @@ select distinct on (payload->>'client_event_id') * from events order by payload-
 
 ### Shared devices
 
-With a complete study link Kumiki keeps its settings and best scores under a storage
-key of their own per study and participant (`kk.kumiki.v1:<study>:<participant>`, from
-`storeKeyFor` in `@kankyouken/web-kit/app`), so a participant does not start from the
-previous participant's choices. Plain play keeps the plain key. The unsent-event
+With a link that names a study and a participant, complete or not, Kumiki keeps its
+settings and best scores under a storage key of their own per study and participant
+(`kk.kumiki.v1:<study>:<participant>`, from `participantStoreKey` in
+`@kankyouken/web-kit/app`), so a participant does not start from the previous
+participant's choices. Plain play keeps the plain key. The unsent-event
 backlog is kept per study and participant as well
 (`kankyouken:events:<study>:<participant>`).
 
@@ -141,9 +149,15 @@ participant and stay theirs to change (each change is a `settings_change` event)
   from then on the session is silent whatever `audio_mode` says.
 - **`hint_shown`** is not recorded in "Trace the dotted stroke": Hint is not offered
   there, because the dotted stroke already shows all a hint could.
-- A control that a click has just brought on screen is disabled for half a second, so the
-  second click of a double click never hands in a character, skips a demonstration or
-  starts a lesson. The browser's Back returns to the lesson list.
+- A control that a click has just brought on screen is disabled until half a second after
+  the last tap on it, so neither a double click nor a longer burst of taps hands in a
+  character, skips a demonstration or starts a lesson; for that half second the writing
+  square takes no pen-down where Listen ("Listen first") or Start uncovered it. Only what
+  is new under the pointer is held: a button whose press only redraws its own row (Undo,
+  Hint, Listen again) takes a quick second press, a sheet (Settings, About) holds only the
+  control that opens under the pointer, and its backdrop ignores only the clicks of the
+  one that opened it. From memory, the melody stops once a stroke is written, not at a tap
+  on the square. The browser's Back returns to the lesson list.
 
 ## Data and licenses
 
