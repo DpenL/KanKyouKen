@@ -8,6 +8,7 @@ import { DEFAULT_SAVED, STORE_KEY, cleanSaved, type Saved } from "./saved";
 import { createSound } from "./sound";
 import { APP_VERSION, createTelemetry } from "./telemetry";
 import type { App, Probe } from "./ui/app";
+import { armScreen, createArming, watchClicks } from "./ui/arm";
 import { startFlow } from "./ui/flow";
 import "./styles.css";
 
@@ -38,6 +39,11 @@ function start(root: HTMLElement): void {
   const sound = createSound(glyphs, rng.fork("sound"), store.get());
   const probe: Probe = { screen: "", puzzle: null, state: null, board: null };
   let leave: (() => void) | undefined;
+  const arming = createArming(
+    () => performance.now(),
+    (ms, run) => void window.setTimeout(run, ms),
+  );
+  watchClicks(arming);
 
   const app: App = {
     content,
@@ -45,6 +51,7 @@ function start(root: HTMLElement): void {
     rng,
     sound,
     probe,
+    arming,
     record: (event) => telemetry.sink.record(event),
     show(name, screen, onLeave) {
       leave?.();
@@ -52,6 +59,8 @@ function start(root: HTMLElement): void {
       probe.screen = name;
       root.replaceChildren(screen);
       root.setAttribute("data-screen", name);
+      // If a click put this screen up, the rest of a double tap must not choose on it.
+      armScreen(arming, screen);
       window.scrollTo(0, 0);
       // Keyboard and screen-reader users continue from the new screen, not from the page top.
       screen.tabIndex = -1;

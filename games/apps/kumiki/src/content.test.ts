@@ -27,12 +27,13 @@ describe("buildContent", () => {
   });
 
   it("leaves out characters whose structure is only a guess", () => {
-    // 反 has a meaning and two parts (厂, 又), but nothing in the data says how they sit: its layout is a guess.
-    expect(set.lexicon["反"]).toBeDefined();
-    expect(decompose(glyphs.get("反")!, { known: content.context.known })).toMatchObject({ components: ["厂", "又"], layoutGuessed: true });
-    const withGuess = buildContent(glyphs, { ...set, families: [{ id: "cliff", shared: "厂", chars: ["反", "坂"] }] });
+    // 玉, given a meaning here, has two parts (王, 丶), but they fit no structure: its layout is a guess.
+    // (This test used 反 until the library read its 厂 as the hanging wrap it is.)
+    const lexicon = { ...set.lexicon, 玉: { meanings: ["jewel"], readings: { on: ["ギョク"], kun: ["たま"] } } };
+    expect(decompose(glyphs.get("玉")!, { known: new Set(Object.keys(lexicon)) })).toMatchObject({ components: ["王", "丶"], layoutGuessed: true });
+    const withGuess = buildContent(glyphs, { ...set, lexicon, families: [{ id: "king", shared: "王", chars: ["玉", "坂"] }] });
     expect(withGuess.decks.map((deck) => [deck.id, deck.chars])).toEqual([
-      ["cliff", ["坂"]],
+      ["king", ["坂"]],
       [MIXED_DECK_ID, ["坂"]],
     ]);
     for (const deck of content.decks) {

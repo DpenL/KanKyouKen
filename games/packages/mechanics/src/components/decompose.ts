@@ -6,7 +6,7 @@
  * stroke data, and every rule about how far to split, is our own design.
  */
 
-import { splitRuns, strokesBox } from "../glyph/tree";
+import { splitRuns, strokesBox, walkComponents } from "../glyph/tree";
 import type { ComponentNode, Glyph } from "../glyph/types";
 import { boxCenter, boxHeight, boxWidth, distance, polylineLength, resample, type Box, type Point } from "../util/geometry";
 import { layoutFromBoxes, makeLayout } from "./layout";
@@ -40,6 +40,14 @@ const SIDE_BAND = 0.18;
 /** Largest slope (tangent) at which a segment still counts as running along a side. */
 const SIDE_SLOPE = 0.58;
 
+/**
+ * Enclosure shapes the clearance test may give a part whose strokes and label show none:
+ * hanging and sweeping wraps (厂 in 反, 气 in 気, 弋 in 式), whose sides are slanted or
+ * curved strokes that the side test does not count. A crossing stroke (亅 through 二)
+ * or a block beside a dot (王 and 丶) reads as "full" or "left" and wraps nothing.
+ */
+const UNMARKED_WRAPS: readonly EncloseShape[] = ["top-left", "bottom-left", "top-right"];
+
 const byFirstStroke = (a: Part, b: Part): number => a.strokes[0]! - b.strokes[0]!;
 
 /**
@@ -47,10 +55,16 @@ const byFirstStroke = (a: Part, b: Part): number => a.strokes[0]! - b.strokes[0]
  * it has fewer than two named parts, or some of its strokes belong to no named part
  * (splitting would leave strokes nobody can name). Groups without a name are looked
  * through. Runs of one component written in separate goes form a single part (`runs`
- * is `splitRuns` of the glyph); a run whose partners are filed elsewhere in the tree is
- * only a fragment of its component and is looked through like a group without a name.
+ * is `splitRuns` of the glyph). A run whose partners are filed elsewhere in the tree is
+ * a part of its own, named after its component, when it stands for it (`standIns`, see
+ * `standInRuns`); otherwise it is only a fragment and is looked through like a group
+ * without a name (亠 above 王 in 主 gives its 丶).
  */
-function childParts(node: ComponentNode, runs: ReadonlyMap<string, string>): Part[] | null {
+function childParts(
+  node: ComponentNode,
+  runs: ReadonlyMap<string, string>,
+  standIns: ReadonlySet<string>,
+): Part[] | null {
   const parts: Part[] = [];
   const partOfRun = new Map<string, Part>();
   let loose = false;
@@ -60,7 +74,8 @@ function childParts(node: ComponentNode, runs: ReadonlyMap<string, string>): Par
   };
   const visit = (n: ComponentNode): void => {
     const run = runs.get(n.id);
-    if (n.element === undefined || (n.part !== undefined && run === undefined)) {
+    const fragment = n.part !== undefined && run === undefined && !standIns.has(n.id);
+    if (n.element === undefined || fragment) {
       if (hasOwnStrokes(n)) loose = true;
       for (const child of n.children) visit(child);
       return;
@@ -80,6 +95,49 @@ function childParts(node: ComponentNode, runs: ReadonlyMap<string, string>): Par
   if (loose || parts.length < 2) return null;
   for (const part of parts) part.strokes.sort((a, b) => a - b);
   return parts.sort(byFirstStroke);
+}
+
+/**
+ * Runs whose partners the source files elsewhere in the tree (so `splitRuns` does not
+ * list them) that still stand for their component, by node id: nothing below them is
+ * named, and they hold more strokes than those of their partners that are filed inside
+ * the named group they belong to. KanjiVG files a stroke two components share under one
+ * of them and marks what is left of the other as a run: 羊 in 業 is complete but for its
+ * last two strokes, which are filed under 木 beside it. A run no larger than what is
+ * filed beside it is the component cut in two, not a component missing a stroke (匸 in
+ * 亡 is one stroke beside the other, under 亠; 二 in 井; 虫 in 禹), and so is a stray stroke
+ * (the closing stroke of 四, which KanjiVG files beside 四 in 泗): they stand for nothing.
+ * A partner outside the group does not count (十 in 重: the 十 of the first run of 千,
+ * whose vertical is in the other run, under 里). Only the character itself is split
+ * with stand-ins (see `decompose`).
+ */
+function standInRuns(root: ComponentNode, runs: ReadonlyMap<string, string>): Set<string> {
+  /** Each run with the named group it belongs to (the scope of `splitRuns`). */
+  const split: { readonly node: ComponentNode; readonly group: ComponentNode }[] = [];
+  const visit = (n: ComponentNode, group: ComponentNode): void => {
+    if (n.element !== undefined && n.part !== undefined) split.push({ node: n, group });
+    for (const child of n.children) visit(child, n.element !== undefined ? n : group);
+  };
+  visit(root, root);
+  const out = new Set<string>();
+  for (const { node: n, group } of split) {
+    if (runs.has(n.id)) continue;
+    let named = false;
+    walkComponents(n, (d) => {
+      named ||= d !== n && d.element !== undefined;
+    });
+    if (named) continue;
+    const inGroup = new Set<ComponentNode>();
+    walkComponents(group, (d) => void inGroup.add(d));
+    const own = new Set(n.strokes);
+    const others = new Set(
+      split
+        .filter(({ node: o }) => o !== n && o.element === n.element && inGroup.has(o))
+        .flatMap(({ node: o }) => o.strokes.filter((x) => !own.has(x))),
+    );
+    if (own.size > others.size) out.add(n.id);
+  }
+  return out;
 }
 
 function boxGap(a: Box, b: Box): number {
@@ -162,8 +220,9 @@ function shapeFromSides(top: boolean, bottom: boolean, left: boolean, right: boo
  * label decides for hanging and sweeping wraps (广-like and 辶-like); otherwise the
  * shape is read off the part's strokes: a side is covered when strokes run along at
  * least half of it. Undefined when neither gives a known shape: the part's own strokes
- * cover fewer than two adjoining sides (a single crossing stroke such as 亅 through 二,
- * a block such as 王 beside 丶), so whatever its box holds, it wraps nothing.
+ * cover fewer than two adjoining sides. That is so for a single crossing stroke such as
+ * 亅 through 二 and a block such as 王 beside 丶, which wrap nothing, but also for a
+ * hanging wrap whose side is one slanted stroke (厂 in 反); see `UNMARKED_WRAPS`.
  */
 function encloseHint(glyph: Glyph, part: Part): EncloseShape | undefined {
   const label = part.nodes[0]?.positionDetail ?? "";
@@ -217,8 +276,9 @@ function encloseHint(glyph: Glyph, part: Part): EncloseShape | undefined {
  *
  * The structure comes from `layoutFromBoxes` over where the parts sit (measured without
  * the thin extremities of sweeping strokes), with the shape of an enclosing part read
- * off its own strokes; a part whose strokes show no enclosure shape is never taken for
- * the outer slot of one. `components` and `strokes` are in slot order.
+ * off its own strokes; a part whose strokes show no enclosure shape is taken for the
+ * outer slot of one only when where the others sit reads as a hanging or sweeping wrap
+ * (`UNMARKED_WRAPS`). `components` and `strokes` are in slot order.
  *
  * `layoutGuessed` is true when the parts fitted neither a row, a column nor an
  * enclosure somewhere and were lined up by their centres instead (原 comes out as 厂,
@@ -236,14 +296,19 @@ export function decompose(glyph: Glyph, options: DecomposeOptions = {}): Decompo
 
   const whole: Part = { key: glyph.char, strokes: glyph.strokes.map((_, s) => s), nodes: [] };
   const runs = splitRuns(glyph.root);
-  let parts: Part[] = maxSlots === 1 ? [whole] : (childParts(glyph.root, runs) ?? [whole]);
+  const standIns = standInRuns(glyph.root, runs);
+  let parts: Part[] = maxSlots === 1 ? [whole] : (childParts(glyph.root, runs, standIns) ?? [whole]);
   while (parts.length > maxSlots) parts = mergeClosest(glyph, parts);
+  // A named component of the character is split further only where the source splits it:
+  // its runs whose partners are filed inside it are fragments (虫 in 禹 in 属, 匸 in 亡 in
+  // 望, 二 in 井 in 囲, 尸 in 局 in 跼), however they would stand in the character itself.
+  const noStandIns: ReadonlySet<string> = new Set();
 
   for (;;) {
     let best: { part: Part; pieces: Part[] } | null = null;
     for (const part of parts) {
       if (part.nodes.length !== 1) continue;
-      const pieces = childParts(part.nodes[0]!, runs);
+      const pieces = childParts(part.nodes[0]!, runs, noStandIns);
       if (pieces === null || parts.length - 1 + pieces.length > maxSlots) continue;
       if (options.known && !pieces.every((piece) => options.known!.has(piece.key))) continue;
       if (best === null || part.strokes.length > best.part.strokes.length) best = { part, pieces };
@@ -255,7 +320,7 @@ export function decompose(glyph: Glyph, options: DecomposeOptions = {}): Decompo
 
   const { tree, order, guessed } = layoutFromBoxes(
     parts.map((part) => trimmedBox(glyph, part.strokes)),
-    parts.map((part) => encloseHint(glyph, part) ?? null),
+    parts.map((part) => encloseHint(glyph, part) ?? UNMARKED_WRAPS),
   );
   return {
     char: glyph.char,

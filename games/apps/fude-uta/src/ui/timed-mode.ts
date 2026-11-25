@@ -36,11 +36,18 @@ export function startTimedMode(env: Env, ui: WritingUi, lesson: Lesson, onDone: 
   let clock: ItemClock = startItemClock(Date.now());
   let expected = 0;
   let ticker: number | null = null;
+  /** True once the square can take strokes after Start: the round's time runs from then. */
+  let started = false;
   /** True once every character is written and the round has handed over its result. */
   let over = false;
+  /** True once the mode has been left. */
+  let stopped = false;
+
+  /** Time spent on the character on screen so far. */
+  const onItem = (now: number): number => (current === null || !started ? 0 : now - clock.startedAt);
 
   const showStatus = (): void => {
-    const running = current === null ? 0 : Date.now() - clock.startedAt;
+    const running = onItem(Date.now());
     time.textContent = formatDuration(round.elapsedMs + running);
     score.textContent = String(round.score);
   };
@@ -176,8 +183,17 @@ export function startTimedMode(env: Env, ui: WritingUi, lesson: Lesson, onDone: 
         "Start",
         () => {
           ui.setOverlay(null);
-          ticker = window.setInterval(showStatus, TICK_MS);
           nextItem();
+          // The square takes no stroke for the rest of a double click on Start (`Board.uncovered`): the
+          // first character's clock, and the round's time, start when it can, so no response time
+          // holds time in which nothing could be written.
+          board.whenWritable(() => {
+            if (stopped) return;
+            // Afresh, unless a stroke was judged before the timeout that ends the hold came round.
+            if (current !== null && expected === 0 && clock.attemptsOnStroke === 0) clock = startItemClock(Date.now());
+            started = true;
+            ticker = window.setInterval(showStatus, TICK_MS);
+          });
         },
         "primary",
       ),
@@ -188,7 +204,7 @@ export function startTimedMode(env: Env, ui: WritingUi, lesson: Lesson, onDone: 
     recordLeft(by) {
       if (over) return;
       const now = Date.now();
-      const running = current === null ? 0 : now - clock.startedAt;
+      const running = onItem(now);
       env.emit(
         lessonAbandonedEvent(now, by, {
           lesson: lesson.id,
@@ -206,6 +222,7 @@ export function startTimedMode(env: Env, ui: WritingUi, lesson: Lesson, onDone: 
       );
     },
     stop() {
+      stopped = true;
       timers.clear();
       if (ticker !== null) window.clearInterval(ticker);
       tracer.end();

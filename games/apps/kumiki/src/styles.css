@@ -352,9 +352,15 @@ button:disabled {
     border-color 140ms ease;
 }
 
-.deck:hover {
+.deck:not(:disabled):hover {
   border-color: var(--accent);
   transform: translateY(-2px);
+}
+
+/* A card that has only just come on screen cannot be picked yet (see ARM_MS in ui/arm.ts). */
+.deck:disabled,
+.mode:disabled {
+  opacity: 0.55;
 }
 
 .deck-emblem {

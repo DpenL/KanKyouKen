@@ -208,8 +208,11 @@ interface Built {
   readonly guessed: boolean;
 }
 
-/** `hints` of `layoutFromBoxes`: a shape, null for "never an enclosure", undefined for "not known". */
-type EncloseHints = readonly (EncloseShape | null | undefined)[];
+/**
+ * `hints` of `layoutFromBoxes`: a shape; the shapes the clearance test may give; null for
+ * "never an enclosure"; undefined for "not known".
+ */
+type EncloseHints = readonly (EncloseShape | readonly EncloseShape[] | null | undefined)[];
 
 interface Cut {
   readonly groups: number[][];
@@ -318,12 +321,15 @@ function buildFromBoxes(boxes: readonly Box[], indices: readonly number[], hints
   }
 
   const outer = findEncloser(boxes, indices);
+  const hint = outer === null ? null : hints?.[outer];
   // A box that is no enclosure is not replaced by a smaller one: that would turn the character inside out.
-  if (outer !== null && hints?.[outer] !== null) {
+  if (outer !== null && hint !== null) {
     const rest = indices.filter((i) => i !== outer);
-    const inner = buildFromBoxes(boxes, rest, hints);
-    const shape = hints?.[outer] ?? shapeFromClearance(unionOf(boxes, indices), unionOf(boxes, rest));
-    return { tree: { kind: "enclose", shape, inner: inner.tree }, order: [outer, ...inner.order], guessed: inner.guessed };
+    const shape = typeof hint === "string" ? hint : shapeFromClearance(unionOf(boxes, indices), unionOf(boxes, rest));
+    if (typeof hint === "string" || hint === undefined || hint.includes(shape)) {
+      const inner = buildFromBoxes(boxes, rest, hints);
+      return { tree: { kind: "enclose", shape, inner: inner.tree }, order: [outer, ...inner.order], guessed: inner.guessed };
+    }
   }
 
   const centres = indices.map((i) => boxCenter(boxes[i]!));
@@ -357,16 +363,18 @@ function buildFromBoxes(boxes: readonly Box[], indices: readonly number[], hints
  *
  * `hints[i]`, when given, is the enclosure shape to use if box i turns out to be the
  * outer slot of an enclosure (callers that know the component's strokes can tell the
- * shape more reliably than the clearance test). A hint of null says that box i is no
- * enclosure whatever it contains (its strokes do not go round anything): when step 3
- * would make it the outer slot, there is no enclosure and step 4 follows.
+ * shape more reliably than the clearance test). A list of shapes lets the clearance
+ * test decide but takes box i for the outer slot only when it answers one of them. A
+ * hint of null says that box i is no enclosure whatever it contains (its strokes do not
+ * go round anything). When step 3 would make box i the outer slot and its hint rules
+ * that out, there is no enclosure and step 4 follows.
  *
  * `order[slot]` is the index of the input box that sits in that slot (slot order as in
  * `Layout.slots`). Throws a RangeError when no boxes are given.
  */
 export function layoutFromBoxes(
   boxes: readonly Box[],
-  hints?: readonly (EncloseShape | null | undefined)[],
+  hints?: readonly (EncloseShape | readonly EncloseShape[] | null | undefined)[],
 ): { tree: LayoutNode; order: number[]; guessed: boolean } {
   if (boxes.length === 0) throw new RangeError("layoutFromBoxes: no boxes given");
   return buildFromBoxes(

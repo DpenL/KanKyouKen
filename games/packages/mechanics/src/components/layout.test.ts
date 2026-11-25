@@ -285,6 +285,17 @@ describe("layoutFromBoxes", () => {
     expect(refused.guessed).toBe(true);
   });
 
+  it("takes a box for an enclosure only with a shape the caller allows", () => {
+    const centred = [box(300, 300, 700, 700), box(0, 0, 1000, 1000)];
+    const tucked = [box(400, 400, 1000, 1000), box(0, 0, 1000, 1000)];
+    const wraps = ["top-left", "bottom-left", "top-right"] as const;
+    expect(layoutSignature(layoutFromBoxes(tucked, [undefined, wraps]).tree)).toBe("E:top-left(S)");
+    // The clearance test reads "full" here, which the caller did not allow.
+    const refused = layoutFromBoxes(centred, [undefined, wraps]);
+    expect(layoutSignature(refused.tree)).toBe("R(S,S)");
+    expect(refused.guessed).toBe(true);
+  });
+
   it("copes with boxes that have no width or no height", () => {
     // Two upright lines side by side, then one above the other on the same x.
     expect(signatureOf([box(200, 0, 200, 1000), box(800, 0, 800, 1000)])).toBe("R(S,S)");

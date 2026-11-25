@@ -472,7 +472,8 @@ test.describe("on a phone with the browser's toolbars showing", () => {
             (element) => !onTop(element),
           ).length,
           worth: document.querySelector('[data-stat="worth"]')?.getBoundingClientRect().width ?? 0,
-          // The notice lets taps through, so the test above would not see it lie over a control.
+          // No control sits in the rows the notice takes, whatever is drawn on top there (the
+          // test above only looks at what is on top at each control's centre).
           underNotice: [...document.querySelectorAll(".assembly button, .assembly .status, .tray .tile")].filter((element) => {
             const notice = document.querySelector("[data-kk-recording-notice]")?.getBoundingClientRect();
             const box = element.getBoundingClientRect();
@@ -498,6 +499,101 @@ test.describe("on a phone with the browser's toolbars showing", () => {
       expect(errors).toEqual([]);
     });
   }
+
+  test("a burst of taps on the exam's Finish leaves the results on screen and starts no deck", async ({ page }) => {
+    const errors = watchConsole(page);
+    await page.goto(DEBUG);
+    await page.getByRole("button", { name: "Exam" }).tap();
+    await page.getByRole("dialog").locator("[data-deck]").first().tap();
+    const finish = page.getByRole("button", { name: "Finish" });
+    while (!(await finish.isVisible())) await page.getByRole("button", { name: "Next" }).tap();
+    await expect(finish).toBeEnabled();
+    await finish.scrollIntoViewIfNeeded();
+    const at = await centre(page, '[data-action="next"]');
+    const starts = (await events(page, "item_start")).length;
+    const underFinger = (): Promise<string | null> =>
+      page.evaluate(([x, y]) => {
+        const control = document.elementFromPoint(x, y)?.closest("button");
+        return control ? `${control.getAttribute("data-action") ?? control.getAttribute("data-deck")} ${control.disabled ? "off" : "on"}` : null;
+      }, [at.x, at.y] as const);
+
+    // Three taps 300 ms apart: the results' Decks comes up under the finger, and behind it
+    // the deck list with a deck card on the same spot. Neither may take the later taps.
+    await page.touchscreen.tap(at.x, at.y);
+    await expect(page.locator(".exam-results")).toBeVisible();
+    expect(await underFinger()).toBe("home off");
+    for (let tap = 1; tap < 3; tap++) {
+      await page.waitForTimeout(300);
+      await page.touchscreen.tap(at.x, at.y);
+    }
+    await page.waitForTimeout(800);
+    await expect(page.locator(".exam-results")).toBeVisible();
+    expect(await events(page, "exam_complete")).toHaveLength(1);
+    expect(await events(page, "item_start")).toHaveLength(starts);
+    // Once the burst is over, Decks is on and leads to the deck list.
+    expect(await underFinger()).toBe("home on");
+    await page.getByRole("button", { name: "Decks" }).tap();
+    await expect(page.locator(".home")).toBeVisible();
+
+    expect(errors).toEqual([]);
+  });
+
+  test("a burst of taps that opens or closes a dialog neither closes it again nor starts the deck under the finger", async ({ page }) => {
+    const errors = watchConsole(page);
+    await page.goto(DEBUG);
+    const burst = async (name: string): Promise<void> => {
+      const control = page.getByRole("button", { name });
+      await control.scrollIntoViewIfNeeded();
+      await expect(control).toBeEnabled();
+      const box = (await control.boundingBox())!;
+      for (let tap = 0; tap < 3; tap++) {
+        if (tap > 0) await page.waitForTimeout(300);
+        await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+      }
+      await page.waitForTimeout(800);
+    };
+
+    // The chooser opens under the finger: the later taps pick no deck and do not close it from its backdrop.
+    await burst("Exam");
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.getByRole("button", { name: "Close" }).tap();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    // Closing Settings leaves a deck card under the finger.
+    await page.getByRole("button", { name: "Settings" }).tap();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await burst("Close");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(page.locator(".home")).toBeVisible();
+    // Closing it from its backdrop with a double tap leaves the deck card under the finger alone too.
+    await page.getByRole("button", { name: "Settings" }).tap();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.waitForTimeout(900);
+    // A point on the backdrop, outside the dialog's box, with a deck card under it.
+    const spot = await page.evaluate(() => {
+      const box = document.querySelector("dialog[open]")!.getBoundingClientRect();
+      for (const card of document.querySelectorAll(".deck")) {
+        const r = card.getBoundingClientRect();
+        for (const fy of [0.5, 0.25, 0.75]) {
+          const x = r.left + r.width / 2;
+          const y = r.top + r.height * fy;
+          const outside = y < box.top - 4 || y > box.bottom + 4 || x < box.left - 4 || x > box.right + 4;
+          if (y > 0 && y < innerHeight && outside) return { x, y };
+        }
+      }
+      return null;
+    });
+    expect(spot).not.toBeNull();
+    for (let tap = 0; tap < 2; tap++) {
+      if (tap > 0) await page.waitForTimeout(300);
+      await page.touchscreen.tap(spot!.x, spot!.y);
+    }
+    await page.waitForTimeout(800);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(page.locator(".home")).toBeVisible();
+    expect(await events(page, "item_start")).toEqual([]);
+
+    expect(errors).toEqual([]);
+  });
 });
 
 test.describe("a session that belongs to a study", () => {

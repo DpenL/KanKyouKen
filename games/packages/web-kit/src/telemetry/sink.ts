@@ -48,7 +48,11 @@ export const REFUSALS_BEFORE_PROBE = 2;
 /** Least time between two tries of an event that was set aside, also across page loads. */
 export const SET_ASIDE_RETRY_MS = 10 * 60_000;
 
-/** Tries an event that was set aside gets, after which it is given up ("stuck"). */
+/**
+ * Server errors on tries of an event set aside after which it is given up ("stuck"). Only
+ * a try after which some other event was accepted since the one before counts: a server
+ * error while nothing else gets through is an outage, not a sign against the event.
+ */
 export const SET_ASIDE_TRIES = 5;
 
 /**
@@ -59,7 +63,8 @@ export const SET_ASIDE_TRIES = 5;
  *  - "unserializable": the event could not be turned into JSON.
  *  - "stuck":          the collector kept answering the event with a server error while
  *                      it accepted later events, and still did after it had been set
- *                      aside and tried `SET_ASIDE_TRIES` more times.
+ *                      aside, on `SET_ASIDE_TRIES` more tries each of which followed the
+ *                      acceptance of some other event.
  */
 export type DropReason = "overflow" | "rejected" | "unserializable" | "stuck";
 
@@ -350,7 +355,10 @@ function readRetryAfter(response: Response, now: number): number | undefined {
  *     one that has another server error then is set aside: it leaves the queue, stays
  *     stored, and is tried again only while nothing else is waiting, at most once every
  *     `SET_ASIDE_RETRY_MS` (counted across page loads), and given up ("stuck") when the
- *     collector has answered `SET_ASIDE_TRIES` of those tries with a server error. One
+ *     collector has answered `SET_ASIDE_TRIES` of those tries with a server error,
+ *     counting only tries since whose previous one (or the setting aside) some other
+ *     event was accepted: while nothing gets through, a server error is the outage, and
+ *     a long outage costs no event. One
  *     that is accepted on the second try was passing trouble: the queue goes back to
  *     plain order. So a restored backlog of a session the collector does not know holds
  *     up the current session's events only for a few attempts, and those events may
@@ -409,6 +417,10 @@ export function createCollectorSink(config: CollectorSinkConfig): CollectorSink 
   const setAside: SetAside[] = [];
   /** Per queued event: server errors in a row, and whether a later event was accepted after the last of them. */
   const refusals = new Map<CollectorBody, { count: number; overtaken: boolean }>();
+  /** Events accepted so far, queued or set aside. */
+  let acceptances = 0;
+  /** Per event set aside: `acceptances` when it was set aside or last tried; none for one restored from storage. */
+  const acceptancesAtTry = new Map<SetAside, number>();
   /** Queued events that came from storage rather than from this sink's `record`. */
   const restored = new Set<CollectorBody>();
   const waiters: (() => void)[] = [];
@@ -540,6 +552,7 @@ export function createCollectorSink(config: CollectorSinkConfig): CollectorSink 
     const index = setAside.indexOf(entry);
     if (index === -1) return;
     setAside.splice(index, 1);
+    acceptancesAtTry.delete(entry);
     leave(entry.body);
     storedCopyStale = true;
   };
@@ -710,7 +723,9 @@ export function createCollectorSink(config: CollectorSinkConfig): CollectorSink 
       giveUp(entry.body, outcome.error);
     } else if (outcome.kind === "retry") {
       entry.lastTry = now();
-      if (outcome.serverError === true) entry.tries++;
+      // A server error counts against the event only if the collector took some other event since its last try.
+      if (outcome.serverError === true && acceptances > (acceptancesAtTry.get(entry) ?? 0)) entry.tries++;
+      acceptancesAtTry.set(entry, acceptances);
       const stuck = entry.tries >= SET_ASIDE_TRIES;
       if (stuck) unsetAside(entry);
       persist();
@@ -744,6 +759,7 @@ export function createCollectorSink(config: CollectorSinkConfig): CollectorSink 
 
         // An acknowledged event is forgotten even when the sink was disposed meanwhile.
         if (outcome.kind === "sent") {
+          acceptances++;
           if (entry) unsetAside(entry);
           else accepted(body);
           persist();
@@ -777,7 +793,9 @@ export function createCollectorSink(config: CollectorSinkConfig): CollectorSink 
         if (outcome.serverError === true && refusal?.overtaken === true) {
           // Refused again although a later event was accepted since: the trouble is this event.
           remove(body);
-          setAside.push({ body, tries: 0, lastTry: now() });
+          const aside: SetAside = { body, tries: 0, lastTry: now() };
+          setAside.push(aside);
+          acceptancesAtTry.set(aside, acceptances);
           persist();
           continue;
         }

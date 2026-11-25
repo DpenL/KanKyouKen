@@ -91,9 +91,11 @@ Each scored action becomes one event with `event_type`, `item_id` (the character
   server errors in a row a later event is tried in between, and once a later event was
   accepted while this one was still refused, it is set aside. It stays stored, is tried
   again only while nothing else is waiting and at most every 10 minutes (across launches
-  too), and is dropped, and counted, after 5 more server errors. In an outage, where
-  every event is refused, nothing is set aside or lost; events can then arrive out of
-  recording order, so order by `ts`.
+  too), and is dropped, and counted, after 5 more server errors, counting only those
+  that came after some other event was accepted since its previous try. In an outage,
+  where every event is refused, nothing is lost, also when a single request gets
+  through: events then set aside wait for the collector to come back. Events can then
+  arrive out of recording order, so order by `ts`.
 - At most 500 events are held. Beyond that, single actions (stroke and choice attempts,
   hints, listens) are dropped before results, and those before `session_start` and
   `session_end`; the notice then says how many events could not be kept, and the gap
@@ -152,8 +154,13 @@ participant and stay theirs to change (each change is a `settings_change` event)
 - **`stroke_attempt.response_time_ms`** counts from the moment the stroke could first be
   written: the end of the demonstration or of the pause after a repetition for a first
   stroke, the acceptance of the stroke before for the others. It never includes time in
-  which the square took no strokes. `recall_result.response_time_ms` is the whole time
-  from the prompt to Done, listening included.
+  which the square took no strokes. In the timed round that holds for its time too: the
+  first character's clock (its first response time and `duration_ms`) and the round's
+  time (`elapsed_ms`, `round_elapsed_ms`) start when the square first takes a stroke,
+  half a second after Start, while that character's `item_start` is when it appears, at
+  Start. `recall_result.response_time_ms` is the whole time from the prompt to Done,
+  listening included (the half second after Listen in which the square takes no stroke
+  as well).
 - **`recall_result`** is scored with the judging level the player has set, as the
   learning stages are, and carries it: `judging` (`gentle`, `normal`, `strict`) and the
   matcher's `leniency`. `drawn_count` above `stroke_count` means extra strokes; the

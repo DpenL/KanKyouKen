@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { DrawnStroke, StrokeSample } from "@kankyouken/mechanics/stroke";
-import { clientToGlyph, createStrokeCapture } from "./capture";
+import { RESTING_TOUCH_MS, clientToGlyph, createStrokeCapture } from "./capture";
 
 interface Matrix {
   a: number;
@@ -286,6 +286,67 @@ describe("createStrokeCapture", () => {
     dispatch("pointerup", { ...at(100, 900), isPrimary: false, pointerId: 7, pointerType: "touch" });
     expect(rec.log).toEqual(["start", "move", "end"]);
     expect(rec.ends[0]!.map((s) => s.y)).toEqual([100, 500, 900]);
+  });
+
+  it("lets a pen take over from a touch resting on the square", () => {
+    const { svg, dispatch } = createTarget();
+    const rec = record();
+    createStrokeCapture(svg, rec.handlers);
+
+    const palm = { pointerId: 3, pointerType: "touch" };
+    const pen = { pointerId: 5, pointerType: "pen" };
+    dispatch("pointerdown", { ...at(800, 900), ...palm });
+    dispatch("pointermove", { ...at(820, 880), ...palm });
+    dispatch("pointerdown", { ...at(100, 100), ...pen });
+    dispatch("pointermove", { ...at(500, 100), ...pen });
+    dispatch("pointermove", { ...at(840, 860), ...palm });
+    dispatch("pointerup", { ...at(900, 100), ...pen });
+    dispatch("pointerup", { ...at(840, 860), ...palm });
+    expect(rec.log).toEqual(["start", "move", "cancel", "start", "move", "end"]);
+    expect(rec.ends[0]!.map((s) => [s.x, s.y])).toEqual([
+      [100, 100],
+      [500, 100],
+      [900, 100],
+    ]);
+  });
+
+  it("lets a new pointer take over from a touch that has sat still for a while", () => {
+    const { svg, dispatch } = createTarget();
+    const rec = record();
+    createStrokeCapture(svg, rec.handlers);
+
+    const palm = { pointerId: 3, pointerType: "touch" };
+    const finger = { isPrimary: false, pointerId: 4, pointerType: "touch" };
+    dispatch("pointerdown", { ...at(800, 900), ...palm, timeStamp: 1000 });
+    // Resting skin drifts a little (10 glyph units are 5 px here).
+    dispatch("pointermove", { ...at(810, 900), ...palm, timeStamp: 1200 });
+    dispatch("pointerdown", { ...at(100, 200), ...finger, timeStamp: 1000 + RESTING_TOUCH_MS });
+    dispatch("pointermove", { ...at(500, 200), ...finger, timeStamp: 1600 });
+    dispatch("pointerup", { ...at(900, 200), ...finger, timeStamp: 1700 });
+    dispatch("pointerup", { ...at(810, 900), ...palm, timeStamp: 1800 });
+    expect(rec.log).toEqual(["start", "move", "cancel", "start", "move", "end"]);
+    expect(rec.ends.map((stroke) => stroke.map((s) => s.y))).toEqual([[200, 200, 200]]);
+  });
+
+  it("never lets a touch that has moved, or one that only just went down, be displaced", () => {
+    const { svg, dispatch } = createTarget();
+    const rec = record();
+    createStrokeCapture(svg, rec.handlers);
+
+    const writer = { pointerId: 3, pointerType: "touch" };
+    const other = { isPrimary: false, pointerId: 4, pointerType: "touch" };
+    // A finger that writes, then pauses at a corner while another touch lands.
+    dispatch("pointerdown", { ...at(100, 100), ...writer, timeStamp: 1000 });
+    dispatch("pointermove", { ...at(500, 100), ...writer, timeStamp: 1100 });
+    dispatch("pointerdown", { ...at(800, 900), ...other, timeStamp: 3000 });
+    dispatch("pointerup", { ...at(800, 900), ...other, timeStamp: 3100 });
+    dispatch("pointerup", { ...at(500, 500), ...writer, timeStamp: 3200 });
+    // A touch that went down a moment before the next one: the first one keeps the stroke.
+    dispatch("pointerdown", { ...at(800, 900), ...writer, timeStamp: 4000 });
+    dispatch("pointerdown", { ...at(100, 100), ...other, timeStamp: 4000 + RESTING_TOUCH_MS - 1 });
+    dispatch("pointerup", { ...at(800, 900), ...writer, timeStamp: 4600 });
+    expect(rec.log).toEqual(["start", "move", "end", "start", "end"]);
+    expect(rec.ends[0]!.map((s) => s.y)).toEqual([100, 100, 500]);
   });
 
   it("asks `enabled` on pen-down only", () => {

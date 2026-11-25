@@ -495,17 +495,83 @@ describe("createCollectorSink: an event the collector keeps refusing", () => {
     expect(statuses.at(-1)?.state).toBe("recording");
     await expect(sink.flush()).resolves.toBeUndefined();
 
-    // It is tried again only every SET_ASIDE_RETRY_MS, and given up after SET_ASIDE_TRIES of them.
+    // It is tried again only every SET_ASIDE_RETRY_MS, and given up after SET_ASIDE_TRIES of them,
+    // each after the collector took another event: play goes on meanwhile.
     for (let attempt = 1; attempt <= SET_ASIDE_TRIES; attempt++) {
+      sink.record(event(10 + attempt));
+      await settle();
       clock += SET_ASIDE_RETRY_MS;
       timers.fire();
       await settle();
-      expect(collector.calls()).toBe(7 + attempt);
+      expect(collector.calls()).toBe(7 + 2 * attempt);
     }
+    expect(collector.ns()).toEqual([1, 3, 4, 5, 11, 12, 13, 14, 15]);
     expect(sink.status).toEqual({ state: "recording", pending: 0, dropped: 1, stored: 0 });
     expect(errors.map((e) => [e.error.reason, e.body.payload?.n])).toEqual([["stuck", 2]]);
     expect(storage.items.size).toBe(0);
     expect(timers.count).toBe(0);
+  });
+
+  it("gives nothing up in a long outage in which a single event got through", async () => {
+    // The collector answers 500 to everything for two hours, but takes the first try of
+    // the session_end recorded at about 13 minutes (the verifier's scenario S2d). The
+    // earlier events are tried again at once, meet the outage and are set aside; their
+    // tries while nothing else gets through are the outage again, not a sign that the
+    // collector cannot store them.
+    let clock = T0;
+    const storage = createStorage();
+    const tried = new Set<number>();
+    const delivered: number[] = [];
+    let blip = true;
+    const fetchFn = (async (_url: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const n = (JSON.parse(String(init?.body)) as CollectorBody).payload?.n as number;
+      const fresh = !tried.has(n);
+      tried.add(n);
+      const through = clock >= T0 + 2 * 60 * 60_000 || (fresh && n === 21 && blip);
+      if (!through) return problem(500, "Internal Server Error", "insert failed");
+      if (n === 21) blip = false;
+      delivered.push(n);
+      return new Response("{}", { status: 201 });
+    }) as typeof fetch;
+    /** Timers that fall due on the clock of the test. */
+    const due = new Map<number, { readonly at: number; readonly callback: () => void }>();
+    let ids = 0;
+    const setTimer = (callback: () => void, delay: number): unknown => {
+      due.set(++ids, { at: clock + delay, callback });
+      return ids;
+    };
+    const clearTimer = (handle: unknown): void => void due.delete(handle as number);
+    const { sink, errors } = setup({ storage, fetch: fetchFn, now: () => clock, setTimer, clearTimer });
+    /** Let time pass, firing every timer that falls due on the way. */
+    const pass = async (ms: number): Promise<void> => {
+      const end = clock + ms;
+      for (;;) {
+        await settle();
+        const [id, next] = [...due.entries()].sort(([, a], [, b]) => a.at - b.at)[0] ?? [];
+        if (id === undefined || next === undefined || next.at > end) break;
+        due.delete(id);
+        clock = Math.max(clock, next.at);
+        next.callback();
+      }
+      clock = end;
+      await settle();
+    };
+    for (let n = 0; n <= 20; n++) {
+      sink.record(event(n, n === 0 ? { type: "session_start" } : {}));
+      await pass(10_000);
+    }
+    await pass(10 * 60_000);
+    sink.record(event(21, { type: "session_end" }));
+    // The sink probes the events in turn, so the session_end has its first try within the hour.
+    await pass(60 * 60_000);
+    expect(delivered).toEqual([21]);
+    expect(sink.pending).toBe(21);
+
+    // Two hours of nothing but the outage, then the collector is back.
+    await pass(6 * 60 * 60_000);
+    expect(errors).toEqual([]);
+    expect(sink.status).toEqual({ state: "recording", pending: 0, dropped: 0, stored: 0 });
+    expect(new Set(delivered)).toEqual(new Set(Array.from({ length: 22 }, (_, n) => n)));
   });
 
   it("delivers an event set aside that the collector takes after all", async () => {

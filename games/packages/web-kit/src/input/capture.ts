@@ -6,8 +6,10 @@
  * the screen-to-SVG matrix is all the conversion there is. One stroke is one pen-down to
  * pen-up gesture of one pointer; a second finger, a palm or a mouse joining in while a
  * stroke is being drawn is ignored, and a thumb or palm resting elsewhere on the page
- * does not keep the next finger from writing. This is our own adapter; the research
- * games only fix what a stroke is, not how the browser delivers it.
+ * does not keep the next finger from writing. A touch resting on the square itself gives
+ * way to a pen at once and to any other pointer once it has sat still for a while. This
+ * is our own adapter; the research games only fix what a stroke is, not how the browser
+ * delivers it.
  */
 
 import type { Point } from "@kankyouken/mechanics/util";
@@ -37,6 +39,16 @@ export function clientToGlyph(svg: SVGSVGElement, clientX: number, clientY: numb
     y: inverse.b * clientX + inverse.d * clientY + inverse.f,
   };
 }
+
+/**
+ * A touch that has stayed within `RESTING_TOUCH_PX` CSS pixels of where it went down for
+ * this many milliseconds is taken to be resting (a palm or a thumb on the square), and a
+ * new pointer going down on the square takes over from it. A finger that writes moves
+ * well before that, and once it has moved it is never displaced. Our own numbers.
+ */
+export const RESTING_TOUCH_MS = 500;
+/** How far a resting touch may drift, in CSS pixels; see `RESTING_TOUCH_MS`. */
+export const RESTING_TOUCH_PX = 12;
 
 export interface StrokeCaptureHandlers {
   /** The pen landed. `sample` is the first point of the new stroke. */
@@ -78,7 +90,12 @@ export interface StrokeCapture {
  * - Any pointer pressing its main button on the target starts a stroke when none is
  *   being drawn (no right mouse button, no pen eraser). It need not be the browser's
  *   primary pointer: with a thumb or palm resting anywhere on the page, the finger that
- *   writes never is. While a stroke is being drawn every other pointer is ignored.
+ *   writes never is. While a stroke is being drawn every other pointer is ignored, with
+ *   two exceptions for a stroke drawn by touch, which may be a hand resting on the
+ *   square: a pen going down takes over from it, and so does any pointer going down
+ *   once the touch has stayed put (`RESTING_TOUCH_PX`) since it went down for at least
+ *   `RESTING_TOUCH_MS`. The touch's stroke is then abandoned with `onCancel`, and the
+ *   touch is ignored until it lifts.
  * - Positions come from `getCoalescedEvents()` when the browser has it, so fast strokes
  *   keep their shape; they are thinned with `appendSample`. Each sample's `t` is its
  *   event's `timeStamp` (milliseconds, monotonic).
@@ -102,7 +119,15 @@ export function createStrokeCapture(
   const previousTouchAction = target.style.touchAction;
   target.style.touchAction = "none";
 
-  let active: { readonly pointerId: number; readonly pointerType: string; readonly primary: boolean } | null = null;
+  let active: {
+    readonly pointerId: number;
+    readonly pointerType: string;
+    readonly primary: boolean;
+    /** Where (client pixels) and when the pointer went down. */
+    readonly down: { readonly x: number; readonly y: number; readonly t: number };
+    /** It has stayed within `RESTING_TOUCH_PX` of where it went down. */
+    still: boolean;
+  } | null = null;
   let stroke: DrawnStroke = [];
   let disposed = false;
 
@@ -125,12 +150,20 @@ export function createStrokeCapture(
     return true;
   };
 
+  /** Whether a pointer going down ends the open stroke instead of being ignored. */
+  const takesOver = (event: PointerEvent, open: NonNullable<typeof active>): boolean => {
+    // Two primary pointers of one kind cannot be down together, so the first one's pen-up was missed.
+    if (event.isPrimary && open.primary && open.pointerType === event.pointerType) return true;
+    if (open.pointerType !== "touch") return false;
+    // A touch under a pen is the hand that holds it; one that has not moved for a while is resting.
+    return event.pointerType === "pen" || (open.still && event.timeStamp - open.down.t >= RESTING_TOUCH_MS);
+  };
+
   const onDown = (event: PointerEvent): void => {
     if (event.button !== 0) return;
     if (active !== null) {
-      // Two primary pointers of one kind cannot be down together, so the first one's pen-up was
-      // missed. Anything else is a second finger, a palm or another device joining in.
-      if (!event.isPrimary || !active.primary || active.pointerType !== event.pointerType) return;
+      // Anything else is a second finger, a palm or another device joining in.
+      if (!takesOver(event, active)) return;
       abandon();
       handlers.onCancel?.();
     }
@@ -138,7 +171,13 @@ export function createStrokeCapture(
     const sample = sampleOf(event, event.timeStamp);
     if (!Number.isFinite(sample.x) || !Number.isFinite(sample.y)) return;
 
-    active = { pointerId: event.pointerId, pointerType: event.pointerType, primary: event.isPrimary };
+    active = {
+      pointerId: event.pointerId,
+      pointerType: event.pointerType,
+      primary: event.isPrimary,
+      down: { x: event.clientX, y: event.clientY, t: event.timeStamp },
+      still: true,
+    };
     stroke = [sample];
     try {
       target.setPointerCapture(event.pointerId);
@@ -151,6 +190,7 @@ export function createStrokeCapture(
 
   const onMove = (event: PointerEvent): void => {
     if (active === null || event.pointerId !== active.pointerId) return;
+    if (Math.hypot(event.clientX - active.down.x, event.clientY - active.down.y) > RESTING_TOUCH_PX) active.still = false;
     const coalesced = typeof event.getCoalescedEvents === "function" ? event.getCoalescedEvents() : [];
     for (const piece of coalesced.length > 0 ? coalesced : [event]) {
       const next = appendSample(stroke, sampleOf(piece, event.timeStamp), minDistance);

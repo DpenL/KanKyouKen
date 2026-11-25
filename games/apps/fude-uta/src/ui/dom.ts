@@ -94,14 +94,30 @@ export interface Guard {
   held(): boolean;
   /** A press came down on it; while it is held, that puts the end of the hold off as a press on a disabled button does. */
   pressed(): void;
+  /** Run `run` once it is no longer held: at once when it is not held now. */
+  whenFree(run: () => void): void;
 }
 
 export function createGuard(): Guard {
-  const state = { disabled: false };
+  let disabled = false;
+  const waiting: (() => void)[] = [];
+  const state = {
+    get disabled(): boolean {
+      return disabled;
+    },
+    set disabled(value: boolean) {
+      disabled = value;
+      if (!value) for (const run of waiting.splice(0)) run();
+    },
+  };
   return {
     hold: () => arming.hold([state]),
     held: () => state.disabled && arming.holding(),
     pressed: () => arming.pressed(state),
+    whenFree(run) {
+      if (state.disabled) waiting.push(run);
+      else run();
+    },
   };
 }
 

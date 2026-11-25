@@ -241,14 +241,18 @@ Structure correctness is reported separately from component correctness.
   an enclosure are lined up by their centres as a last resort, and the result says so:
   `Decomposition.layoutGuessed` (from `layoutFromBoxes(...).guessed`). 原 comes out as
   厂, 白 and 小 in a column, for example; of 440 school-grade 1 to 3 kanji converted
-  from KanjiVG, 66 are marked with the default options, and none of the 38 characters
-  in Kumiki's decks. A part counts as the outer slot of an enclosure only when the source
+  from KanjiVG, 58 are marked with the default options, and none of the 38 characters
+  in Kumiki's decks. A part counts as the outer slot of an enclosure when the source
   labels it as one (`tare`, `nyo`) or its own strokes run along at least two adjoining
-  sides; a stroke that crosses another part (亅 through 二 in 于) or a block beside a
-  dot (王 and 丶 in 玉) is not an enclosure, and such characters are marked as guesses
-  too. So is a hanging wrap the source does not label and whose side is one slanted
-  stroke (厂 in 反). A host that asks for the structure must leave marked characters
-  out, as Kumiki does when it builds its decks.
+  sides. A part whose strokes show neither may still be a hanging or sweeping wrap
+  whose side is a slanted or curved stroke (厂 in 反, 𠂇 in 友, 气 in 気, 弋 in 式):
+  it is taken for one only when where the other parts sit reads as such a wrap (top
+  left, bottom left or top right), never as "full" or any other shape. So a stroke that
+  crosses another part (亅 through 二 in 于) or a block beside a dot (王 and 丶 in 玉)
+  is not an enclosure, and such characters are marked as guesses. So are top-right
+  wraps whose strokes cover only the top and whose contents sit clear of every side,
+  which reads as "full" (勹 in 句 and 局). A host that asks for the structure must
+  leave marked characters out, as Kumiki does when it builds its decks.
 
 ### ZH-3 A look-alike for every correct component — *stated*
 
@@ -286,8 +290,29 @@ for errors".
   only when every piece is listed. With `known` set to the lexicon of the starter set,
   as Kumiki does, 11 of the 38 deck characters therefore still contain a part that is
   not in the lexicon (特 is 牛, 土 and 寸; 開 is 門 and 开, which has no entry and no
-  glyph of its own). A component whose runs the source files in different places is
-  never named by one of its fragments: 主 is 丶 and 王, not 亠 and 王.
+  glyph of its own). A component whose runs the source files in different places (it
+  shares a stroke with a neighbour, and the source files that stroke under the
+  neighbour) is named by such a run only in the split of the character itself, and only
+  when nothing inside the run is named and it holds more strokes than its other runs
+  filed inside the named group it belongs to: 羊 in 業 (its last two strokes are filed
+  under 木), 尸 in 局, ⺍ in 図, 衣 in 袁, and 十 in 重, whose other run is filed with the
+  second run of 千 under 里, outside the first. A run with named pieces gives those
+  pieces instead (主 is 丶 and 王, not 亠 and 王). A run no larger than the rest of its
+  component is the component cut in two, not one missing a stroke (匸 in 亡, beside its
+  other half under 亠; 二 in 井; 虫 in 禹), and a smaller one is a stray stroke: the group
+  either sits in is not split, because splitting would leave a stroke nobody can name
+  (in 泗 the closing stroke of 四 is filed beside 四 as a second run of its 囗). A named
+  component of the character is split further only along runs the source keeps
+  together, never by such a run, so 禹 stays whole in 属, 亡 in 望 and 忘, 井 in 囲 and
+  耕, 制 in 製, 戉 in 鉞, 局 in 跼. What still does not split: of all 6611 KanjiVG kanji,
+  26 that the first version of `decompose` split, each into a part named after a
+  component it only partly holds, come out in one piece, none of them in school grades
+  1 to 3: 丗 乘 井 亡 冓 刄 卸 壷 尺 彦 應 戉 挿 泗 滿 牽 産 瞞 禹 竒 繊 蔵 蹣 駟 鷹 黎.
+  They are a single slot, not marked as guesses.
+  The other way round, a few characters that the first version kept whole are now split
+  by such a run at their own level and come out as guesses: 制 (grade 5; 牛, 巾 and 刂),
+  亙, 懴 and 籖; 執 is a guess as it was in the first version. None is in a Kumiki deck,
+  and a host that asks for them gets `layoutGuessed` set.
 
 ### ZH-5 Partial, staged feedback — *stated*
 
@@ -411,8 +436,12 @@ points", scaling "the template's bounding box to a size of 250 pixels" and trans
 it "to the origin"; the input gets "the same transformation algorithms".
 
 - Code: `fitToReference` (default on) maps the drawn character's bounding box onto the
-  reference's before comparing. *Ours*: an axis on which the reference or the drawing
-  is nearly flat is centred rather than stretched.
+  reference's before comparing. *Ours*: an axis is centred rather than stretched when
+  the reference is nearly flat on it (under 15 % of the glyph, as for 一), or when the
+  drawing, against its own longer side, is less than 15 % as thick on it as the
+  reference is against its longer side (only the horizontal of 十 written). A flat or
+  narrow component written flatter or narrower than the reference (灬, 宀, 亻, 氵 at a
+  third of their height or width) is still stretched onto it.
 - *Ours*: the bounding boxes only agree when the character is complete. A stroke that
   was not written, or a stray mark beside the character, moves a box edge and with it
   every stroke, which would hide exactly what stroke-valid and stroke-exist are there

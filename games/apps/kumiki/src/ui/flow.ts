@@ -92,7 +92,7 @@ export function startFlow(app: App): void {
         play: playDeck,
         exam: () => openExamChooser(app, runExam),
         settings: () => openSettings(app),
-        about: openAbout,
+        about: () => openAbout(app),
       }),
     );
   };

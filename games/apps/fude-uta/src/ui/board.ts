@@ -21,6 +21,8 @@ export interface Board {
    * rest of the double click has passed (`arm`, for the square).
    */
   uncovered(): void;
+  /** Run `run` once the square takes strokes after `uncovered`: at once when it is not held. */
+  whenWritable(run: () => void): void;
   /** The colour touched dots take: that of the component being written. */
   setTone(tone: ToneColour | null): void;
   /** Colour every stroke by its component's timbre; null goes back to plain ink. */
@@ -69,6 +71,7 @@ export function createBoard(): Board {
     enabled: false,
     pen: null,
     uncovered: () => guard.hold(),
+    whenWritable: (run) => guard.whenFree(run),
     setTone(tone) {
       if (tone === null) delete root.dataset["tone"];
       else root.dataset["tone"] = tone;

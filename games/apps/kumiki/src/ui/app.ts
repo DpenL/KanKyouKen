@@ -8,6 +8,7 @@ import type { Board } from "../board";
 import type { Content } from "../content";
 import type { Saved } from "../saved";
 import type { Sound } from "../sound";
+import type { Arming } from "./arm";
 
 /** Read-only view of the game for the debug handle (`window.__kk`). */
 export interface Probe {
@@ -23,6 +24,8 @@ export interface App {
   readonly rng: Rng;
   readonly sound: Sound;
   readonly probe: Probe;
+  /** Holds what a click has just brought on screen (see `armScreen`); `show` does it for every screen. */
+  readonly arming: Arming;
   record(event: GameEvent): void;
   /** Replace what is on screen. `leave` runs when the next screen replaces this one. */
   show(name: string, screen: HTMLElement, leave?: () => void): void;

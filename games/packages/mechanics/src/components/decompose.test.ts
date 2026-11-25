@@ -131,7 +131,7 @@ describe("decompose", () => {
 
     it("still finds the enclosures that strokes or the source's label show", () => {
       expect(decompose(fixture("困")).layout.signature).toBe("E:full(S)");
-      // A hanging wrap whose left side is one slanted stroke: only the label says what it is.
+      // A hanging wrap whose left side is one slanted stroke: the side test does not count it.
       const cliff: TestLine[] = [
         [
           [150, 150],
@@ -145,8 +145,9 @@ describe("decompose", () => {
       const inner = crossLines(450, 400, 400, 450);
       const labelled = handGlyph("反", [...cliff, ...inner], { c: [{ e: "厂", s: [0, 1], pd: "tare" }, leaf("又", 2, 2)] });
       expect(decompose(labelled)).toMatchObject({ layout: { signature: "E:top-left(S)" }, layoutGuessed: false });
+      // Without the label, where the rest sits shows a hanging wrap, and only such a shape is taken.
       const unlabelled = handGlyph("反", [...cliff, ...inner], { c: [leaf("厂", 0, 2), leaf("又", 2, 2)] });
-      expect(decompose(unlabelled).layoutGuessed).toBe(true);
+      expect(decompose(unlabelled)).toMatchObject({ layout: { signature: "E:top-left(S)" }, layoutGuessed: false });
     });
   });
 
@@ -178,8 +179,9 @@ describe("decompose", () => {
       ]);
     });
 
-    it("keeps a group whole when a fragment in it has strokes nobody else names", () => {
+    it("names a run after its component when it holds most of it (袁: 土, 口 and 衣)", () => {
       // 袁 as KanjiVG has it: the lid of 衣 is filed inside 土, the rest of 衣 beside 口.
+      // (This test used to expect 袁 in one piece; the rest of 衣 is what a learner sees as its part.)
       const lines = [bar(100), upright, bar(350), ...boxLines(350, 450, 300, 150), bar(700), bar(900)];
       const robe = handGlyph("袁", lines, {
         c: [
@@ -187,7 +189,327 @@ describe("decompose", () => {
           { p: "bottom", c: [leaf("口", 3, 3), { e: "衣", n: 2, s: [6, 7] }] },
         ],
       });
-      expect(summary(robe)).toEqual(["S", "袁", [[0, 1, 2, 3, 4, 5, 6, 7]]]);
+      const d = decompose(robe);
+      expect(d.components).toEqual(["土", "口", "衣"]);
+      expect(d.strokes).toEqual([[0, 1, 2], [3, 4, 5], [6, 7]]);
+    });
+
+    it("keeps a group whole when a stray run in it has strokes nobody else names", () => {
+      // 泗 as KanjiVG has it: the closing stroke of 四 is filed beside 四 as a second run of its 囗.
+      const water: TestLine[] = [
+        [
+          [120, 200],
+          [200, 260],
+        ],
+        [
+          [100, 450],
+          [180, 510],
+        ],
+        [
+          [100, 850],
+          [220, 650],
+        ],
+      ];
+      const legs: TestLine[] = [
+        [
+          [550, 350],
+          [480, 700],
+        ],
+        [
+          [700, 350],
+          [700, 700],
+        ],
+      ];
+      const lines = [...water, ...boxLines(350, 200, 550, 650).slice(0, 2), ...legs, [[350, 850], [900, 850]] as TestLine];
+      const glyph = handGlyph("泗", lines, {
+        c: [
+          leaf("氵", 0, 3),
+          { c: [{ e: "四", c: [{ e: "囗", n: 1, s: [3, 4] }, leaf("儿", 5, 2)] }, { e: "囗", n: 2, s: [7] }] },
+        ],
+      });
+      expect(summary(glyph)).toEqual(["S", "泗", [[0, 1, 2, 3, 4, 5, 6, 7]]]);
+    });
+
+    it("names a run after its component when its partner is filed in another run (重: 丿, 十 and 里)", () => {
+      // 重 as KanjiVG has it: 千 is written around 里, and 十 with it; the vertical of both is filed under 里.
+      const lines: TestLine[] = [
+        [
+          [700, 60],
+          [300, 130],
+        ],
+        bar(220),
+        ...boxLines(250, 300, 500, 300).slice(0, 2),
+        [
+          [250, 450],
+          [750, 450],
+        ],
+        [
+          [250, 600],
+          [750, 600],
+        ],
+        [
+          [500, 260],
+          [500, 800],
+        ],
+        [
+          [250, 750],
+          [750, 750],
+        ],
+        bar(900),
+      ];
+      const heavy = handGlyph("重", lines, {
+        c: [
+          { e: "千", n: 1, c: [leaf("丿", 0, 1), { e: "十", n: 1, s: [1] }] },
+          { e: "里", s: [2, 3, 4, 5, 7, 8], c: [{ e: "千", n: 2, c: [{ e: "十", n: 2, s: [6] }] }] },
+        ],
+      });
+      const d = decompose(heavy);
+      expect(d.components).toEqual(["丿", "十", "里"]);
+      expect(d.strokes).toEqual([[0], [1], [2, 3, 4, 5, 6, 7, 8]]);
+    });
+
+    // Characters the source describes as a component cut in two, its halves beside and
+    // under another one, are kept as they were before runs could stand in for components.
+    const lidDot: TestLine = [
+      [500, 80],
+      [560, 200],
+    ];
+    /** 亡 as KanjiVG has it: 亠, whose bar is the top of 匸, and the rest of 匸 beside it. */
+    const perish = (from: number): ComponentRecord => ({
+      e: "亡",
+      c: [{ e: "亠", s: [from], c: [{ e: "匸", n: 1, s: [from + 1] }] }, { e: "匸", n: 2, s: [from + 2] }],
+    });
+    /** 井 as KanjiVG has it: 二 and 廾 sharing a bar, and 十 cut in two inside 廾. */
+    const well = (from: number): ComponentRecord => ({
+      e: "井",
+      c: [
+        { e: "二", n: 1, s: [from] },
+        {
+          e: "廾",
+          c: [{ e: "二", n: 2, c: [{ e: "十", n: 1, s: [from + 1] }] }, leaf("丿", from + 2, 1), { e: "十", n: 2, s: [from + 3] }],
+        },
+      ],
+    });
+
+    it("keeps 亡 whole, alone and in 望", () => {
+      const lines: TestLine[] = [
+        lidDot,
+        bar(300),
+        [
+          [300, 300],
+          [300, 850],
+          [900, 850],
+        ],
+      ];
+      const { c } = perish(0);
+      expect(summary(handGlyph("亡", lines, { c }))).toEqual(["S", "亡", [[0, 1, 2]]]);
+
+      const hope: TestLine[] = [
+        [
+          [250, 60],
+          [280, 130],
+        ],
+        [
+          [80, 180],
+          [420, 180],
+        ],
+        [
+          [150, 180],
+          [150, 500],
+          [440, 500],
+        ],
+        [
+          [600, 80],
+          [600, 400],
+          [550, 540],
+        ],
+        [
+          [600, 80],
+          [900, 80],
+          [900, 540],
+        ],
+        [
+          [600, 220],
+          [900, 220],
+        ],
+        [
+          [600, 360],
+          [900, 360],
+        ],
+        [
+          [200, 650],
+          [800, 650],
+        ],
+        [
+          [500, 650],
+          [500, 950],
+        ],
+        [
+          [250, 800],
+          [750, 800],
+        ],
+        [
+          [150, 950],
+          [850, 950],
+        ],
+      ];
+      const tree: ComponentRecord = {
+        c: [
+          { p: "top", c: [{ ...perish(0), p: "left" }, { e: "月", p: "right", s: [3, 4, 5, 6] }] },
+          { e: "王", p: "bottom", s: [7, 8, 9, 10] },
+        ],
+      };
+      expect(summary(handGlyph("望", hope, tree))).toEqual([
+        "C(R(S,S),S)",
+        "亡月王",
+        [
+          [0, 1, 2],
+          [3, 4, 5, 6],
+          [7, 8, 9, 10],
+        ],
+      ]);
+    });
+
+    it("keeps 井 whole, alone and in 囲", () => {
+      const lines: TestLine[] = [
+        bar(350),
+        [
+          [100, 650],
+          [900, 650],
+        ],
+        [
+          [380, 100],
+          [380, 600],
+          [200, 900],
+        ],
+        [
+          [650, 100],
+          [650, 900],
+        ],
+      ];
+      const { c } = well(0);
+      expect(summary(handGlyph("井", lines, { c }))).toEqual(["S", "井", [[0, 1, 2, 3]]]);
+
+      const enclose: TestLine[] = [
+        [
+          [100, 100],
+          [100, 900],
+        ],
+        [
+          [100, 100],
+          [900, 100],
+          [900, 900],
+        ],
+        [
+          [250, 380],
+          [750, 380],
+        ],
+        [
+          [220, 620],
+          [780, 620],
+        ],
+        [
+          [420, 220],
+          [420, 580],
+          [300, 780],
+        ],
+        [
+          [600, 220],
+          [600, 780],
+        ],
+        [
+          [100, 900],
+          [900, 900],
+        ],
+      ];
+      const tree: ComponentRecord = {
+        c: [{ e: "囗", n: 1, p: "enclosure", s: [0, 1] }, { ...well(2), p: "inside" }, { e: "囗", n: 2, p: "enclosure", s: [6] }],
+      };
+      expect(summary(handGlyph("囲", enclose, tree))).toEqual([
+        "E:full(S)",
+        "囗井",
+        [
+          [0, 1, 6],
+          [2, 3, 4, 5],
+        ],
+      ]);
+    });
+
+    it("keeps 禹 whole in 属", () => {
+      // 属 as KanjiVG has it: 尸 over 禹, and in 禹 the 虫 cut in two by the 冂 of 禸.
+      const lines: TestLine[] = [
+        [
+          [150, 100],
+          [850, 100],
+          [850, 280],
+        ],
+        [
+          [150, 280],
+          [850, 280],
+        ],
+        [
+          [150, 100],
+          [150, 600],
+          [60, 950],
+        ],
+        [
+          [700, 380],
+          [450, 430],
+        ],
+        [
+          [420, 480],
+          [420, 620],
+        ],
+        [
+          [420, 480],
+          [820, 480],
+          [820, 620],
+        ],
+        [
+          [420, 620],
+          [820, 620],
+        ],
+        [
+          [330, 680],
+          [330, 950],
+        ],
+        [
+          [330, 680],
+          [900, 680],
+          [900, 950],
+        ],
+        [
+          [620, 480],
+          [620, 900],
+        ],
+        [
+          [450, 850],
+          [750, 820],
+        ],
+        [
+          [720, 760],
+          [780, 880],
+        ],
+      ];
+      const tree: ComponentRecord = {
+        c: [
+          { e: "尸", p: "enclosure", pd: "tare", s: [0, 1, 2] },
+          {
+            e: "禹",
+            p: "inside",
+            pd: "tarec",
+            c: [leaf("丿", 3, 1), { e: "虫", n: 1, s: [4, 5, 6] }, { e: "禸", c: [leaf("冂", 7, 2), { e: "虫", n: 2, s: [9, 10, 11] }] }],
+          },
+        ],
+      };
+      expect(summary(handGlyph("属", lines, tree))).toEqual([
+        "E:top-left(S)",
+        "尸禹",
+        [
+          [0, 1, 2],
+          [3, 4, 5, 6, 7, 8, 9, 10, 11],
+        ],
+      ]);
     });
   });
 

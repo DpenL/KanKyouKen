@@ -43,8 +43,10 @@ export const DEFAULT_REFERENCE_PACE = 1.5;
 
 /**
  * An axis is not used for scaling when the reference is thinner on it than this fraction
- * of the glyph (一 has no height to fit to), or the drawing thinner than this fraction of
- * its own longer side (a lone horizontal stroke has no height to stretch).
+ * of the glyph (一 has no height to fit to), or when the drawing, measured against its own
+ * longer side, is flatter on it than this fraction of how flat the reference is: a lone
+ * horizontal stroke has no height to stretch over 十, while 灬 or 亻 written flatter or
+ * narrower than the reference is still their shape.
  */
 const MIN_FIT_EXTENT = 0.15;
 
@@ -79,10 +81,13 @@ const within = (value: number, range: readonly [number, number]): boolean => val
  * on which either box is (nearly) flat is only centred, never scaled.
  */
 function boxFit(source: Box, target: Box, size: number): (stroke: DrawnStroke) => StrokeSample[] {
-  const longerSide = Math.max(boxWidth(source), boxHeight(source));
+  const sourceLonger = Math.max(boxWidth(source), boxHeight(source));
+  const targetLonger = Math.max(boxWidth(target), boxHeight(target));
   const axis = (sourceMin: number, sourceExtent: number, targetMin: number, targetExtent: number) => {
     const scalable =
-      sourceExtent > 0 && sourceExtent >= MIN_FIT_EXTENT * longerSide && targetExtent >= MIN_FIT_EXTENT * size;
+      sourceExtent > 0 &&
+      targetExtent >= MIN_FIT_EXTENT * size &&
+      sourceExtent / sourceLonger >= MIN_FIT_EXTENT * (targetExtent / targetLonger);
     const k = scalable ? targetExtent / sourceExtent : 1;
     const sourceMid = sourceMin + sourceExtent / 2;
     const targetMid = targetMin + targetExtent / 2;

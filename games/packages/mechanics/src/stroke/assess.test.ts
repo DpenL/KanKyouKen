@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { handGlyph } from "../components/test-glyphs";
 import { fixture } from "../glyph/fixtures";
 import type { Glyph } from "../glyph/types";
 import { polylineLength, resample } from "../util/geometry";
@@ -177,6 +178,22 @@ describe("assessWriting", () => {
     expect(fitted.metrics["stroke-closeness"].stars).toBe(3);
     const asDrawn = assessWriting(small, hu, { fitToReference: false });
     expect(asDrawn.metrics["stroke-match"].value).toBeLessThan(5);
+  });
+
+  it("recognises a narrow or flat component written narrower or flatter than the reference", () => {
+    const squash = (strokes: DrawnStroke[], kx: number, ky: number): DrawnStroke[] =>
+      strokes.map((stroke) => stroke.map((p) => ({ x: 500 + (p.x - 500) * kx, y: 500 + (p.y - 500) * ky })));
+    const water = fixture("氵");
+    expect(assessWriting(squash(write(water), 0.3, 1), water).missing).toEqual([]);
+    // 灬: four dots in a row, a component that is flat already.
+    const dots = handGlyph(
+      "灬",
+      [150, 350, 550, 750].map((x, i) => [
+        [x + (i === 0 ? 60 : 0), 650],
+        [x + (i === 0 ? 0 : 60), 850],
+      ]),
+    );
+    for (const ky of [0.4, 0.3]) expect(assessWriting(squash(write(dots), 1, ky), dots).missing, `height x${ky}`).toEqual([]);
   });
 
   it("flags strokes that are too long or too far off", () => {

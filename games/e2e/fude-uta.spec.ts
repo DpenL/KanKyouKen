@@ -396,6 +396,40 @@ test("after the browser's Back and Forward, Back still leads out of the next les
   expect(page.url()).toBe("about:blank");
 });
 
+test("the timed round's time starts when the square can first take a stroke, not at Start", async ({ page }) => {
+  // The round comes after every character of the lesson has been learned.
+  test.setTimeout(180_000);
+  await page.addInitScript(() => {
+    localStorage.setItem("kk.fude-uta.v1", JSON.stringify({ settings: { plan: "quick" } }));
+  });
+  await page.goto(DEBUG);
+  await page.locator(".lesson-card").first().click();
+  const start = page.getByRole("button", { name: "Start", exact: true });
+  for (let step = 0; step < 600 && !(await start.isVisible()); step++) {
+    const now = await state(page);
+    if (now.stage === "demo") await page.getByRole("button", { name: "Skip" }).click();
+    else if (now.stage?.startsWith("trace:") === true) await writeRepetition(page);
+    else if (now.stage === "complete") await page.locator(".actions .btn-primary").click();
+    else await page.waitForTimeout(100);
+  }
+  await start.click();
+  // Half a second after Start the square takes strokes (the rest of a double click is over); write a while after that.
+  await page.waitForTimeout(900);
+  await writeRepetition(page);
+  await expect.poll(async () => (await events(page, "item_complete")).filter((event) => event.task === "timed").length).toBe(1);
+
+  const timed = async (type: string): Promise<GameEvent> => (await events(page, type)).find((event) => event.task === "timed")!;
+  const shown = await timed("item_start");
+  const first = await timed("stroke_attempt");
+  const done = await timed("item_complete");
+  // The character is shown at Start; its first response time and its duration count from half a second later.
+  const heldBeforeFirst = first.ts - shown.ts - Number(first.data?.["response_time_ms"]);
+  const heldBeforeDone = done.ts - shown.ts - Number(done.data?.["duration_ms"]);
+  expect(heldBeforeFirst).toBeGreaterThanOrEqual(400);
+  expect(heldBeforeFirst).toBeLessThan(800);
+  expect(heldBeforeDone).toBe(heldBeforeFirst);
+});
+
 test("a failing sound layer does not hold back the lesson", async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem("kk.fude-uta.v1", JSON.stringify({ settings: { plan: "quick" } }));
