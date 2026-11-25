@@ -2,6 +2,8 @@ import { expect, test, type Page } from "@playwright/test";
 
 const BASE = "http://127.0.0.1:4312/";
 const DEBUG = `${BASE}?debug&seed=e2e`;
+/** Kumiki as it first was (Check below the board, every tile stays, unlimited tries in Learn), for the tests written for it. */
+const CLASSIC = `${DEBUG}&rules=classic`;
 
 interface Rect {
   x: number;
@@ -128,7 +130,7 @@ function watchConsole(page: Page): string[] {
 
 test("review: a wrong check is marked, then the character is assembled by dragging", async ({ page }) => {
   const errors = watchConsole(page);
-  await page.goto(DEBUG);
+  await page.goto(CLASSIC);
 
   // About opens and closes.
   await page.getByRole("button", { name: "About" }).click();
@@ -228,7 +230,7 @@ test("review: a wrong check is marked, then the character is assembled by draggi
 
 test("review: a double click on Check is judged once", async ({ page }) => {
   const errors = watchConsole(page);
-  await page.goto(DEBUG);
+  await page.goto(CLASSIC);
   await page.getByRole("radio", { name: /Review/ }).click();
   await page.locator(".deck").first().click();
   const info = await puzzleInfo(page);
@@ -259,7 +261,7 @@ test("review: a double click on Check is judged once", async ({ page }) => {
   await expect(page.locator(".tray .tile")).toHaveCount(12);
   await page.goBack();
   await expect(page.locator(".home")).toBeVisible();
-  expect(page.url()).toBe(DEBUG);
+  expect(page.url()).toBe(CLASSIC);
   expect(await events(page, "deck_abandoned")).toHaveLength(2);
 
   expect(errors).toEqual([]);
@@ -301,7 +303,7 @@ test("stored data of the wrong shape does not break the start", async ({ page })
 
 test("learn: the character is shown first, and a hint is counted", async ({ page }) => {
   const errors = watchConsole(page);
-  await page.goto(DEBUG);
+  await page.goto(CLASSIC);
   await page.getByRole("radio", { name: /Learn/ }).click();
   await page.locator(".deck").first().click();
 

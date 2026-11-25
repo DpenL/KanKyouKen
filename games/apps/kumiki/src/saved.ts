@@ -1,6 +1,7 @@
 /** What the game remembers between visits. */
 
 import type { Mode } from "./round";
+import { DEFAULT_SPEC, cleanSpec, type RuleSpec } from "./rules";
 
 export const STORE_KEY = "kk.kumiki.v1";
 
@@ -11,9 +12,11 @@ export interface Saved {
   readonly volume: number;
   /** Best deck score, by `bestKey`. */
   readonly best: Readonly<Record<string, number>>;
+  /** The rules chosen in Settings. */
+  readonly rules: RuleSpec;
 }
 
-export const DEFAULT_SAVED: Saved = { mode: "learn", sound: true, volume: 0.6, best: {} };
+export const DEFAULT_SAVED: Saved = { mode: "learn", sound: true, volume: 0.6, best: {}, rules: DEFAULT_SPEC };
 
 /**
  * What was read from storage, made safe to use: every field that is missing or of the
@@ -36,6 +39,7 @@ export function cleanSaved(stored: Saved): Saved {
         ? Math.min(1, Math.max(0, loose.volume))
         : DEFAULT_SAVED.volume,
     best,
+    rules: cleanSpec(loose.rules),
   };
 }
 

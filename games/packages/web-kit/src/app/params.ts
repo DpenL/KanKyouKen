@@ -19,6 +19,8 @@ export interface LaunchParams {
   readonly missing?: readonly ReportingKey[];
   /** Study condition label; games map it to their own settings. */
   readonly condition?: string;
+  /** Rule set to play by, in a game's own notation (Kumiki: a preset and changes, see its README). */
+  readonly rules?: string;
   /** Seed for everything random, so a session can be reproduced. */
   readonly seed?: string;
   /** Show developer aids. */
@@ -29,7 +31,7 @@ export interface LaunchParams {
  * Read launch parameters from a URL's query string and fragment.
  *
  * Recognised keys: `study`, `participant`, `session`, `api`, `token`, `condition`,
- * `seed`, `debug`. The fragment wins over the query, so a link can carry the token as
+ * `rules`, `seed`, `debug`. The fragment wins over the query, so a link can carry the token as
  * `#token=...`, which browsers do not send to servers or include in referrers. A link
  * that has only some of the values reporting needs says which are `missing`.
  */
@@ -58,6 +60,8 @@ export function readLaunchParams(search: string, hash = ""): LaunchParams {
   if (missing.length > 0 && (missing.length < 4 || sessionId)) out.missing = missing;
   const condition = get("condition");
   if (condition) out.condition = condition;
+  const rules = get("rules");
+  if (rules) out.rules = rules;
   const seed = get("seed");
   if (seed) out.seed = seed;
   return out;

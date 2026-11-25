@@ -162,6 +162,13 @@ export interface AssemblyFeedback {
   /** Total components the target has. */
   readonly componentCount: number;
   /**
+   * Slots of the structure the attempt was made in. Differs from `componentCount` when
+   * a wrong structure with more or fewer slots was chosen; the Zen Hanzi demo counts
+   * against this ("3/3 Correct" for a four-part character tried in a three-slot frame),
+   * which does not give away how many parts the target has.
+   */
+  readonly slotCount: number;
+  /**
    * Tiles sitting in exactly the right slot. Only counted when the structure is right
    * (slots of a wrong structure have no counterpart); otherwise 0.
    */
@@ -186,7 +193,30 @@ export interface AssemblyMemory {
   readonly structureFound: boolean;
 }
 
+/**
+ * When an attempt is judged.
+ *  - "button": once every slot of a structure holds a tile, the player asks for it
+ *    (a Check button). Zen Hanzi's demo and Kumiki both do this.
+ *  - "auto": as soon as every slot of a structure holds a tile. Our own option, for
+ *    players who should not have to find a button.
+ */
+export type CheckTrigger = "button" | "auto";
+
+/**
+ * What stays in the structure after an attempt that did not solve the puzzle.
+ *  - "keep": every tile stays where it was, to be adjusted (Kumiki).
+ *  - "keep-correct": only tiles in exactly the right slot of the right structure stay;
+ *    the others go back to the tray (observed in the Zen Hanzi demo; the paper's Figure 9
+ *    shows a right tile staying).
+ *  - "clear": everything goes back to the tray.
+ */
+export type AfterCheck = "keep" | "keep-correct" | "clear";
+
 export interface AssemblyRules {
+  /** When an attempt is judged. */
+  readonly check: CheckTrigger;
+  /** What stays on the board after an attempt that did not solve the puzzle. */
+  readonly afterCheck: AfterCheck;
   /** Wrong attempts allowed before the round is lost; null for unlimited. */
   readonly lives: number | null;
   /** Points for solving at the first attempt without hints. */

@@ -24,6 +24,13 @@ export interface BoardHost {
   remove(tileId: string): void;
   /** A tile was picked up or set down. */
   touched(tile: ComponentTile): void;
+  /**
+   * Something to add to the drawing of a structure (a Check button by the one in play),
+   * or null. Asked again at every redraw.
+   */
+  extra?(layout: number): Node | null;
+  /** Structures to show dimmed (the others while one is ready to be checked). */
+  dimmed?(layout: number): boolean;
 }
 
 export interface BoardView {
@@ -70,6 +77,7 @@ export function createBoardView(root: HTMLElement, host: BoardHost): BoardView {
             "data-layout": index,
             "data-mark": mark,
             "data-active": inPlay ? "true" : "false",
+            "data-dim": host.dimmed?.(index) === true ? "true" : null,
             role: "group",
             "aria-label": `Structure ${position + 1}${mark === "untried" ? "" : `, ${mark}`}`,
           },
@@ -80,6 +88,7 @@ export function createBoardView(root: HTMLElement, host: BoardHost): BoardView {
             ),
           }),
           badge(mark),
+          host.extra?.(index) ?? null,
         );
       }),
     );

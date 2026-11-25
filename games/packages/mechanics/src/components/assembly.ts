@@ -18,14 +18,55 @@ import type {
   TriedMark,
 } from "./types";
 
-/** Default lives and scoring. All numbers are our own. */
-export const DEFAULT_RULES: AssemblyRules = {
+/**
+ * Kumiki's rules before the Zen Hanzi demo could be played: a Check button, the board
+ * left as it was after a wrong attempt, five lives per character, and a score that drops
+ * with every wrong attempt and hint. All numbers are our own.
+ */
+export const CLASSIC_RULES: AssemblyRules = {
+  check: "button",
+  afterCheck: "keep",
   lives: 5,
   baseScore: 100,
   attemptCost: 15,
   hintCost: 25,
   minScore: 10,
 };
+
+/**
+ * Rules as close to the Zen Hanzi demo as the library can play them (see MECHANICS.md
+ * Part 2, "observed in the public demo"): a Check button, only the tiles in their right
+ * slot stay after a wrong attempt, three lives.
+ */
+export const ZEN_HANZI_RULES: AssemblyRules = {
+  check: "button",
+  afterCheck: "keep-correct",
+  lives: 3,
+  baseScore: 100,
+  attemptCost: 15,
+  hintCost: 25,
+  minScore: 10,
+};
+
+/** The rules used when none are given: those of the Zen Hanzi demo. */
+export const DEFAULT_RULES: AssemblyRules = ZEN_HANZI_RULES;
+
+const CHECK_TRIGGERS: readonly AssemblyRules["check"][] = ["button", "auto"];
+const AFTER_CHECKS: readonly AssemblyRules["afterCheck"][] = ["keep", "keep-correct", "clear"];
+
+/**
+ * Throws a RangeError when `rules` cannot be played: an unknown check trigger or
+ * after-check policy, or lives that are neither null nor a positive integer.
+ */
+export function validateRules(rules: AssemblyRules, where = "rules"): void {
+  if (!CHECK_TRIGGERS.includes(rules.check)) throw new RangeError(`${where}: unknown check ${JSON.stringify(rules.check)}`);
+  if (!AFTER_CHECKS.includes(rules.afterCheck)) {
+    throw new RangeError(`${where}: unknown afterCheck ${JSON.stringify(rules.afterCheck)}`);
+  }
+  if (rules.lives !== null && (!Number.isInteger(rules.lives) || rules.lives < 1)) {
+    throw new RangeError(`${where}: lives must be null or a positive integer, got ${rules.lives}`);
+  }
+}
 
 /** The tiles behind an attempt's placements, after checking the attempt against the puzzle. */
 function resolvePlacements(
@@ -78,6 +119,7 @@ function judge(puzzle: AssemblyPuzzle, layoutIndex: number, tiles: readonly (Com
     structureCorrect,
     correctComponents,
     componentCount: puzzle.solution.length,
+    slotCount: tiles.length,
     correctPositions,
     anyInCorrectPosition: correctPositions > 0,
     solved: structureCorrect && correctPositions === puzzle.solution.length,
@@ -105,13 +147,11 @@ export function evaluateAttempt(puzzle: AssemblyPuzzle, attempt: AssemblyAttempt
 /**
  * Fresh state for a round: nothing tried, all lives, no score.
  * `memory.tiles` lists every tile of the tray as "untried" and `memory.slotMisses` has
- * one empty list per slot of the right structure. Throws a RangeError when
- * `rules.lives` is neither null nor a positive integer.
+ * one empty list per slot of the right structure. Throws a RangeError for rules that
+ * `validateRules` refuses.
  */
 export function startAssembly(puzzle: AssemblyPuzzle, rules: AssemblyRules = DEFAULT_RULES): AssemblyState {
-  if (rules.lives !== null && (!Number.isInteger(rules.lives) || rules.lives < 1)) {
-    throw new RangeError(`startAssembly: lives must be null or a positive integer, got ${rules.lives}`);
-  }
+  validateRules(rules, "startAssembly");
   const tiles: Record<string, TriedMark> = {};
   for (const tile of puzzle.tray) tiles[tile.id] = "untried";
   return {
@@ -207,6 +247,50 @@ export function submitAttempt(
     ],
   };
   return { state: next, feedback };
+}
+
+/**
+ * True when the attempt names a structure of the puzzle and every one of its slots holds
+ * a tile. Says nothing about whether the tiles are right, and never throws: an unknown
+ * structure or a placements array of the wrong length is simply not complete.
+ */
+export function isComplete(puzzle: AssemblyPuzzle, attempt: AssemblyAttempt): boolean {
+  const layout = Number.isInteger(attempt.layout) ? puzzle.layouts[attempt.layout] : undefined;
+  return (
+    layout !== undefined &&
+    attempt.placements.length === layout.slots.length &&
+    attempt.placements.every((id) => id !== null)
+  );
+}
+
+/**
+ * Whether the rules judge this attempt by themselves now, without the player asking:
+ * under `check: "auto"`, as soon as it is complete (`isComplete`) and the round is still
+ * being played. Under "button" never: the host waits for its Check button.
+ */
+export function judgesItself(state: AssemblyState, puzzle: AssemblyPuzzle, attempt: AssemblyAttempt, rules: AssemblyRules): boolean {
+  return rules.check === "auto" && !state.solved && !state.failed && isComplete(puzzle, attempt);
+}
+
+/**
+ * What stays in the structure after `attempt` was judged and did not solve the puzzle,
+ * by `rules.afterCheck`: every tile ("keep"), only tiles showing exactly the component of
+ * their slot in the right structure ("keep-correct"; under a wrong structure nothing
+ * stays), or nothing ("clear"). The result has one tile id or null per slot of the
+ * attempt's structure. A solving attempt is returned whole: nothing goes back once the
+ * character is built. Throws a RangeError for the malformed attempts listed under
+ * `evaluateAttempt`.
+ */
+export function placementsAfterCheck(
+  puzzle: AssemblyPuzzle,
+  attempt: AssemblyAttempt,
+  rules: AssemblyRules,
+): (string | null)[] {
+  const tiles = resolvePlacements(puzzle, attempt.layout, attempt.placements);
+  const feedback = judge(puzzle, attempt.layout, tiles);
+  if (feedback.solved || rules.afterCheck === "keep") return [...attempt.placements];
+  if (rules.afterCheck === "clear" || !feedback.structureCorrect) return attempt.placements.map(() => null);
+  return tiles.map((tile, slot) => (tile !== null && tile.shows === puzzle.solution[slot] ? tile.id : null));
 }
 
 /**

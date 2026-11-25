@@ -6,6 +6,7 @@ import type { LocalStore } from "@kankyouken/web-kit/app";
 import type { AssemblyPuzzle, AssemblyState } from "@kankyouken/mechanics/components";
 import type { Board } from "../board";
 import type { Content } from "../content";
+import type { RuleChoices, RuleSource, RuleSpec } from "../rules";
 import type { Saved } from "../saved";
 import type { Sound } from "../sound";
 import type { Arming } from "./arm";
@@ -18,8 +19,21 @@ export interface Probe {
   board: Board | null;
 }
 
+/** The rules of the session. */
+export interface Rules {
+  /** Where they come from; a link or a study condition fixes them. */
+  readonly from: RuleSource["from"];
+  /** Parts of the link's rules that named nothing (see `parseRuleSpec`). */
+  readonly ignored: readonly string[];
+  spec(): RuleSpec;
+  choices(): RuleChoices;
+  /** Store a player's choice. Ignored while a link or a condition fixes the rules. */
+  choose(spec: RuleSpec): void;
+}
+
 export interface App {
   readonly content: Content;
+  readonly rules: Rules;
   readonly store: LocalStore<Saved>;
   readonly rng: Rng;
   readonly sound: Sound;

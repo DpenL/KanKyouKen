@@ -3,6 +3,7 @@
 import { drawDeck, type Deck } from "../content";
 import { examChar, examTotals, startExam, submitExamItem } from "../exam";
 import { buildPuzzle, startRound, type Mode, type Round } from "../round";
+import { assemblyRules, puzzleOptions } from "../rules";
 import { bestScore, withScore } from "../saved";
 import { currentChar, finishRound, startSession, summarize } from "../session";
 import { choiceAttemptEvent, gameEvent } from "@kankyouken/mechanics/telemetry";
@@ -100,6 +101,10 @@ export function startFlow(app: App): void {
   const playDeck = (deck: Deck, mode: Mode): void => {
     const rng = app.rng.fork(`run:${++runs}`);
     const task = `assembly:${mode}`;
+    // A run keeps the rules it started with; a change in Settings applies from the next one.
+    const choices = app.rules.choices();
+    const rules = assemblyRules(choices, mode);
+    const options = puzzleOptions(choices);
     let session = startSession(deck.id, mode, drawDeck(deck, rng.fork("order")));
     const at = (item: string): { ts: number; item: string; task: string } => ({ ts: Date.now(), item, task });
     const progress = (): string => `${deck.title} · ${session.index + 1} / ${session.queue.length}`;
@@ -120,7 +125,7 @@ export function startFlow(app: App): void {
         finish();
         return;
       }
-      const puzzle = buildPuzzle(char, app.content, rng.fork(`puzzle:${session.index}`));
+      const puzzle = buildPuzzle(char, app.content, rng.fork(`puzzle:${session.index}`), options);
       app.probe.puzzle = puzzle;
       app.probe.state = null;
       app.probe.board = null;
@@ -134,9 +139,10 @@ export function startFlow(app: App): void {
     };
 
     const assemble = (char: string, puzzle: AssemblyPuzzle): void => {
-      const round = startRound(char, mode, puzzle, Date.now());
+      const round = startRound(char, mode, puzzle, Date.now(), rules);
       const view = assemblyScreen(app, {
         round,
+        look: { check: choices.check, feedback: choices.feedback },
         progress: progress(),
         banked: summarize(session).score,
         quit: home,
@@ -182,6 +188,7 @@ export function startFlow(app: App): void {
   const runExam = (deck: Deck): void => {
     const rng = app.rng.fork(`run:${++runs}`);
     const task = "exam";
+    const options = puzzleOptions(app.rules.choices());
     const at = (item: string): { ts: number; item: string; task: string } => ({ ts: Date.now(), item, task });
     let exam = startExam(deck.id, drawDeck(deck, rng.fork("order")));
     const totals = (): { score: number; slots: number; items: number; answered: number } => ({
@@ -209,7 +216,7 @@ export function startFlow(app: App): void {
         app.show("exam-results", examResultsScreen(app, { deck, exam, home }));
         return;
       }
-      const puzzle = buildPuzzle(char, app.content, rng.fork(`puzzle:${exam.index}`));
+      const puzzle = buildPuzzle(char, app.content, rng.fork(`puzzle:${exam.index}`), options);
       const startedAt = Date.now();
       app.probe.puzzle = puzzle;
       app.probe.state = null;

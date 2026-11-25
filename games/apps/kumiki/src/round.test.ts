@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { loadStarterJa } from "@kankyouken/glyph-data";
 import {
-  DEFAULT_RULES,
+  CLASSIC_RULES,
   MIN_MALFORMED_DIFFERENCE,
   MIN_TILE_DIFFERENCE,
   tellApart,
@@ -14,6 +14,7 @@ import {
   buildPuzzle,
   canCheck,
   check,
+  checksItself,
   describeBoard,
   isOver,
   moveTile,
@@ -25,10 +26,16 @@ import {
   type Mode,
   type Round,
 } from "./round";
+import { puzzleOptions, presetChoices } from "./rules";
 
 const { glyphs, set } = loadStarterJa();
 const content = buildContent(glyphs, set);
-const puzzleFor = (char: string, seed = "t"): AssemblyPuzzle => buildPuzzle(char, content, createRng(seed));
+/*
+ * These tests were written for Kumiki's classic rules, the default until the rules of the
+ * Zen Hanzi demo took over; they keep playing by them.
+ */
+const CLASSIC = presetChoices("classic");
+const puzzleFor = (char: string, seed = "t"): AssemblyPuzzle => buildPuzzle(char, content, createRng(seed), puzzleOptions(CLASSIC));
 
 function solving(puzzle: AssemblyPuzzle): string[] {
   const used = new Set<string>();
@@ -44,7 +51,7 @@ function fill(round: Round, layout: number, tiles: readonly string[]): Round {
 }
 
 function begin(char: string, mode: Mode): Round {
-  return startRound(char, mode, puzzleFor(char), 1000);
+  return startRound(char, mode, puzzleFor(char), 1000, rulesFor(mode, CLASSIC));
 }
 
 describe("puzzles", () => {
@@ -96,8 +103,8 @@ describe("puzzles", () => {
 
 describe("rules", () => {
   it("gives unlimited tries in Learn and five lives in Review", () => {
-    expect(rulesFor("learn")).toEqual({ ...DEFAULT_RULES, lives: null });
-    expect(rulesFor("review").lives).toBe(5);
+    expect(rulesFor("learn", CLASSIC)).toEqual({ ...CLASSIC_RULES, lives: null });
+    expect(rulesFor("review", CLASSIC)).toEqual(CLASSIC_RULES);
     expect(begin("持", "learn").state.livesLeft).toBeNull();
     expect(begin("持", "review").state.livesLeft).toBe(5);
   });
@@ -216,6 +223,69 @@ describe("a round", () => {
   it("ignores moves into structures the puzzle does not have", () => {
     const round = begin("持", "learn");
     expect(moveTile(round, 9, 0, "t0")).toBe(round);
+  });
+});
+
+describe("checking", () => {
+  const roundWith = (changes: Partial<ReturnType<typeof presetChoices>>, char = "持"): Round => {
+    const choices = { ...CLASSIC, ...changes };
+    return startRound(char, "review", buildPuzzle(char, content, createRng("t"), puzzleOptions(choices)), 1000, rulesFor("review", choices));
+  };
+
+  it("judges a full board by itself under automatic checking, and only then", () => {
+    let round = roundWith({ check: "auto" });
+    expect(round.rules.check).toBe("auto");
+    const tiles = solving(round.puzzle);
+    round = moveTile(round, round.puzzle.correctLayout, 0, tiles[0]!);
+    expect(checksItself(round)).toBe(false);
+    round = fill(round, round.puzzle.correctLayout, tiles);
+    expect(checksItself(round)).toBe(true);
+    expect(checksItself({ ...round, rules: { ...round.rules, check: "button" } })).toBe(false);
+    round = check(round, 2000)!.round;
+    expect(round.state.solved).toBe(true);
+    expect(checksItself(round)).toBe(false);
+  });
+
+  it("does not judge the same full board twice by itself", () => {
+    let round = roundWith({ check: "auto" });
+    const reversed = [...solving(round.puzzle)].reverse();
+    round = check(fill(round, round.puzzle.correctLayout, reversed), 2000)!.round;
+    expect(round.state.attempts).toBe(1);
+    // Every tile stayed (afterCheck "keep"): nothing new to judge until something moves.
+    expect(checksItself(round)).toBe(false);
+  });
+
+  it("sends back the tiles that are not in their right slot, as the demo does", () => {
+    let round = roundWith({ afterCheck: "keep-correct" });
+    const { puzzle } = round;
+    const tiles = solving(puzzle);
+    // The first two swapped, the rest in place.
+    const swapped = [tiles[1]!, tiles[0]!, ...tiles.slice(2)];
+    round = check(fill(round, puzzle.correctLayout, swapped), 2000)!.round;
+    expect(round.board.layout).toBe(puzzle.correctLayout);
+    expect(round.board.slots).toEqual([null, null, ...tiles.slice(2)]);
+    expect(canCheck(round)).toBe(false);
+    // Building the same wrong answer again is a new attempt, judged and charged again.
+    round = fill(round, puzzle.correctLayout, swapped);
+    expect(canCheck(round)).toBe(true);
+    round = check(round, 3000)!.round;
+    expect(round.state).toMatchObject({ attempts: 2, livesLeft: 3 });
+  });
+
+  it("empties a wrong structure, and leaves a failed board as it was", () => {
+    let round = roundWith({ afterCheck: "keep-correct" });
+    const { puzzle } = round;
+    const wrong = puzzle.layouts.findIndex((layout, index) => index !== puzzle.correctLayout && layout.slots.length === 3);
+    const tiles = solving(puzzle);
+    round = check(fill(round, wrong, tiles), 2000)!.round;
+    expect(round.board).toEqual({ layout: wrong, slots: [null, null, null] });
+
+    let last = roundWith({ afterCheck: "clear" });
+    last = { ...last, state: { ...last.state, livesLeft: 1 } };
+    const full = fill(last, puzzle.correctLayout, [...tiles].reverse());
+    const failed = check(full, 2000)!.round;
+    expect(failed.state.failed).toBe(true);
+    expect(failed.board).toEqual(full.board);
   });
 });
 

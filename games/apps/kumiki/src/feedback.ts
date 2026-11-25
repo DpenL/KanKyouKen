@@ -29,3 +29,19 @@ export function feedbackLines(feedback: AssemblyFeedback): FeedbackLine[] {
 
 /** Icon per tone, so that the lines do not rely on colour alone. */
 export const TONE_ICON: Readonly<Record<Tone, string>> = { good: "✓", bad: "✕", partial: "~", unknown: "?" };
+
+/**
+ * The feedback panel's lines (the counts of the Zen Hanzi demo, in our own words): the
+ * structure right or wrong, how many placed parts belong to the character, and how many
+ * sit in their own slot, both out of the slots of the structure that was tried. Counting
+ * against the tried structure, not the character, keeps the number of parts secret.
+ */
+export function feedbackCounts(feedback: AssemblyFeedback): FeedbackLine[] {
+  const { structureCorrect, correctComponents, correctPositions, slotCount } = feedback;
+  const tone = (count: number): Tone => (count === slotCount ? "good" : count === 0 ? "bad" : "partial");
+  return [
+    { label: "Structure", text: structureCorrect ? "right" : "wrong", tone: structureCorrect ? "good" : "bad" },
+    { label: "Parts that belong", text: `${correctComponents} of ${slotCount}`, tone: tone(correctComponents) },
+    { label: "In their place", text: `${correctPositions} of ${slotCount}`, tone: tone(correctPositions) },
+  ];
+}

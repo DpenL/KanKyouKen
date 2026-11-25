@@ -2,12 +2,18 @@ import { describe, expect, it } from "vitest";
 import { FIXTURES, fixture } from "../glyph/fixtures";
 import { createRng } from "../util/rng";
 import {
+  CLASSIC_RULES,
   DEFAULT_RULES,
+  ZEN_HANZI_RULES,
   evaluateAttempt,
+  isComplete,
+  judgesItself,
+  placementsAfterCheck,
   scoreComposition,
-  startAssembly,
-  submitAttempt,
+  startAssembly as startWith,
+  submitAttempt as submitWith,
   useHint,
+  validateRules,
 } from "./assembly";
 import { parseLayout } from "./layout";
 import { buildLookAlikeTable } from "./lookalike";
@@ -50,15 +56,49 @@ const LIN: AssemblyPuzzle = {
 
 const SOLVE_HU: AssemblyAttempt = { layout: 1, placements: ["t1", "t4", "t2"] };
 
+/*
+ * Most tests below were written for Kumiki's classic rules, the library's default until
+ * the rules of the Zen Hanzi demo took over (five lives, the score falling by 15 per
+ * wrong attempt and 25 per hint). They keep those rules unless they name others.
+ */
+const startAssembly = (puzzle: AssemblyPuzzle, rules: AssemblyRules = CLASSIC_RULES): AssemblyState => startWith(puzzle, rules);
+const submitAttempt = (
+  state: AssemblyState,
+  puzzle: AssemblyPuzzle,
+  attempt: AssemblyAttempt,
+  rules: AssemblyRules = CLASSIC_RULES,
+): ReturnType<typeof submitWith> => submitWith(state, puzzle, attempt, rules);
+
 function play(puzzle: AssemblyPuzzle, attempts: readonly AssemblyAttempt[], rules?: AssemblyRules): AssemblyState {
   let state = startAssembly(puzzle, rules);
   for (const attempt of attempts) state = submitAttempt(state, puzzle, attempt, rules).state;
   return state;
 }
 
-describe("DEFAULT_RULES", () => {
-  it("has the documented numbers", () => {
-    expect(DEFAULT_RULES).toEqual({ lives: 5, baseScore: 100, attemptCost: 15, hintCost: 25, minScore: 10 });
+describe("rule sets", () => {
+  it("keeps Kumiki's classic numbers", () => {
+    expect(CLASSIC_RULES).toEqual({
+      check: "button",
+      afterCheck: "keep",
+      lives: 5,
+      baseScore: 100,
+      attemptCost: 15,
+      hintCost: 25,
+      minScore: 10,
+    });
+  });
+
+  it("defaults to the rules of the Zen Hanzi demo", () => {
+    expect(DEFAULT_RULES).toBe(ZEN_HANZI_RULES);
+    expect(ZEN_HANZI_RULES).toMatchObject({ check: "button", afterCheck: "keep-correct", lives: 3 });
+    expect(startWith(HU).livesLeft).toBe(3);
+  });
+
+  it("refuses rules that cannot be played", () => {
+    expect(() => validateRules(CLASSIC_RULES)).not.toThrow();
+    expect(() => validateRules({ ...CLASSIC_RULES, check: "soon" as never })).toThrow(RangeError);
+    expect(() => validateRules({ ...CLASSIC_RULES, afterCheck: "shuffle" as never })).toThrow(RangeError);
+    expect(() => startWith(HU, { ...CLASSIC_RULES, check: "never" as never })).toThrow(RangeError);
   });
 });
 
@@ -68,6 +108,7 @@ describe("evaluateAttempt", () => {
       structureCorrect: true,
       correctComponents: 3,
       componentCount: 3,
+      slotCount: 3,
       correctPositions: 3,
       anyInCorrectPosition: true,
       solved: true,
@@ -79,6 +120,7 @@ describe("evaluateAttempt", () => {
       structureCorrect: false,
       correctComponents: 3,
       componentCount: 3,
+      slotCount: 3,
       correctPositions: 0,
       anyInCorrectPosition: false,
       solved: false,
@@ -96,6 +138,7 @@ describe("evaluateAttempt", () => {
       structureCorrect: true,
       correctComponents: 3,
       componentCount: 3,
+      slotCount: 3,
       correctPositions: 1,
       anyInCorrectPosition: true,
       solved: false,
@@ -120,6 +163,7 @@ describe("evaluateAttempt", () => {
       structureCorrect: true,
       correctComponents: 0,
       componentCount: 3,
+      slotCount: 3,
       correctPositions: 0,
       anyInCorrectPosition: false,
       solved: false,
@@ -137,6 +181,7 @@ describe("evaluateAttempt", () => {
       structureCorrect: false,
       correctComponents: 2,
       componentCount: 2,
+      slotCount: 3,
     });
     expect(evaluateAttempt(LIN, { layout: 1, placements: ["a", "b"] })).toMatchObject({
       correctComponents: 1,
@@ -185,14 +230,14 @@ describe("startAssembly", () => {
   });
 
   it("takes lives from the rules, unlimited included", () => {
-    expect(startAssembly(HU, { ...DEFAULT_RULES, lives: 2 }).livesLeft).toBe(2);
-    expect(startAssembly(HU, { ...DEFAULT_RULES, lives: null }).livesLeft).toBeNull();
+    expect(startAssembly(HU, { ...CLASSIC_RULES, lives: 2 }).livesLeft).toBe(2);
+    expect(startAssembly(HU, { ...CLASSIC_RULES, lives: null }).livesLeft).toBeNull();
   });
 
   it("rejects lives that are not a positive integer", () => {
-    expect(() => startAssembly(HU, { ...DEFAULT_RULES, lives: 0 })).toThrow(RangeError);
-    expect(() => startAssembly(HU, { ...DEFAULT_RULES, lives: -1 })).toThrow(RangeError);
-    expect(() => startAssembly(HU, { ...DEFAULT_RULES, lives: 2.5 })).toThrow(RangeError);
+    expect(() => startAssembly(HU, { ...CLASSIC_RULES, lives: 0 })).toThrow(RangeError);
+    expect(() => startAssembly(HU, { ...CLASSIC_RULES, lives: -1 })).toThrow(RangeError);
+    expect(() => startAssembly(HU, { ...CLASSIC_RULES, lives: 2.5 })).toThrow(RangeError);
   });
 });
 
@@ -268,7 +313,7 @@ describe("submitAttempt", () => {
   });
 
   it("takes a life per wrong attempt and fails the round when they run out", () => {
-    const rules = { ...DEFAULT_RULES, lives: 2 };
+    const rules = { ...CLASSIC_RULES, lives: 2 };
     const wrong: AssemblyAttempt = { layout: 0, placements: [null, null, null] };
     let turn = submitAttempt(startAssembly(HU, rules), HU, wrong, rules);
     expect(turn.state).toMatchObject({ livesLeft: 1, failed: false });
@@ -277,7 +322,7 @@ describe("submitAttempt", () => {
   });
 
   it("changes nothing once the round is over, and repeats the final feedback", () => {
-    const rules = { ...DEFAULT_RULES, lives: 1 };
+    const rules = { ...CLASSIC_RULES, lives: 1 };
     const failed = submitAttempt(startAssembly(HU, rules), HU, { layout: 1, placements: ["t4", "t1", "t2"] }, rules);
     expect(failed.state.failed).toBe(true);
     const after = submitAttempt(failed.state, HU, SOLVE_HU, rules);
@@ -294,7 +339,7 @@ describe("submitAttempt", () => {
   });
 
   it("never fails a round with unlimited lives", () => {
-    const rules = { ...DEFAULT_RULES, lives: null };
+    const rules = { ...CLASSIC_RULES, lives: null };
     const wrong: AssemblyAttempt = { layout: 2, placements: ["t0", "t3", "t5"] };
     const state = play(HU, Array.from({ length: 12 }, () => wrong), rules);
     expect(state).toMatchObject({ attempts: 12, livesLeft: null, failed: false, solved: false });
@@ -313,7 +358,7 @@ describe("submitAttempt", () => {
     state = useHint(useHint(state));
     expect(submitAttempt(state, HU, SOLVE_HU).state.score).toBe(10);
 
-    const rules: AssemblyRules = { lives: null, baseScore: 50, attemptCost: 20, hintCost: 5, minScore: 0 };
+    const rules: AssemblyRules = { ...CLASSIC_RULES, lives: null, baseScore: 50, attemptCost: 20, hintCost: 5, minScore: 0 };
     expect(play(HU, [wrong, SOLVE_HU], rules).score).toBe(30);
     expect(play(HU, [wrong, wrong, wrong, SOLVE_HU], rules).score).toBe(0);
   });
@@ -389,7 +434,7 @@ describe("useHint", () => {
   it("does nothing once the round is solved or failed", () => {
     const solved = submitAttempt(startAssembly(HU), HU, SOLVE_HU).state;
     expect(useHint(solved)).toBe(solved);
-    const rules = { ...DEFAULT_RULES, lives: 1 };
+    const rules = { ...CLASSIC_RULES, lives: 1 };
     const failed = submitAttempt(startAssembly(HU, rules), HU, { layout: 0, placements: [null, null, null] }, rules).state;
     expect(useHint(failed)).toBe(failed);
   });
@@ -412,5 +457,66 @@ describe("scoreComposition", () => {
     expect(() => scoreComposition(HU, [])).toThrow(RangeError);
     expect(() => scoreComposition(HU, ["t1", "t4", "x"])).toThrow(RangeError);
     expect(() => scoreComposition(HU, ["t1", "t1", "t2"])).toThrow(RangeError);
+  });
+});
+
+describe("check triggers", () => {
+  const auto: AssemblyRules = { ...CLASSIC_RULES, check: "auto" };
+
+  it("knows when every slot of the chosen structure is filled", () => {
+    expect(isComplete(HU, SOLVE_HU)).toBe(true);
+    expect(isComplete(HU, { layout: 1, placements: ["t1", null, "t2"] })).toBe(false);
+    expect(isComplete(HU, { layout: 3, placements: ["t1", "t2"] })).toBe(true);
+    // Malformed attempts are not complete, and do not throw.
+    expect(isComplete(HU, { layout: 1, placements: ["t1", "t4"] })).toBe(false);
+    expect(isComplete(HU, { layout: 9, placements: ["t1", "t4", "t2"] })).toBe(false);
+    expect(isComplete(HU, { layout: 0.5, placements: ["t1", "t4", "t2"] })).toBe(false);
+  });
+
+  it("judges a full structure by itself only under the automatic trigger", () => {
+    const state = startAssembly(HU, auto);
+    expect(judgesItself(state, HU, SOLVE_HU, auto)).toBe(true);
+    expect(judgesItself(state, HU, { layout: 1, placements: ["t1", null, "t2"] }, auto)).toBe(false);
+    expect(judgesItself(state, HU, SOLVE_HU, CLASSIC_RULES)).toBe(false);
+    const solved = submitAttempt(state, HU, SOLVE_HU, auto).state;
+    expect(judgesItself(solved, HU, SOLVE_HU, auto)).toBe(false);
+  });
+});
+
+describe("placementsAfterCheck", () => {
+  // 口 and 十 swapped, 月 in place.
+  const swapped: AssemblyAttempt = { layout: 1, placements: ["t4", "t1", "t2"] };
+
+  it("keeps the whole board under the classic rules", () => {
+    expect(placementsAfterCheck(HU, swapped, CLASSIC_RULES)).toEqual(["t4", "t1", "t2"]);
+  });
+
+  it("keeps only tiles in their right slot, as the demo does", () => {
+    const rules = { ...CLASSIC_RULES, afterCheck: "keep-correct" as const };
+    expect(placementsAfterCheck(HU, swapped, rules)).toEqual([null, null, "t2"]);
+    // A malformed 十 and an empty slot go; the right 口 stays.
+    expect(placementsAfterCheck(HU, { layout: 1, placements: ["t5", "t4", null] }, rules)).toEqual([null, "t4", null]);
+    // Under a wrong structure no slot is right, so everything goes back.
+    expect(placementsAfterCheck(HU, { layout: 0, placements: ["t1", "t4", "t2"] }, rules)).toEqual([null, null, null]);
+    // A spare tile of the right shape counts like the one it equals.
+    expect(placementsAfterCheck(LIN, { layout: 1, placements: ["d", "b"] }, rules)).toEqual(["d", null]);
+  });
+
+  it("clears everything on request, and leaves a solved board alone", () => {
+    const rules = { ...CLASSIC_RULES, afterCheck: "clear" as const };
+    expect(placementsAfterCheck(HU, swapped, rules)).toEqual([null, null, null]);
+    expect(placementsAfterCheck(HU, SOLVE_HU, rules)).toEqual(["t1", "t4", "t2"]);
+    expect(placementsAfterCheck(HU, SOLVE_HU, { ...rules, afterCheck: "keep-correct" })).toEqual(["t1", "t4", "t2"]);
+  });
+
+  it("refuses attempts that do not fit the puzzle", () => {
+    expect(() => placementsAfterCheck(HU, { layout: 1, placements: ["t1"] }, CLASSIC_RULES)).toThrow(RangeError);
+  });
+});
+
+describe("feedback", () => {
+  it("names the slots of the structure that was tried", () => {
+    expect(evaluateAttempt(HU, { layout: 3, placements: ["t2", "t0"] })).toMatchObject({ componentCount: 3, slotCount: 2 });
+    expect(evaluateAttempt(HU, SOLVE_HU).slotCount).toBe(3);
   });
 });

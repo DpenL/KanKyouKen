@@ -5,7 +5,13 @@ const stored = (value: unknown): Saved => ({ ...DEFAULT_SAVED, ...(value as Part
 
 describe("cleanSaved", () => {
   it("keeps what is valid", () => {
-    const saved: Saved = { mode: "review", sound: false, volume: 0.25, best: { "gate:learn": 320 } };
+    const saved: Saved = {
+      mode: "review",
+      sound: false,
+      volume: 0.25,
+      best: { "gate:learn": 320 },
+      rules: { preset: "classic", changes: { check: "auto" } },
+    };
     expect(cleanSaved(saved)).toEqual(saved);
     expect(cleanSaved(DEFAULT_SAVED)).toEqual(DEFAULT_SAVED);
   });
@@ -18,6 +24,16 @@ describe("cleanSaved", () => {
     expect(cleanSaved(stored({ sound: "yes" })).sound).toBe(true);
     expect(cleanSaved(stored({ volume: "loud" })).volume).toBe(DEFAULT_SAVED.volume);
     expect(cleanSaved(stored({ volume: Number.NaN })).volume).toBe(DEFAULT_SAVED.volume);
+    expect(cleanSaved(stored({ rules: "classic" })).rules).toEqual(DEFAULT_SAVED.rules);
+    expect(cleanSaved(stored({ rules: { preset: "classic", changes: { check: "soon", feedback: "panel" } } })).rules).toEqual({
+      preset: "classic",
+      changes: { feedback: "panel" },
+    });
+  });
+
+  it("starts players who stored nothing about rules on the default preset", () => {
+    const { rules: _rules, ...older } = DEFAULT_SAVED;
+    expect(cleanSaved(older as Saved).rules).toEqual({ preset: "zen-hanzi", changes: {} });
   });
 
   it("clamps the volume and drops best scores that are not finite numbers", () => {

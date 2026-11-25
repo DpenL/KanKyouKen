@@ -687,6 +687,76 @@ button:disabled {
     opacity: 0;
   }
 }
+/* The Check button of the structure in play, once it is full: straddling its lower edge,
+ * so that a tile dropped where it lies still lands in the slot below (drops look through it). */
+.frame-check {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  z-index: 3;
+  min-height: 44px;
+  padding: 0 18px;
+  transform: translate(-50%, 50%);
+  animation: fade-in 160ms ease-out both;
+}
+
+.frame-check:not(:disabled):active {
+  transform: translate(-50%, calc(50% + 1px));
+}
+
+.structure[data-dim="true"] {
+  opacity: 0.45;
+}
+
+/* The result of a check, over the structures until Continue. */
+.feedback-panel {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: min(92%, 420px);
+  padding: 16px 20px 14px;
+  border: 2px solid var(--wood-edge);
+  border-radius: 14px;
+  background: rgba(10, 14, 40, 0.95);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  transform: translate(-50%, -50%);
+  font-size: 0.95rem;
+  animation: fade-in 160ms ease-out both;
+}
+
+.feedback-panel[hidden] {
+  display: none;
+}
+
+.feedback-panel .panel-title {
+  margin: 0 0 4px;
+  font-size: 1.25rem;
+  font-weight: 750;
+  text-align: center;
+}
+
+.feedback-panel[data-outcome="solved"] .panel-title {
+  color: var(--good);
+}
+
+.feedback-panel[data-outcome="failed"] .panel-title {
+  color: var(--bad);
+}
+
+.feedback-panel .panel-meaning {
+  margin: 0 0 6px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.feedback-panel .actions {
+  margin-top: 8px;
+}
+
 
 .feedback {
   display: flex;

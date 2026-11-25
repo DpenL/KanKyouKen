@@ -21,31 +21,42 @@ two games in `apps/` are original games built on the same mechanics.
 
 ## How reliable this catalogue is
 
-**The Radical Tunes and Zen Hanzi papers could not be opened while Parts 1 and 2 were
-written.** (Part 3 is different: it was written from the full text of its paper.) Every
-statement about them below was reconstructed from search-engine excerpts of the indexed PDFs, cross-checked
-between independent passes. The rules marked *stated* were returned as near-verbatim
-quotations by several differently worded queries and agree with each other, but wording,
-numbers and figure references have not been checked against the PDFs. Before citing
-anything here in a publication, check it against the source.
+The three parts rest on sources of different quality:
 
-Each rule carries one of three labels:
+- **Part 1 (Radical Tunes) is unchecked.** Its papers and the dissertation could not be
+  opened when it was written, and they still cannot be read from here. Every statement
+  in it was reconstructed from search-engine excerpts of the indexed PDFs, cross-checked
+  between independent passes. The rules marked *stated* there were returned as
+  near-verbatim quotations by several differently worded queries and agree with each
+  other, but wording, numbers and figure references have not been checked against the
+  PDFs. Before citing anything from Part 1 in a publication, check it against the source.
+- **Part 2 (Zen Hanzi) has been checked against the paper.** It was first reconstructed
+  the same way; in November 2026 every rule was checked against the full text and the
+  figures of the paper. Its quotations are verbatim and carry page numbers.
+- **Part 3 (Kanji Workbook)** was written from the full text of its paper.
+
+Each rule carries one of these labels:
 
 | Label | Meaning |
 |---|---|
-| **stated** | Returned as a quotation from the paper or dissertation. |
-| **inferred** | Follows from stated rules, but no excerpt says it outright. |
+| **stated** | Part 1: returned as a quotation from the paper or dissertation by a search engine. Parts 2 and 3: read in the paper, in its text or a figure caption. |
+| **shown** | Part 2: visible in a figure of the paper (a screenshot), not said in its text. A screenshot shows one moment of play, so this is evidence, not a rule. |
+| **inferred** | Follows from what the source says or shows, but the source does not say it outright. |
 | **ours** | Not in the sources (or left open by them). A design decision made here. |
 
 ## Design principles the sources set
 
-The Zen Hanzi paper lists six principles, which also describe Radical Tunes (*stated*):
+The Zen Hanzi paper lists six principles (*stated*, pp. 5 and 6). That they also
+describe Radical Tunes is not in the Zen Hanzi paper; it may come from the dissertation,
+which could not be read, so treat it as unchecked.
 
-1. Intrinsic pleasure is a must: appealing graphics and sound, plentiful feedback.
-2. Short rounds that fit micro-leisure intervals.
-3. The learning content is integrated into the game (no "answer a quiz to shoot").
-4. No orthogonal mechanics: every action serves the learning goal.
-5. Scalable in authoring burden: no hand-authored level per character.
+1. "Intrinsic pleasure is a must": appealing graphics and sound, plentiful feedback.
+2. Short rounds that fit "micro-leisure intervals of contemporary life".
+3. The learning content is "endogenously integrated" into the game: no Math
+   Blaster-like "add two numbers to shoot at asteroid".
+4. No orthogonal mechanics: "Every action should serve to reinforce or increase
+   knowledge."
+5. Scalable in authoring burden: no exercises written by hand for each character.
 6. Raise the learner's awareness of the components of a character.
 
 Principle 5 shaped this library most: the melodies, the structures, the look-alikes and
@@ -55,6 +66,11 @@ hand, which is where it goes beyond what the papers built.
 ---
 
 ## Part 1. Stroke writing with melodic signatures (from Radical Tunes)
+
+**Status: unchecked.** Reconstructed from search-engine excerpts (see "How reliable this
+catalogue is"). The Radical Tunes papers (FDG 2019; *Multimodal Technologies and
+Interaction*, 2021) and the dissertation still cannot be read from here, so the
+quotations, numbers and labels below have not been checked against them.
 
 ### RT-1 Melodic signature per component — *stated*
 
@@ -218,25 +234,87 @@ mistakes moves an item up, more than one mistake makes it due sooner.
 
 ## Part 2. Component assembly (from Zen Hanzi)
 
-### ZH-1 Assemble the character from components — *stated*
+**Status: checked against the paper (November 2026).** Source: Oleksandra G. Keehl,
+Dominic Kao and Edward F. Melcer, "Zen Hanzi: A Game for Raising Hanzi Component
+Awareness", FDG ’22, 11 pages, DOI 10.1145/3555858.3555875. This part was first
+reconstructed from search-engine excerpts; every rule has since been checked against the
+paper's full text and its figures. Page numbers are the paper's own (1 to 11).
+Quotations are verbatim, the paper's spelling included; words read off a screenshot are
+given without quotation marks or are marked as such. The playable original was not
+consulted: what the paper leaves open is listed under "Open questions".
 
-"The player must assemble a given hanzi by selecting correct components and placing
-them into correct slots in a correct hanzi structure." The prompt is the English
-meaning and the pinyin; four structures are offered above three rows of component
-tiles; tiles are dragged into slots.
+### What the figures show — *shown*
+
+Figure 6 (p. 4) is the play screen, laid out for a phone held upright. Its caption: "The
+player must drag the components from three rows at the bottom into one of the four
+structures above to assemble the hanzi indicated by the English translation and pinyin
+pronunciation at the top of the screen." From top to bottom:
+
+- A status bar: a trophy with the score (000), three hearts, and a 字 icon with the
+  progress 1/10.
+- A banner with the pinyin and the meaning (bāng, to help) between two buttons, a
+  musical note on the left and a light bulb on the right. The text names a “Hint” button
+  but not its icon and never mentions the note; that the bulb is the hint and the note
+  plays the character's sound is *inferred* (each hanzi entry names sound files, ZH-11).
+- Four structure frames in a two-by-two grid, each divided into equal slots: three
+  stacked rows; two side by side over one; a column of two beside one tall slot; one
+  tall slot beside a column of two. Every frame has three slots, as many as 帮 has
+  components.
+- The tray: three rows of six tiles, 18 for a three-part character. Besides the parts of
+  帮 and look-alikes of them it holds tiles such as 木, 讠, 身, 彳, 夕 and 失, which look
+  like parts of the other nine study characters or look-alikes of those parts
+  (*inferred*; the paper does not say how such tiles are chosen).
+- No Check or Submit button.
+
+Figure 8 (p. 5), Learn mode: a panel with the character on a tile, its pinyin and its
+meaning, and a Continue button.
+
+Figure 9 (p. 5), feedback, in two screenshots:
+
+- Left: a panel over the board repeats the attempt inside the chosen structure, each
+  tile coloured: the right part in its right slot green, the two parts that do not
+  belong orange. Beside it: **Structure:** Correct / **Components:** 1/3 Correct /
+  1/3 Correct Position, the two count lines in red. A Continue button closes the panel.
+- Right: the board after attempts. The right structure is filled green; a wrong
+  structure that was tried is filled a brownish orange (the caption calls the colour
+  red); the two untried frames are unchanged. In the right structure the correctly
+  placed tile stays in its slot, and each part that was tried in a wrong slot is drawn
+  small and red in a corner of that slot. In the tray, tiles of the character's parts
+  are green, even those tried in the wrong slot; tried tiles that are not parts are
+  orange; untried tiles keep their colour.
+
+Figure 7 (p. 5) shows look-alikes (ZH-3), Figure 10 (p. 6) component variants (ZH-10),
+Figure 11 (p. 6) the four-part split of 路 (ZH-4), Figure 13 (p. 8) the test (ZH-9).
+
+### ZH-1 Assemble the character from components — *stated* (pp. 4, 5)
+
+In Zen Hanzi "the player must assemble a given hanzi by selecting correct components and
+placing them into correct slots in a correct hanzi structure" (p. 5). The prompt is the
+English meaning and the pinyin; four structures are offered above three rows of
+component tiles; tiles are dragged into a structure (Figure 6 caption, p. 4).
 
 - Code: `components/puzzle.ts` (`createAssemblyPuzzle`), `components/assembly.ts`.
-- *Ours*: an explicit Check action (what triggers evaluation in the original is
-  unknown), tap-to-place, and how tiles move between slots.
+- What makes an attempt is not in the paper. Figure 6 has no Check button, so the
+  original probably judges a structure as soon as its last slot is filled (*inferred*).
+- *Ours*: an explicit Check action, tap-to-place, and how tiles move between slots.
 
-### ZH-2 Structure is part of the answer — *stated*
+### ZH-2 Structure is part of the answer — *stated* (pp. 5, 6, 10)
 
-Structure correctness is reported separately from component correctness.
+The feedback tells the player "whether they used the correct structure" (Figure 9
+caption, p. 5), on a line of its own, apart from the components.
 
 - Code: `components/layout.ts`; `AssemblyFeedback.structureCorrect`.
+- In the original each hanzi's entry names its structure (ZH-11), so a character always
+  comes in the same structure (*inferred* from the encoding); the authors call laying
+  out "hanzi structure frames" by hand for each hanzi "very impractical" (p. 6). Four
+  structures are offered (Figure 6 caption); in the figure all four have as many slots
+  as the target has parts (*shown*). How the three wrong ones are chosen is not said. In
+  its current form the game "supports only a subset of possible hanzi structures"
+  (p. 10); no figure shows an enclosure.
 - *Ours*: deriving the right structure from stroke data (`layoutFromBoxes`), the
-  catalogue of structures and how wrong ones are chosen (`alternativeLayouts`). The
-  original's structures were laid out by hand and cover "only a subset".
+  catalogue of structures (rows, columns and seven shapes of enclosure) and how wrong
+  ones are chosen (`alternativeLayouts`: near misses first, then others with the same
+  number of slots).
 - The derivation does not always succeed. Parts that fit neither a row, a column nor
   an enclosure are lined up by their centres as a last resort, and the result says so:
   `Decomposition.layoutGuessed` (from `layoutFromBoxes(...).guessed`). 原 comes out as
@@ -254,19 +332,28 @@ Structure correctness is reported separately from component correctness.
   which reads as "full" (勹 in 句 and 局). A host that asks for the structure must
   leave marked characters out, as Kumiki does when it builds its decks.
 
-### ZH-3 A look-alike for every correct component — *stated*
+### ZH-3 A look-alike for every correct component — *stated* (pp. 5, 6)
 
-"Zen Hanzi also makes sure to include look-alike options for each correct component",
-picked at random from a hand-built database, including variants and "common wrong
-versions". Look-alikes "differ by a single extra stroke, some by comparative length of
-two strokes, some by whether a stroke crosses another stroke".
+"Zen Hanzi also makes sure to include look-alike options for each correct component,
+ensuring the students are aware of some of the possible mistakes they could make when
+writing" (p. 5). They come from the authors' "own mini-database of hanzi components and
+their look-alikes", so that "the game can randomly include at least one look-alike for
+each component within the hanzi" (p. 6). Figure 7 (p. 5) gives examples in three rows
+(矢 天 禾 木; 正 止 上 土 士; 夂 夕 and two forms of 身): "Some differ by a single extra
+stroke, some by comparative length of two strokes, some by whether a stroke crosses
+another stroke." The database also holds variants (ZH-10) and "some of the common wrong
+versions of components" (p. 6), which "are useful in highlighting mistakes a novice
+learner might make" (p. 6).
 
 - Code: `components/lookalike.ts` (`shapeDistance`, `buildLookAlikeTable`),
   `components/mutate.ts` (`mutateGlyph`: drop a stroke, double a stroke, swap two
   lengths).
+- How many: the paper says at least one per component; Figures 6 and 9 show 18 tiles
+  for three parts (*shown*).
 - *Ours*: measuring resemblance by pairing strokes, and generating wrong versions by
-  rule. Hand-picked pairs are still supported and take precedence (`curated`).
-  "Crosses or not" is not generated yet.
+  rule (the original picked both by hand). Hand-picked pairs are still supported and
+  take precedence (`curated`). A look-alike that differs only in whether a stroke
+  crosses another is not generated yet.
 - *Ours*: a tile must be something a player can tell apart. A generated wrong version
   is only used when it differs visibly from every other tile in the tray, the right one
   included (`visibleDifference`, `MIN_MALFORMED_DIFFERENCE`): a doubled stroke that lands
@@ -277,14 +364,33 @@ two strokes, some by whether a stroke crosses another stroke".
   listed by hand (`sameShape` in the set file); they never share a tray. Both
   thresholds are our judgment, checked by eye on the starter set only.
 
-### ZH-4 Fine-grained decomposition — *stated*
+### ZH-4 Fine-grained decomposition — *stated* (pp. 2, 6, 7)
 
-Characters are broken into "their more basic components" (up to four parts) instead of
-the conventional one to three, because every small component "holds its own potential
-for errors".
+The paper defines a component as "any part of a hanzi that could be cleanly separated
+from the rest of the hanzi" and calls one "‘basic’ if it can’t be further broken down"
+(p. 2). Rather than "the conventional hanzi structure classification methods which split
+hanzi into 1-3 major parts", Zen Hanzi breaks characters "into their more basic
+components" (pp. 6, 7), because "each small component holds its own potential for
+errors and is therefore worthy of attention" (p. 7). Two more reasons (p. 7): with
+complex components the database "would have to hold exponentially more components in
+order to achieve the same granularity of possible errors and their combinations", and
+the player would have "fewer incorrect options to eliminate at each stage". The three
+Chinese language professors who saw the prototype all "expressed their surprise over how
+we divided hanzi into components" (p. 6). Which parts count was decided with Fordham's
+list "and our best judgement" (footnote 11, p. 7).
 
+Figure 11 (p. 6): 路 is conventionally 足 beside 各; Zen Hanzi uses four parts in a
+two-by-two frame, 口 over 止 on the left and 夂 over 口 on the right. The caption adds
+that the two-part split "results in the transformation of the lower-left component into
+a different variant of itself, which may confuse the student about the proper shape
+within the original hanzi".
+
+- The paper sets no upper limit; four, in Figure 11, is the most any figure shows. The
+  ten study characters have 29 parts in all, the maximum score of the composition test
+  (p. 9), so about three each (*inferred*).
 - Code: `components/decompose.ts` (`decompose`, `maxSlots`, `known`).
-- *Ours*: splitting top-down along the dataset's component tree, largest part first.
+- *Ours*: at most four parts by default (`maxSlots`), and splitting top-down along the
+  dataset's component tree, largest part first.
   The character's top-level parts are always used, whether the learner knows them or
   not; `known` only limits splitting below that level, where a part is divided further
   only when every piece is listed. With `known` set to the lexicon of the starter set,
@@ -314,47 +420,261 @@ for errors".
   亙, 懴 and 籖; 執 is a guess as it was in the first version. None is in a Kumiki deck,
   and a host that asks for them gets `layoutGuessed` set.
 
-### ZH-5 Partial, staged feedback — *stated*
+### ZH-5 Partial, staged feedback — *stated* (p. 5)
 
-After each attempt the player learns "whether they used the correct structure, how
-many components are correct, and whether any of the components were in the correct
+After each attempt the player learns "whether they used the correct structure, how many
+components are correct, and whether any of the components were in the correct
 position". "Once the correct structure is identified, the game also marks which
-components were incorrectly tried in each slot."
+components were incorrectly tried in each slot." (Figure 9 caption, p. 5.) The panel in
+Figure 9 counts both, 1/3 Correct and 1/3 Correct Position, so the original tells how
+many parts are in place, not only whether any is; and the panel stays over the board
+until the player presses Continue (*shown*).
 
-- Code: `evaluateAttempt` → `AssemblyFeedback`; `AssemblyMemory.slotMisses`.
+- Code: `evaluateAttempt` → `AssemblyFeedback` (`correctPositions` is the count,
+  `anyInCorrectPosition` the yes or no); `AssemblyMemory.slotMisses`.
 - *Ours*: counting with multiplicity, and judging positions only once the structure is
-  right.
+  right. The paper shows feedback for a right structure only, so what the original says
+  about positions after a wrong one is unknown.
 
-### ZH-6 Memory of tried options — *stated*
+### ZH-6 Memory of tried options — *stated* (p. 5)
 
-"Coloring incorrect components and structures red, and correct ones green."
+"The game helps the player remember which options they tried by coloring incorrect
+components and structures red, and correct ones green." (Figure 9 caption.) The text
+speaks of "changing the color of the components after each attempt based on their
+correctness" (p. 5). In Figure 9 a part tried in the wrong slot still turns green,
+because it belongs to the character, and the red is a brownish orange (*shown*).
 
-- Code: `AssemblyMemory.layouts`, `AssemblyMemory.tiles`.
+- Code: `AssemblyMemory.layouts`, `AssemblyMemory.tiles` (a tile is "right" when it
+  belongs to the target, wherever it was tried, as in the figure).
 
-### ZH-7 Learn and Review modes, glyph hint — *stated*
+### ZH-7 Learn and Review modes, glyph hint — *stated* (p. 5)
 
-In Learn mode the character is shown before assembly; in Review mode only meaning and
-pronunciation guide the player; a Hint button shows the character again.
+"In “Learn” mode, the player is shown a picture of the hanzi before assembling it"
+(Figure 8: the character, its pinyin and meaning, and Continue), "while in review mode
+they are guided only by the English meaning and Chinese pronunciation of the
+hanzi—requiring players to recall the structure of the hanzi without guidance.
+Additionally, the “Hint” button allows the player to view the hanzi one more time if
+they are stuck." (p. 5)
 
 - Code: `AssemblyMode`, `useHint`.
+- *Ours*: what a hint costs, how long the character stays on show, and Kumiki's
+  unlimited tries in Learn mode. The paper names no cost and ties no rule to a mode.
 
-### ZH-8 Score and lives — *stated* to exist, parameters unknown
+### ZH-8 Score and lives — *stated* to exist (p. 5); three lives *shown* (Figure 6)
+
+"Finally, the game has scoring and “lives” mechanics. While those aren’t universally
+effective motivators, they are known to provide motivation for some of the more
+competitive players" (p. 5). Figure 6 shows three hearts and a score of 000 beside the
+progress 1/10. The paper does not say what costs a life, what happens when the last one
+is gone, how points are earned, or whether lives last for one character or for the
+whole run; that they share the status bar with the run's progress suggests the run
+(*inferred*).
 
 - Code: `AssemblyRules`, `DEFAULT_RULES`. Every number is *ours*.
 
-### ZH-9 Composition test — *stated* (study instrument)
+### ZH-9 Composition test — *stated* (pp. 8, 9; study instrument)
 
-Given the right structure, drag components into its slots; score = components placed
-correctly.
+The pre-test, and the identical post-test, were run in Qualtrics and consisted of
+"matching 10 hanzi with their English meaning, and identifying correct individual
+components and their placement in each of the 10 hanzi" (p. 8). The scores were "the
+number of hanzi they correctly matched to their English meaning (max score of 10), as
+well as the total number of components correctly placed into the hanzi structures (max
+score of 29)" (p. 9). Figure 13 (p. 8) shows a composition item: a picture of the right
+structure with numbered slots, the meaning (flower) instead of the character, one drop
+box per slot, and a column of part tiles with look-alikes among them (亻 and 彳, 目 and
+日). The question on the screenshot asks which components go into each of the three
+slots of this structure, one component per slot.
 
-- Code: `scoreComposition`.
+- Code: `scoreComposition`; Kumiki's exam (`apps/kumiki/src/exam.ts`).
 
-### What the study found
+### ZH-10 Component variants — *stated* (p. 6)
 
-Against a flashcard app (10 characters, 10 minutes), the assembly game gave clearly
-better component composition and equal meaning recall, but players felt *less
-competent*. The authors warn adopters about this "competence penalty" and note that
-single-stroke look-alikes frustrated some players.
+Figure 10 (p. 6) shows 水 and 永, 丰 and 邦. Its caption: "The ‘water’ component (A) is
+written with a vertical line at the top in some of the hanzi (B). It’s still considered
+the same component according to databases we examined, but it would be incorrect to omit
+that line or add it where it isn’t needed. Similarly, the ‘great’ component (C) is
+occasionally written in a slanted form (D). In Zen Hanzi, we include both versions of
+each component to draw the player’s attention to the possible mistakes they could make."
+Published look-alike lists "typically don’t address component variations, as in Figure
+10, or include incorrect versions of components", and "the hanzi database would also
+have to be checked to replace components with their variants where necessary" (p. 6).
+In Figures 6 and 9 the tile for the top left of 帮 is the slanted 丰: a tile shows a part
+as it is written in that character (*shown*).
+
+- Code: none. A Kumiki tile shows the component's stand-alone glyph when the set has one
+  with as many strokes as the part, and otherwise the part's strokes cut out of the
+  target (`createAssemblyPuzzle`); variants are not told apart (*ours*).
+
+### ZH-11 Hanzi encoding and component database — *stated* (pp. 6, 10)
+
+So that nothing has to be authored per level, the authors "designed a succinct way to
+encode all the necessary information about each hanzi, including it’s structure and
+composition" (p. 6). The example entry, for 想, has the fields `pinyin` (xiǎng),
+`hanzi`, `pinyin_sound` (xiang3), `english` (to want), `english_sound` (to_want),
+`layout` and `components`:
+
+- `layout`: type `s_H`, `part_1` `s_V`, `part_2` `s_none`.
+- `components`: a list of name and position pairs, here the component ids 113, 208 and
+  115 at positions 0, 1 and 2.
+
+想 is 相 over 心, and 相 is 木 beside 目; so `s_H` reads as a split into top and bottom,
+`s_V` as one into left and right, `s_none` as no split, and the positions number the
+slots in reading order, the order Kumiki's slots follow too (*inferred*: the paper
+explains neither the codes nor which id is which component). Figure 6's three-row frame
+shows that a frame can also be split into three equal parts (*shown*).
+
+The component database maps a component id to the ids of its look-alikes; the two
+entries printed (p. 6) map `113` to `211` and `179`, and `pie_h_7_7_7r` to `7_7_7r` and
+`115` (ids are numbers or descriptive names). The authors "used Fordham’s list of 800
+most common components" as its foundation, but "we only used the basic components that
+couldn’t be easily broken up into smaller components, and added some of our own, to
+account both for slight but important variations in some components; and some of the
+common wrong versions of components" (p. 6). Much of the hanzi data "can be scraped from
+free databases online, such as the Chinese Character Decomposition" (on Wikimedia
+Commons), and the sounds come from "free online datasets, like the Mandarin Voice
+Soundset" (p. 6). The component database "has to be assembled largely from scratch"
+(p. 6), and "the images for each component currently need to be drawn by hand" (p. 10);
+once those exist, "adding new hanzi with the scalable component and hanzi databases is
+relatively easy" (p. 10).
+
+- Code: none of this format. *Ours*: shapes and component trees from KanjiVG,
+  structures derived (`layoutFromBoxes`), look-alikes measured (`buildLookAlikeTable`)
+  with curated pairs on top, meanings and readings from the set file's lexicon.
+
+### What the study found — *stated* (pp. 7 to 10)
+
+What the game is for: "it is a supplemental activity intended specifically to minimize
+component substitution mistakes in writing" (p. 7).
+
+Design. Between subjects, Zen Hanzi against Quizlet (flashcards, plus its two gamified
+quizzes). A convenience sample recruited online; 73 people completed the study, and 10
+who "received 25 or more points out of 29 on the pre-test" were excluded, leaving 63: 36
+with the game and 27 with Quizlet (assignment was slightly weighted towards the game,
+footnote 12). Ages 18 to 74 (mean 40.2, median 30); nobody was paid. Steps: a video on
+the survey tool, consent, demographics and the pre-test; a 2-minute video tutorial of the
+assigned app; 10 minutes with the app on ten characters (到, 路, 帮, 菜, 花, 想, 思, 对,
+短, 谢, "chosen for their multi-component structure", p. 9); right after, the post-test,
+identical to the pre-test, and 48 questionnaire items from PENS, Situational Interest and
+a modified GEQ (Table 1, p. 8). Analysis: ANCOVA with the pre-test scores as covariates.
+
+Results (Tables 2 and 3, p. 9):
+
+- Composition post-test, out of 29: 21.06 (SD 5.52) with the game against 15.81 (SD
+  5.99) with Quizlet, p = 0.0006, 95 % CI 1.97 to 6.89; pre-tests 8.78 and 7.19
+  (p = 0.28). The abstract gives "p<0.004" and the text "p < .001" for this result.
+- Meaning post-test, out of 10: no significant difference (p = 0.17, CI -2.64 to 0.06),
+  pre-tests 3.14 and 3. Table 2 prints post-test means of 4.33 for the game and 8.48 for
+  Quizlet, a gap that does not fit that interval; one of the numbers is probably
+  misprinted, so do not quote these means.
+- Pre-test composition scores predicted post-test composition scores (p = 0.002).
+- Experience: novelty was higher with the game (13.14 against 11.19, p = 0.03) and
+  felt competence lower (GEQ competence 14.44 against 16.67, p = 0.04, although the
+  interval printed, -4.53 to 0.53, includes zero; PENS competence 11.67 against 13.07,
+  p = 0.08). Enjoyment, exploration, attention, challenge, affect, flow and intuitive
+  controls did not differ.
+
+What the authors take from it (p. 10): adopters "should be aware of the possible
+competence penalty that comes with increased awareness of hanzi components, at least at
+the early stages of learning"; they speculate that players "got the answer wrong more
+frequently than the Quizlet users, and therefore felt less competent". Some players
+reported "feeling frustrated at having to differentiate between components that differed
+by a single stroke or even relative length of a single stroke"; some Quizlet users said
+they would memorize one or two components and look for those to identify a character.
+The result holds "at least in the short term and with visual clues" (p. 9). Future work
+(p. 10): a larger sample, more content, longitudinal tests, testing "participants’
+ability to produce hanzi unassisted", ways to counter the loss of felt competence, and
+juicier feedback for more enjoyment.
+
+The paper says Zen Hanzi teaches "traditional Chinese characters" (p. 4), yet the study
+characters and the screenshots are simplified forms (帮, 对, 谢, 讠).
+
+### Differences between the paper and Kumiki
+
+What the paper does, what Kumiki does, and a recommendation: *keep ours*, *follow the
+paper* (make the paper's way the default), or *offer both* (a setting, default named).
+Defaults stay close to the original wherever the paper states or shows it. Where the
+paper's side is only *inferred*, the recommendation waits for a look at the playable
+original before changing a default.
+
+1. **What makes an attempt.** Paper: no Check button in Figure 6; a full frame is
+   probably judged at once (*inferred*). Kumiki: a Check button; each arrangement can
+   be checked once. *Offer both*; keep Check as the default until the original is seen
+   to judge a full frame by itself, then follow it.
+2. **Number of lives.** Paper: three hearts (Figure 6); what costs one is unknown.
+   Kumiki: five per character in Review, unlimited in Learn; every failed check costs
+   one. *Follow the paper*: three by default, the count (or none) configurable.
+3. **What the lives belong to.** Paper: shown beside the run's progress, so probably the
+   whole run (*inferred*). Kumiki: each character. *Offer both*; per character until
+   the original is checked.
+4. **Score.** Paper: a running total under a trophy, rule unknown. Kumiki: per
+   character 100, minus 15 per failed check and 25 per hint, at least 10; best result
+   per deck and mode. *Keep ours* as one scheme and *offer others* (a high score that
+   costs something to chase; no score at all for young players).
+5. **Hint.** Paper: shows the character again, cost unknown. Kumiki: shows it for
+   2.5 s and costs 25 points. *Keep ours*, the cost configurable (points, a life, or
+   free).
+6. **Feedback panel.** Paper: a panel over the board repeats the attempt with coloured
+   tiles, gives counts (1/3 Correct, 1/3 Correct Position) and is closed with Continue.
+   Kumiki: three lines between the structures and the tray, with icons, and no panel to
+   close; the position line says only whether any part is in place, and "cannot be
+   judged yet" after a wrong structure. *Offer both*: the paper's panel and counts as
+   the default look, the yes-or-no position line (the caption's wording) as a harder
+   setting.
+7. **The board after a check.** Paper: the correctly placed tile stays and the others
+   are back in the tray (*shown* in one screenshot, Figure 9; as a rule *inferred*).
+   Kumiki: every tile stays where the player put it. *Offer both*; the paper's way
+   becomes the default once the original confirms it.
+8. **Colours.** Paper: whole tiles and frames filled green or red (orange in the
+   screenshot). Kumiki: green and red outlines, not fills, with ✓ and ✕ badges; a wrong
+   structure gets a dashed border and a wrong tile is hatched. *Offer both*: the
+   paper's fills as the default look, keeping our badges and hatching with them so
+   that the mark does not rest on colour alone.
+9. **Tray size.** Paper: 18 tiles in three rows of six for three parts; at least one
+   look-alike per part; the other tiles look like parts of the other characters in the
+   set. Kumiki: 12 tiles in three rows, two look-alikes per part, fillers from the parts
+   used in the deck. *Follow the paper*: 18 tiles in rows of six by default, the size
+   configurable.
+10. **Structures on offer.** Paper: four, each with as many slots as the target (Figure
+    6), chosen by a rule the paper does not give, from "only a subset" of structures,
+    no enclosure in any figure. Kumiki: four, with the same slot count, near misses
+    first, rows, columns and enclosures. *Keep ours.*
+11. **Where the right structure comes from.** Paper: written into each character's
+    entry, so fixed per character (ZH-11). Kumiki: derived from stroke data, which is
+    also fixed per character; characters whose structure is only a guess are left out
+    of the decks. *Keep ours, and offer the paper's way as an override*: a structure
+    written into the set file for a character takes precedence, so that guessed
+    characters become playable.
+12. **How far characters are split.** Paper: into basic components, those that cannot
+    be broken down further, with no stated limit. Kumiki: along KanjiVG's tree, at most
+    four slots, and below the top level only into parts the deck's lexicon lists.
+    *Offer both*: the paper's way (basic parts, still at most four slots) as the
+    default if the decks still yield clean structures with it; the lexicon limit for
+    decks that teach named parts first.
+13. **Shape of a tile.** Paper: a tile shows the part as written in the character (the
+    slanted 丰 of 帮), and variants are separate components (ZH-10). Kumiki: the part's
+    stand-alone glyph when the set has one. *Follow the paper*, with the stand-alone
+    glyph as an option. Look-alikes then have to be drawn in the same positional form,
+    or the right tile gives itself away by its shape (*ours*).
+14. **Look-alikes and wrong versions.** Paper: chosen by hand from a database,
+    including common wrong versions and pairs that differ in whether a stroke crosses
+    another. Kumiki: measured by shape and generated by rule (drop, double, swap
+    lengths), hand-picked pairs first. *Keep ours* (principle 5), and *follow the paper*
+    by adding a crossing-or-not mutation.
+15. **Prompt and sound.** Paper: pinyin and English, a recording for each (ZH-11), and a
+    sound button (*inferred*). Kumiki: meaning and Japanese reading as text, and a
+    melody per component (Part 1). *Keep ours*; a spoken reading can be offered where
+    recordings under a suitable licence exist, never the original's.
+16. **Learn mode.** Paper: the character first, with pinyin, meaning and Continue; no
+    rule tied to a mode. Kumiki: the same, with unlimited tries. *Offer both*;
+    unlimited tries stays the Learn default.
+17. **Composition test.** Paper: a separate Qualtrics test; the structure drawn with
+    numbered slots, the meaning as prompt, a list of parts with look-alikes, and a
+    meaning-matching task beside it. Kumiki: an in-game exam with only the right
+    structure, filled from the puzzle's tray, results at the end of the deck, no meaning
+    task. *Keep ours*; add the meaning task as an option if Kumiki is used to repeat the
+    study.
+18. **Content.** Paper: Chinese characters (simplified in the study, see above).
+    Kumiki: Japanese kanji from KanjiVG. *Keep ours.*
 
 ---
 
@@ -512,12 +832,17 @@ least intuitive. Worth remembering before putting ten star rows in front of a le
 
 Only the PDFs or hands-on play can settle these:
 
-- Radical Tunes: the stroke recognition rule and tolerances; whether a backwards stroke
-  was rejected in play; score formula and time limit of the timed round; the hint
-  threshold; scale, tempo and instruments; how the control melodies were generated.
-- Zen Hanzi: what counts as an attempt; number of lives and what costs one; cost of a
-  hint; how many tiles the tray holds; which structures exist and how wrong ones are
-  chosen; the component database format.
+- Radical Tunes (PDFs not read): the stroke recognition rule and tolerances; whether a
+  backwards stroke was rejected in play; score formula and time limit of the timed
+  round; the hint threshold; scale, tempo and instruments; how the control melodies were
+  generated.
+- Zen Hanzi. The paper settles the component database format (ZH-11) and shows four
+  structures, 18 tiles and three lives (Figures 6 and 9). It leaves open, for play with
+  the original: what makes an attempt (no Check button is visible); what costs a life,
+  what happens without one, and whether lives last a character or the run; how points
+  are earned; what a hint costs; how the wrong structures and the other tiles are
+  chosen; whether correctly placed tiles always stay after a check; what the position
+  line says after a wrong structure; the full set of structures.
 
 ## Using the mechanics in another game
 

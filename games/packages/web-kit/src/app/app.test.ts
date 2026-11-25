@@ -29,6 +29,13 @@ describe("launch params", () => {
     expect(canReport(p)).toBe(true);
   });
 
+  it("passes a rule set on as written, the fragment winning over the query", () => {
+    expect(readLaunchParams("?rules=zen-hanzi,check:auto").rules).toBe("zen-hanzi,check:auto");
+    expect(readLaunchParams("?rules=classic", "#rules=gentle").rules).toBe("gentle");
+    expect(readLaunchParams("?rules=%20").rules).toBeUndefined();
+    expect(readLaunchParams("").rules).toBeUndefined();
+  });
+
   it("runs offline without a complete link", () => {
     const p = readLaunchParams("?study=s1&seed=abc&debug=0");
     expect(p.study).toBeUndefined();

@@ -5,7 +5,8 @@
 
 import {
   createAssemblyPuzzle,
-  DEFAULT_RULES,
+  judgesItself,
+  placementsAfterCheck,
   startAssembly,
   submitAttempt,
   useHint,
@@ -19,20 +20,25 @@ import type { ChoiceAttemptData } from "@kankyouken/mechanics/telemetry";
 import type { Rng } from "@kankyouken/mechanics/util";
 import { EMPTY_BOARD, isFull, placeTile, removeTile, type Board } from "./board";
 import type { Content } from "./content";
+import { DEFAULT_SPEC, assemblyRules, puzzleOptions, resolveChoices, type RuleChoices } from "./rules";
 
-/** "learn": the character is shown first and tries are unlimited. "review": meaning and reading only, five lives. */
+/** "learn": the character is shown first. "review": meaning and reading only. What else differs is up to the rules. */
 export type Mode = "learn" | "review";
 
-const PUZZLE_OPTIONS: PuzzleOptions = { layoutChoices: 4, lookAlikesPerComponent: 2, trayRows: 3, traySize: 12 };
-
-export function rulesFor(mode: Mode): AssemblyRules {
-  return mode === "learn" ? { ...DEFAULT_RULES, lives: null } : DEFAULT_RULES;
+/** The rules of a round of `mode` under `choices` (by default the default preset's). */
+export function rulesFor(mode: Mode, choices: RuleChoices = resolveChoices(DEFAULT_SPEC)): AssemblyRules {
+  return assemblyRules(choices, mode);
 }
 
-export function buildPuzzle(char: string, content: Content, rng: Rng): AssemblyPuzzle {
+export function buildPuzzle(
+  char: string,
+  content: Content,
+  rng: Rng,
+  options: PuzzleOptions = puzzleOptions(resolveChoices(DEFAULT_SPEC)),
+): AssemblyPuzzle {
   const glyph = content.glyphs.get(char);
   if (glyph === undefined) throw new Error(`No glyph for ${char}`);
-  return createAssemblyPuzzle(glyph, content.context, PUZZLE_OPTIONS, rng);
+  return createAssemblyPuzzle(glyph, content.context, options, rng);
 }
 
 export interface Round {
@@ -50,8 +56,7 @@ export interface Round {
   readonly since: number;
 }
 
-export function startRound(char: string, mode: Mode, puzzle: AssemblyPuzzle, now: number): Round {
-  const rules = rulesFor(mode);
+export function startRound(char: string, mode: Mode, puzzle: AssemblyPuzzle, now: number, rules: AssemblyRules = rulesFor(mode)): Round {
   return {
     char,
     mode,
@@ -86,10 +91,23 @@ function sameBoard(a: Board, b: Board): boolean {
 
 /**
  * A full board can be checked once: judging the same arrangement again could only repeat
- * the answer and cost another life (a double tap on Check would do exactly that).
+ * the answer and cost another life (a double tap on Check would do exactly that). When
+ * the rules send tiles back after a check, the board is no longer full, so a double tap
+ * finds nothing to check; building the same answer again is then a new attempt, which
+ * the Zen Hanzi demo judges (and charges for) again.
  */
 export function canCheck(round: Round): boolean {
-  return !isOver(round) && isFull(round.board) && (round.checked === null || !sameBoard(round.board, round.checked));
+  if (isOver(round) || !isFull(round.board)) return false;
+  return round.rules.afterCheck !== "keep" || round.checked === null || !sameBoard(round.board, round.checked);
+}
+
+/** True when the rules judge the board by themselves now (`check: "auto"` and a board that can be checked). */
+export function checksItself(round: Round): boolean {
+  return (
+    round.board.layout !== null &&
+    canCheck(round) &&
+    judgesItself(round.state, round.puzzle, { layout: round.board.layout, placements: round.board.slots }, round.rules)
+  );
 }
 
 /** Payload of the `choice_attempt` event a check produces. */
@@ -110,12 +128,12 @@ export function describeBoard(puzzle: AssemblyPuzzle, board: Board): string {
 /** Check what is on the board. Returns null when the board is not ready to be checked. */
 export function check(round: Round, now: number): { round: Round; data: CheckData } | null {
   if (!canCheck(round) || round.board.layout === null) return null;
-  const { state, feedback } = submitAttempt(
-    round.state,
-    round.puzzle,
-    { layout: round.board.layout, placements: round.board.slots },
-    round.rules,
-  );
+  const attempt = { layout: round.board.layout, placements: round.board.slots };
+  const { state, feedback } = submitAttempt(round.state, round.puzzle, attempt, round.rules);
+  // What stays in the structure for the next try; once the round is over nothing moves.
+  const board: Board = state.failed
+    ? round.board
+    : { layout: round.board.layout, slots: placementsAfterCheck(round.puzzle, attempt, round.rules) };
   const data: CheckData = {
     correct: feedback.solved,
     response_time_ms: Math.max(0, Math.round(now - round.since)),
@@ -128,7 +146,7 @@ export function check(round: Round, now: number): { round: Round; data: CheckDat
     correct_positions: feedback.correctPositions,
     lives_left: state.livesLeft,
   };
-  return { round: { ...round, state, feedback, checked: round.board, since: now }, data };
+  return { round: { ...round, state, feedback, board, checked: round.board, since: now }, data };
 }
 
 /** Count a look at the whole character; it lowers what a solved round is worth. */

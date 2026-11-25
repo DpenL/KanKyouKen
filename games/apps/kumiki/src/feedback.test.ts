@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { AssemblyFeedback } from "@kankyouken/mechanics/components";
-import { TONE_ICON, feedbackLines } from "./feedback";
+import { TONE_ICON, feedbackCounts, feedbackLines } from "./feedback";
 
 const feedback = (change: Partial<AssemblyFeedback>): AssemblyFeedback => ({
   structureCorrect: false,
   correctComponents: 0,
   componentCount: 3,
+  slotCount: 3,
   correctPositions: 0,
   anyInCorrectPosition: false,
   solved: false,
@@ -45,5 +46,23 @@ describe("feedbackLines", () => {
 
   it("has a different icon for every tone", () => {
     expect(new Set(Object.values(TONE_ICON)).size).toBe(4);
+  });
+});
+
+describe("feedbackCounts", () => {
+  it("counts parts and places out of the slots of the structure tried", () => {
+    // A four-part character tried in a three-slot structure: nothing gives the four away.
+    const lines = feedbackCounts(feedback({ componentCount: 4, slotCount: 3, correctComponents: 3 }));
+    expect(lines.map((line) => line.label)).toEqual(["Structure", "Parts that belong", "In their place"]);
+    expect(lines[0]).toMatchObject({ text: "wrong", tone: "bad" });
+    expect(lines[1]).toMatchObject({ text: "3 of 3", tone: "good" });
+    expect(lines[2]).toMatchObject({ text: "0 of 3", tone: "bad" });
+  });
+
+  it("shows partial counts under the right structure", () => {
+    const lines = feedbackCounts(feedback({ structureCorrect: true, correctComponents: 2, correctPositions: 1, anyInCorrectPosition: true }));
+    expect(lines[0]).toMatchObject({ text: "right", tone: "good" });
+    expect(lines[1]).toMatchObject({ text: "2 of 3", tone: "partial" });
+    expect(lines[2]).toMatchObject({ text: "1 of 3", tone: "partial" });
   });
 });

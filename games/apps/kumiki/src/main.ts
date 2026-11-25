@@ -4,6 +4,7 @@ import { createRng } from "@kankyouken/mechanics/util";
 import { createLocalStore, participantStoreKey, readLaunchParams } from "@kankyouken/web-kit/app";
 import { installGlyphCss } from "@kankyouken/web-kit/render";
 import { buildContent } from "./content";
+import { cleanSpec, formatRuleSpec, resolveChoices, ruleSource, type RuleSpec } from "./rules";
 import { DEFAULT_SAVED, STORE_KEY, cleanSaved, type Saved } from "./saved";
 import { createSound } from "./sound";
 import { APP_VERSION, createTelemetry } from "./telemetry";
@@ -45,8 +46,28 @@ function start(root: HTMLElement): void {
   );
   watchClicks(arming);
 
+  const source = ruleSource(params, store.get().rules);
+  let spec: RuleSpec = source.spec;
+  const fixed = source.from !== "player";
+
   const app: App = {
     content,
+    rules: {
+      from: source.from,
+      ignored: source.ignored,
+      spec: () => spec,
+      choices: () => resolveChoices(spec),
+      choose(next) {
+        if (fixed) return;
+        const before = spec;
+        spec = cleanSpec(next);
+        store.patch({ rules: spec });
+        if (formatRuleSpec(before) === formatRuleSpec(spec)) return;
+        app.record(
+          gameEvent("rules_change", { ts: Date.now() }, { rules: formatRuleSpec(spec), from: formatRuleSpec(before), choices: resolveChoices(spec) }),
+        );
+      },
+    },
     store,
     rng,
     sound,
@@ -98,6 +119,10 @@ function start(root: HTMLElement): void {
       app_version: APP_VERSION,
       seed,
       ...(params.condition === undefined ? {} : { condition: params.condition }),
+      rules: formatRuleSpec(spec),
+      rules_from: source.from,
+      ...(source.ignored.length === 0 ? {} : { rules_ignored: source.ignored }),
+      choices: resolveChoices(spec),
     }),
   );
   const startedAt = Date.now();
