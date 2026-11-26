@@ -43,18 +43,26 @@ export function cleanSaved(stored: Saved): Saved {
   };
 }
 
-/** Scores of the two modes are not comparable (Review can end rounds early), so each keeps its own best. */
-export function bestKey(deckId: string, mode: Mode): string {
-  return `${deckId}:${mode}`;
+/** The link form of the rules under which best scores were first kept; its keys carry no rules. */
+const FIRST_RULES = "classic";
+
+/**
+ * Scores of the two modes are not comparable (Review can end rounds early), and neither
+ * are scores made under different rules (five lives or none, hints for points or free),
+ * so each mode and each set of rules keeps its own best. `rules` is the link form of the
+ * rules in force (`formatRuleSpec`).
+ */
+export function bestKey(deckId: string, mode: Mode, rules: string = FIRST_RULES): string {
+  return rules === FIRST_RULES ? `${deckId}:${mode}` : `${deckId}:${mode}:${rules}`;
 }
 
-export function bestScore(saved: Saved, deckId: string, mode: Mode): number | null {
-  const value = saved.best[bestKey(deckId, mode)];
+export function bestScore(saved: Saved, deckId: string, mode: Mode, rules: string = FIRST_RULES): number | null {
+  const value = saved.best[bestKey(deckId, mode, rules)];
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 /** The best-score table after a run; unchanged when the run did not beat what is stored. */
-export function withScore(saved: Saved, deckId: string, mode: Mode, score: number): Saved["best"] {
-  const before = bestScore(saved, deckId, mode);
-  return before !== null && before >= score ? saved.best : { ...saved.best, [bestKey(deckId, mode)]: score };
+export function withScore(saved: Saved, deckId: string, mode: Mode, score: number, rules: string = FIRST_RULES): Saved["best"] {
+  const before = bestScore(saved, deckId, mode, rules);
+  return before !== null && before >= score ? saved.best : { ...saved.best, [bestKey(deckId, mode, rules)]: score };
 }

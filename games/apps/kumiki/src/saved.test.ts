@@ -46,6 +46,13 @@ describe("cleanSaved", () => {
 describe("best scores", () => {
   it("keeps a best per deck and mode", () => {
     expect(bestKey("gate", "learn")).not.toBe(bestKey("gate", "review"));
+    // A best score belongs to the rules it was made under; classic keeps the keys it always had.
+    expect(bestKey("gate", "learn", "classic")).toBe("gate:learn");
+    expect(bestKey("gate", "learn", "zen-hanzi,scoring:classic")).toBe("gate:learn:zen-hanzi,scoring:classic");
+    const other = { ...DEFAULT_SAVED, best: withScore(DEFAULT_SAVED, "gate", "learn", 585, "classic,lives:none") };
+    expect(bestScore(other, "gate", "learn", "classic,lives:none")).toBe(585);
+    expect(bestScore(other, "gate", "learn")).toBeNull();
+    expect(bestScore(other, "gate", "learn", "classic,lives:1")).toBeNull();
     expect(bestScore(DEFAULT_SAVED, "gate", "learn")).toBeNull();
     const best = withScore(DEFAULT_SAVED, "gate", "learn", 320);
     const saved = { ...DEFAULT_SAVED, best };

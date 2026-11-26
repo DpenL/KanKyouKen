@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canReturn, classicEnd, currentChar, finishRound, roundEnd, startSession, summarize } from "./session";
+import { canReturn, classicEnd, currentChar, finishRound, roundEnd, startSession, summarize, summaryData } from "./session";
 
 const solved = (char: string, attempts = 1, hints = 0, score = 100) => ({ char, solved: true, attempts, hints, score });
 const failed = (char: string) => ({ char, solved: false, attempts: 5, hints: 0, score: 0 });
@@ -32,6 +32,11 @@ describe("session", () => {
     session = finishRound(session, solved("c", 3, 0, 70));
     session = finishRound(session, solved("a", 1, 2, 50));
     expect(summarize(session)).toEqual({ score: 195, chars: 3, solved: 3, mastered: 3, firstTry: 1, hints: 3, outOfLives: false });
+  });
+
+  it("hands a summary to the events under their field names", () => {
+    const summary = { score: 195, chars: 3, solved: 3, mastered: 2, firstTry: 1, hints: 3, outOfLives: true };
+    expect(summaryData(summary)).toEqual({ score: 195, chars: 3, solved: 3, mastered: 2, first_try: 1, hints: 3, out_of_lives: true });
   });
 
   it("summarizes an empty run", () => {

@@ -583,11 +583,41 @@ test.describe("the default rules, close to the Zen Hanzi demo", () => {
     const completed = await events(page, "item_complete");
     expect(completed).toHaveLength(1);
     expect(completed[0]!.data).toMatchObject({ solved: false, attempts: 6, ends_run: true, returns: false, lives_left: 0 });
-    expect((await events(page, "deck_complete"))[0]!.data).toMatchObject({ outOfLives: true, solved: 0, chars: 1 });
+    expect((await events(page, "deck_complete"))[0]!.data).toMatchObject({ out_of_lives: true, solved: 0, chars: 1 });
     // Trying again starts from three lives and no points.
     await summary.getByRole("button", { name: "Try again" }).click();
     await expect(page.locator(".lives")).toHaveAttribute("aria-label", "3 of 3 lives left");
     await expect(page.locator('[data-stat="score"] strong')).toHaveText("0");
+
+    expect(errors).toEqual([]);
+  });
+
+  test("a run that the lives ended is recorded as complete, also when the player leaves before its summary", async ({ page }) => {
+    const errors = watchConsole(page);
+    await page.goto(DEBUG);
+    await page.getByRole("radio", { name: /Review/ }).click();
+    await page.locator(".deck").first().click();
+    const info = await puzzleInfo(page);
+    const panel = page.locator(".feedback-panel");
+    for (let attempt = 1; attempt <= 6; attempt++) {
+      await fillAlmostRight(page, info);
+      await page.locator(".frame-check").click();
+      await expect(panel.locator(".panel-title")).toHaveText(attempt < 6 ? "Not yet" : "Out of lives");
+      await panel.getByRole("button", { name: "Continue" }).click();
+    }
+    await expect(page.locator(".reveal")).toHaveAttribute("data-outcome", "failed");
+    // Only the first five wrong checks on a character earn points: 5 x (100 + 10 per part that belongs + 10 per part in place).
+    const checks = await events(page, "choice_attempt");
+    expect(checks).toHaveLength(6);
+    expect(checks[4]!.data.points).toBeGreaterThan(0);
+    expect(checks[5]!.data).toMatchObject({ points: 0, score: checks[4]!.data.score });
+    // The browser's Back from the reveal: nothing is left to play, so the run is complete, not abandoned.
+    await page.goBack();
+    await expect(page.locator(".home")).toBeVisible();
+    expect(await events(page, "deck_abandoned")).toEqual([]);
+    const complete = await events(page, "deck_complete");
+    expect(complete).toHaveLength(1);
+    expect(complete[0]!.data).toMatchObject({ out_of_lives: true, solved: 0, chars: 1 });
 
     expect(errors).toEqual([]);
   });
@@ -699,6 +729,43 @@ test.describe("choosing the rules", () => {
     // The link's rules are not stored as the player's own.
     await page.goto(DEBUG);
     expect((await events(page, "session_start"))[0]!.data).toMatchObject({ rules: "zen-hanzi", rules_from: "player" });
+
+    expect(errors).toEqual([]);
+  });
+
+  test("a link whose preset is mistyped still fixes the rules, on the default preset and not on what the device has stored", async ({ page }) => {
+    const errors = watchConsole(page);
+    // The device has rules of its own: Kumiki classic, chosen in Settings.
+    await page.goto(DEBUG);
+    await page.getByRole("button", { name: "Settings" }).click();
+    await page.getByRole("dialog").locator("#setting-preset").selectOption("classic");
+    await page.getByRole("dialog").getByRole("button", { name: "Close" }).click();
+
+    // A typo in the preset, and upper case in a rule: the link still sets the rules, and says what it passed over.
+    await page.goto(`${DEBUG}&rules=Clasic,LIVES:1,hint:free,hint:off`);
+    expect((await events(page, "session_start"))[0]!.data).toMatchObject({
+      rules: "zen-hanzi,lives:1,hint:off",
+      rules_from: "link",
+      rules_ignored: ["Clasic", "hint:free"],
+      choices: { check: "frame", lives: "1", hint: "off", tray: "3x6" },
+    });
+    await page.getByRole("button", { name: "Settings" }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.locator('[data-setting="rules-fixed"]')).toContainText("set by the link");
+    await expect(dialog.locator("#setting-preset")).toHaveValue("zen-hanzi");
+    await expect(dialog.locator("select:enabled")).toHaveCount(0);
+    await dialog.getByRole("button", { name: "Close" }).click();
+    await page.getByRole("radio", { name: /Review/ }).click();
+    await page.locator(".deck").first().click();
+    await expect(page.locator(".tray .tile")).toHaveCount(18);
+    await expect(page.locator(".lives")).toHaveAttribute("aria-label", "1 of 1 lives left");
+
+    // A preset in upper case is that preset.
+    await page.goto(`${DEBUG}&rules=GENTLE`);
+    expect((await events(page, "session_start"))[0]!.data).toMatchObject({ rules: "gentle", rules_from: "link" });
+    // The device's own rules are as they were.
+    await page.goto(DEBUG);
+    expect((await events(page, "session_start"))[0]!.data).toMatchObject({ rules: "classic", rules_from: "player" });
 
     expect(errors).toEqual([]);
   });

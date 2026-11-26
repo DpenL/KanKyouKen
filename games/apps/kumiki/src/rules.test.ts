@@ -160,11 +160,32 @@ describe("rule specs", () => {
       spec: { preset: "classic", changes: {} },
       ignored: ["check:soon", "colour:red", "feedback"],
     });
-    expect(parseRuleSpec("nope,check:auto")).toBeNull();
     expect(parseRuleSpec("")).toBeNull();
+    expect(parseRuleSpec(" , ,")).toBeNull();
     const spec = { preset: "classic" as const, changes: { feedback: "panel" as const, check: "auto" as const } };
     expect(formatRuleSpec(spec)).toBe("classic,check:auto,feedback:panel");
     expect(parseRuleSpec(formatRuleSpec(spec))!.spec).toEqual(spec);
+  });
+
+  it("start from the default preset when a link value names none, and say what was passed over", () => {
+    // A mistyped preset: the rules are still the link's, never the stored ones.
+    expect(parseRuleSpec("nope,check:auto")).toEqual({ spec: { preset: DEFAULT_PRESET, changes: { check: "auto" } }, ignored: ["nope"] });
+    expect(parseRuleSpec("typo")).toEqual({ spec: { preset: DEFAULT_PRESET, changes: {} }, ignored: ["typo"] });
+    // The preset left out: single rules on the default, or on the preset handed in.
+    expect(parseRuleSpec("lives:1,hint:off")).toEqual({ spec: { preset: DEFAULT_PRESET, changes: { lives: "1", hint: "off" } }, ignored: [] });
+    expect(parseRuleSpec("lives:1", "classic")).toEqual({ spec: { preset: "classic", changes: { lives: "1" } }, ignored: [] });
+    expect(parseRuleSpec("gentle,lives:1", "classic")!.spec.preset).toBe("gentle");
+  });
+
+  it("read a link value whatever its case, and take the last of a rule given twice", () => {
+    expect(parseRuleSpec("Classic,AFTERCHECK:Keep-Correct, livesscope : RUN")).toEqual({
+      spec: { preset: "classic", changes: { afterCheck: "keep-correct", livesScope: "run" } },
+      ignored: [],
+    });
+    // The later part counts, and the one it overrides is reported.
+    expect(parseRuleSpec("zen-hanzi,lives:1,lives:5")).toEqual({ spec: { preset: "zen-hanzi", changes: { lives: "5" } }, ignored: ["lives:1"] });
+    expect(parseRuleSpec("zen-hanzi,tray:3x4,tray:3x6")).toEqual({ spec: { preset: "zen-hanzi", changes: {} }, ignored: ["tray:3x4"] });
+    expect(parseRuleSpec("zen-hanzi,:3,lives:,lives")).toEqual({ spec: { preset: "zen-hanzi", changes: {} }, ignored: [":3", "lives:", "lives"] });
   });
 });
 
@@ -185,7 +206,27 @@ describe("ruleSource", () => {
       from: "condition",
       ignored: [],
     });
-    expect(ruleSource({ rules: "typo", condition: "classic" }, stored)).toMatchObject({ from: "condition", ignored: ["typo"] });
+    expect(ruleSource({ condition: " Classic " }, { preset: "zen-hanzi", changes: {} })).toMatchObject({ spec: { preset: "classic" }, from: "condition" });
+  });
+
+  it("keeps a link whose rules value names no preset fixed: on the condition's preset, else on the default, never on the stored rules", () => {
+    expect(ruleSource({ rules: "typo", condition: "classic" }, stored)).toEqual({
+      spec: { preset: "classic", changes: {} },
+      from: "link",
+      ignored: ["typo"],
+    });
+    expect(ruleSource({ rules: "hint:off", condition: "classic" }, stored)).toEqual({
+      spec: { preset: "classic", changes: { hint: "off" } },
+      from: "link",
+      ignored: [],
+    });
+    expect(ruleSource({ rules: "typo" }, { preset: "classic", changes: { lives: "1" } })).toEqual({
+      spec: { preset: DEFAULT_PRESET, changes: {} },
+      from: "link",
+      ignored: ["typo"],
+    });
+    // An empty value is no value.
+    expect(ruleSource({ rules: "" }, stored).from).toBe("player");
   });
 
   it("else the player's own choice", () => {

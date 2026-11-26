@@ -52,6 +52,19 @@ export interface SessionSummary {
   readonly outOfLives: boolean;
 }
 
+/** A summary as the events carry it, under the names the other events use for the same things. */
+export function summaryData(summary: SessionSummary): Record<string, number | boolean> {
+  return {
+    score: summary.score,
+    chars: summary.chars,
+    solved: summary.solved,
+    mastered: summary.mastered,
+    first_try: summary.firstTry,
+    hints: summary.hints,
+    out_of_lives: summary.outOfLives,
+  };
+}
+
 export function startSession(deckId: string, mode: Mode, chars: readonly string[]): Session {
   return { deckId, mode, queue: [...chars], index: 0, retried: [], results: [], carry: {}, outOfLives: false };
 }

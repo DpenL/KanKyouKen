@@ -686,8 +686,25 @@ describe("scoring as in the demo", () => {
     expect(state.score).toBe(170);
     // Third attempt, three parts: 280.
     expect(submitWith(state, HU, SOLVE_HU, ZEN_HANZI_RULES).state).toMatchObject({ score: 450, solved: true });
+    // Six wrong attempts lose the round; the first five are paid (see the next test).
     const lost = play(HU, Array.from({ length: 6 }, () => swapped), ZEN_HANZI_RULES);
-    expect(lost).toMatchObject({ failed: true, score: 6 * 140 });
+    expect(lost).toMatchObject({ failed: true, score: 5 * 140 });
+  });
+
+  it("pays for five wrong attempts on a character and no more, so that failing on purpose never beats a first-try solve", () => {
+    expect(DEMO_SCORING.paidWrongAttempts).toBe(5);
+    const feedback = evaluateAttempt(HU, swapped);
+    expect([0, 4, 5, 9].map((wrongBefore) => attemptPoints(ZEN_HANZI_RULES, feedback, wrongBefore))).toEqual([140, 140, 0, 0]);
+    // Without lives nothing else stops the wrong attempts: 30 of the best kind, then the solve.
+    const noLives: AssemblyRules = { ...ZEN_HANZI_RULES, lives: null };
+    const farmed = play(HU, [...Array.from({ length: 30 }, () => swapped), SOLVE_HU], noLives);
+    expect(farmed).toMatchObject({ solved: true, attempts: 31, score: 5 * 140 + 100 });
+    expect(farmed.score).toBeLessThan(solvePoints(noLives, 3, 1, 0));
+    // The best wrong attempt on n parts has all of them placed and two swapped: 100 + 10n + 10(n - 2).
+    for (const parts of [2, 3, 4, 5, 6]) {
+      const most = DEMO_SCORING.paidWrongAttempts * (100 + 10 * parts + 10 * (parts - 2)) + solvePoints(noLives, parts, 6, 0);
+      expect(most).toBe(solvePoints(noLives, parts, 1, 0) - 100);
+    }
   });
 
   it("takes nothing off for hints, unless hints cost points", () => {

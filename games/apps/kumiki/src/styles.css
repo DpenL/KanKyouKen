@@ -1246,6 +1246,21 @@ button:disabled {
   opacity: 0.6;
 }
 
+/* On a narrow dialog a value beside its label is cut short: put it under the label, at full width. */
+@media (max-width: 760px) {
+  .setting.rule {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    padding: 6px 0;
+  }
+
+  .setting.rule select {
+    max-width: none;
+    width: 100%;
+  }
+}
+
 .chooser {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));

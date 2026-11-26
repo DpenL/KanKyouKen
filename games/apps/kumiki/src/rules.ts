@@ -151,8 +151,8 @@ export const CHOICES: Definitions = {
       { value: "5", label: "5" },
       { value: "2", label: "2" },
       { value: "1", label: "1" },
-      { value: "parts", label: "As many as the character has parts" },
-      { value: "adaptive", label: "More after a hard character, fewer after an easy one" },
+      { value: "parts", label: "By the number of parts" },
+      { value: "adaptive", label: "Adaptive to the last character" },
       { value: "none", label: "No lives: unlimited tries" },
     ],
   },
@@ -187,7 +187,7 @@ export const CHOICES: Definitions = {
     label: "Out of lives",
     options: [
       { value: "end-run", label: "The run ends" },
-      { value: "retry-later", label: "The character comes back at the end" },
+      { value: "retry-later", label: "The character returns at the end" },
     ],
   },
   hint: {
@@ -196,9 +196,9 @@ export const CHOICES: Definitions = {
     options: [
       { value: "life", label: "Half a life" },
       { value: "points", label: "Points" },
-      { value: "token", label: "A token, earned by first-try solves" },
+      { value: "token", label: "A token from first-try solves" },
       { value: "later", label: "The character comes back later" },
-      { value: "unmastered", label: "The character does not count as mastered" },
+      { value: "unmastered", label: "Not counted as mastered" },
       { value: "free", label: "Nothing" },
       { value: "off", label: "No hints" },
     ],
@@ -215,8 +215,8 @@ export const CHOICES: Definitions = {
     key: "scoring",
     label: "Score",
     options: [
-      { value: "demo", label: "Running total, points for what was right" },
-      { value: "classic", label: "Per character, less per wrong check, with a best score" },
+      { value: "demo", label: "Running total, partial points" },
+      { value: "classic", label: "Per character, with a best score" },
     ],
   },
   tray: {
@@ -233,7 +233,7 @@ export const CHOICES: Definitions = {
     key: "copies",
     label: "Copies of right parts",
     options: [
-      { value: "yes", label: "Some parts are there more than once" },
+      { value: "yes", label: "Right parts more than once" },
       { value: "no", label: "Every right part once" },
     ],
   },
@@ -241,18 +241,18 @@ export const CHOICES: Definitions = {
     key: "structures",
     label: "Structures",
     options: [
-      { value: "catalogue", label: "The right one among frames drawn from a catalogue" },
-      { value: "alternatives", label: "The right one among near misses with as many slots" },
-      { value: "fixed", label: "The same four frames for every character" },
-      { value: "positions", label: "Two parts by position, the same four frames" },
+      { value: "catalogue", label: "Decoys drawn from a catalogue" },
+      { value: "alternatives", label: "Near misses, as many slots" },
+      { value: "fixed", label: "The same four frames" },
+      { value: "positions", label: "Two parts by position" },
     ],
   },
   board: {
     key: "board",
     label: "Board",
     options: [
-      { value: "compact", label: "Structures two by two, Hint at the top" },
-      { value: "wide", label: "Structures in a row on a wide screen, Hint below" },
+      { value: "compact", label: "Two by two, Hint at the top" },
+      { value: "wide", label: "In a row when wide, Hint below" },
     ],
   },
 };
@@ -352,7 +352,7 @@ export const PRESETS: readonly Preset[] = [
   {
     id: "gentle",
     title: "Gentle",
-    note: "For young children: no lives, hints are free and stay, the same four frames every time, eight tiles, and a full structure is judged by itself.",
+    note: "For young children: no lives, hints are free and stay, the same four frames nearly every time (a character with a rarer structure gets its own in the fourth place), eight tiles, and a full structure is judged by itself.",
     choices: {
       ...ZEN_HANZI_CHOICES,
       check: "auto",
@@ -369,7 +369,7 @@ export const PRESETS: readonly Preset[] = [
   {
     id: "study-no-hints",
     title: "Study: no hints",
-    note: "Close to the paper without the Hint button, for a study arm that must not look at the character.",
+    note: "Close to the paper without the Hint button, for a study arm that must not look at the character while assembling. Learn still shows the character before each board; only Review keeps it out of sight.",
     choices: { ...ZEN_HANZI_CHOICES, hint: "off" },
   },
 ];
@@ -435,30 +435,45 @@ export function isPlainPreset(spec: RuleSpec): boolean {
 /**
  * Read the `rules` value of a launch link: a preset id, then any changes as
  * `key:value`, all separated by commas, e.g. `zen-hanzi,check:auto,afterCheck:keep`.
- * Returns null when the first part names no preset. Parts that name no choice or a value
- * the choice cannot take are returned in `ignored`, so that a study can see a typo in
- * its link.
+ * Upper and lower case are the same. A value that does not begin with a preset starts
+ * from `base` (the default preset unless given): a link that sets rules means to fix
+ * them, and a mistyped preset must not hand the session to whatever rules the device has
+ * stored. Parts that name no preset, no choice or a value the choice cannot take are
+ * returned in `ignored`, so that a study can see a typo in its link; so is the earlier
+ * of two parts that set the same rule (the later one counts). Null only for a value with
+ * nothing in it.
  */
-export function parseRuleSpec(text: string): { spec: RuleSpec; ignored: string[] } | null {
-  const [head, ...rest] = text.split(",").map((part) => part.trim());
-  const preset = presetById(head ?? "");
-  if (preset === undefined) return null;
+export function parseRuleSpec(text: string, base: PresetId = DEFAULT_PRESET): { spec: RuleSpec; ignored: string[] } | null {
+  const parts = text
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part !== "");
+  const head = parts[0];
+  if (head === undefined) return null;
+  const preset = presetById(head.toLowerCase());
   const changes: Partial<Record<ChoiceKey, unknown>> = {};
+  /** The part that set each rule, to report it when a later part sets the rule again. */
+  const setBy = new Map<ChoiceKey, string>();
   const ignored: string[] = [];
-  for (const part of rest) {
-    if (part === "") continue;
+  for (const part of preset === undefined ? parts : parts.slice(1)) {
     const at = part.indexOf(":");
-    const key = part.slice(0, at) as ChoiceKey;
-    const raw = part.slice(at + 1);
-    if (at < 0 || !CHOICE_KEYS.includes(key)) {
+    const name = part.slice(0, Math.max(0, at)).trim().toLowerCase();
+    const raw = part.slice(at + 1).trim().toLowerCase();
+    const key = CHOICE_KEYS.find((candidate) => candidate.toLowerCase() === name);
+    const option =
+      key === undefined
+        ? undefined
+        : (CHOICES[key].options as readonly ChoiceOption<ChoiceKey>[]).find((candidate) => String(candidate.value).toLowerCase() === raw);
+    if (key === undefined || option === undefined) {
       ignored.push(part);
       continue;
     }
-    const option = (CHOICES[key].options as readonly ChoiceOption<ChoiceKey>[]).find((candidate) => String(candidate.value) === raw);
-    if (option === undefined) ignored.push(part);
-    else changes[key] = option.value;
+    const earlier = setBy.get(key);
+    if (earlier !== undefined) ignored.push(earlier);
+    setBy.set(key, part);
+    changes[key] = option.value;
   }
-  return { spec: cleanSpec({ preset: preset.id, changes }), ignored };
+  return { spec: cleanSpec({ preset: preset?.id ?? base, changes }), ignored };
 }
 
 /** The launch-link form of a spec (see `parseRuleSpec`). */
@@ -569,15 +584,15 @@ export interface RuleSource {
 }
 
 /**
- * The rules a session starts with: the link's `rules` value when it names a preset,
- * else a study condition that is a preset's id, else the player's stored choice. A
- * `rules` value that names no preset is passed over (and reported in `ignored`).
+ * The rules a session starts with: the link's `rules` value when it has one, else a
+ * study condition that is a preset's id, else the player's stored choice. A `rules`
+ * value that names no preset starts from the condition's preset when there is one, else
+ * from the default (see `parseRuleSpec`); either way the link fixes the rules.
  */
 export function ruleSource(params: { readonly rules?: string; readonly condition?: string }, stored: RuleSpec): RuleSource {
-  const fromLink = params.rules === undefined ? null : parseRuleSpec(params.rules);
+  const preset = params.condition === undefined ? undefined : presetById(params.condition.trim().toLowerCase());
+  const fromLink = params.rules === undefined ? null : parseRuleSpec(params.rules, preset?.id);
   if (fromLink !== null) return { spec: fromLink.spec, from: "link", ignored: fromLink.ignored };
-  const ignored = params.rules === undefined ? [] : [params.rules];
-  const preset = params.condition === undefined ? undefined : presetById(params.condition);
-  if (preset !== undefined) return { spec: { preset: preset.id, changes: {} }, from: "condition", ignored };
-  return { spec: cleanSpec(stored), from: "player", ignored };
+  if (preset !== undefined) return { spec: { preset: preset.id, changes: {} }, from: "condition", ignored: [] };
+  return { spec: cleanSpec(stored), from: "player", ignored: [] };
 }

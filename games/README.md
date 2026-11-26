@@ -205,8 +205,8 @@ wording are Kumiki's own.
 |---|---|---|
 | `zen-hanzi` (default) | Close to the paper | A Check button beside the full structure; a feedback panel with counts; tiles in their right slot stay; 3 lives for the whole run, half lost per wrong check and per hint, one back per solved character; out of lives the run ends; the hint stays until Continue; a running total with points for what was right; 18 tiles in 3 rows of 6 with copies of right parts; 4 frames, the right one among decoys from a catalogue. |
 | `classic` | Kumiki classic | Check below the board; three lines of feedback; every tile stays; 5 lives per character in Review, unlimited tries in Learn; a lost character returns at the end of the deck; a hint for 25 points, shown for 2.5 s; 100 points per character less 15 per wrong check, and a best score; 12 tiles; near-miss structures with as many slots as the character has parts. |
-| `gentle` | Gentle | For young children: no lives, free hints that stay, a full structure is judged by itself, 8 tiles without copies, the same four frames for every character. |
-| `study-no-hints` | Study: no hints | `zen-hanzi` without the Hint button. |
+| `gentle` | Gentle | For young children: no lives, free hints that stay, a full structure is judged by itself, 8 tiles without copies, the same four frames for nearly every character (see `structures`). |
+| `study-no-hints` | Study: no hints | `zen-hanzi` without the Hint button. Learn still shows the character before each board; only Review keeps it out of sight, and a link cannot fix the mode yet. |
 
 **Choosing.** A player picks a preset in Settings and can change every single rule
 under "Single rules"; the choice is stored (per study participant when the link names
@@ -218,9 +218,13 @@ https://<host>/kumiki/?rules=<preset>[,<rule>:<value>...]      e.g. ?rules=zen-h
 
 A `condition` that is a preset id does the same. Rules from a link or a condition are
 shown in Settings but cannot be changed there, and they are not stored as the player's
-own. Parts of the value that name no rule or no value of it are passed over and
-reported (`rules_ignored`); a value whose first part names no preset is passed over
-whole. Settings shows the link value of the rules in force, ready to copy.
+own. Upper and lower case are the same. Parts of the value that name no rule or no
+value of it are passed over and reported (`rules_ignored`), and so is the earlier of
+two parts that set the same rule (the later one counts). A value that does not begin
+with a preset still fixes the rules: it starts from the `condition`'s preset when there
+is one, else from the default, never from rules stored on the device, and a mistyped
+preset is reported with the other ignored parts. Settings shows the link value of the
+rules in force, ready to copy.
 
 | Rule | Values (the default first) | What it sets |
 |---|---|---|
@@ -235,8 +239,8 @@ whole. Settings shows the link value of the rules in force, ready to copy.
 | `learnLives` | `same`, `unlimited` | Learn plays by the same lives as Review (the demo) or has unlimited tries (classic). |
 | `hint` | `life`, `points`, `token`, `later`, `unmastered`, `free`, `off` | What a look at the character costs: half a life (the demo); 25 points (classic); a token, earned by first-try solves (one to start with, three at most); the character returns at the end of the deck; it does not count as mastered; nothing; or no hints at all. |
 | `hintStays` | `continue`, `timed` | The hint stays until Continue (the demo) or goes away after 2.5 s (classic). |
-| `scoring` | `demo`, `classic` | The demo's running total, or classic points with a best score per deck and mode. |
-| `structures` | `catalogue`, `alternatives`, `fixed`, `positions` | The frames beside the right one: drawn afresh from a catalogue, any number of slots (the demo); near misses with as many slots as the character has parts (classic); the same four frames for every character; or the character split in two by position (left and right, top and bottom, enclosing) with the four position classes as frames. |
+| `scoring` | `demo`, `classic` | The demo's running total (only the first five wrong checks on a character earn points), or classic points with a best score per deck, mode and set of rules. |
+| `structures` | `catalogue`, `alternatives`, `fixed`, `positions` | The frames beside the right one: drawn afresh from a catalogue, any number of slots (the demo); near misses with as many slots as the character has parts (classic); the same four frames for every character, except that a character whose structure is not among them gets it in the fourth place, which gives its structure away (閣, 返 and 落 of the starter set); or the character split in two by position (left and right, top and bottom, enclosing) with the four position classes as frames. |
 | `tray` | `3x6`, `3x4`, `2x4`, `4x6` | Rows x tiles per row. |
 | `copies` | `yes`, `no` | Identical copies of right parts in the tray, any of which is accepted (the demo), or every right part once (classic). |
 | `board` | `compact`, `wide` | The demo's arrangement on every screen (status in the top bar, Hint beside the prompt, structures two by two over the tray), or Kumiki's wide board. |
@@ -265,7 +269,13 @@ demo or from us.
   at the end of the deck), `ends_run`, `hint_policy`, `lives_left`, `lives_max`,
   `lives_rule` (`fixed`, `parts`, `adaptive` or `none`) and `tokens_left`.
 - **`deck_complete`** and **`deck_abandoned`** carry the totals: `score`, `chars`,
-  `solved`, `mastered`, `firstTry`, `hints`, `outOfLives`.
+  `solved`, `mastered`, `first_try`, `hints`, `out_of_lives`. The totals count finished
+  characters only: what a character under way had earned for wrong checks when the deck
+  was left is in its `choice_attempt` events (`score`). A run is complete when nothing
+  is left to play, whether or not its summary was looked at: one that the lives ended,
+  or whose last character is settled, is recorded as `deck_complete` even when the
+  player leaves before the summary. `deck_abandoned` means a character was still to
+  play.
 
 ## Data and licenses
 

@@ -3,9 +3,9 @@
 import { drawDeck, type Deck } from "../content";
 import { examChar, examTotals, startExam, submitExamItem } from "../exam";
 import { buildPuzzle, startRound, type Mode, type Round } from "../round";
-import { assemblyRules, puzzleOptions, runRules } from "../rules";
+import { assemblyRules, formatRuleSpec, puzzleOptions, runRules } from "../rules";
 import { bestScore, withScore } from "../saved";
-import { canReturn, currentChar, finishRound, roundEnd, startSession, summarize } from "../session";
+import { canReturn, currentChar, finishRound, roundEnd, startSession, summarize, summaryData, type SessionSummary } from "../session";
 import { choiceAttemptEvent, gameEvent } from "@kankyouken/mechanics/telemetry";
 import { nextRoundStart, roundOutcome, type AssemblyPuzzle } from "@kankyouken/mechanics/components";
 import type { App } from "./app";
@@ -103,6 +103,8 @@ export function startFlow(app: App): void {
     const task = `assembly:${mode}`;
     // A run keeps the rules it started with; a change in Settings applies from the next one.
     const choices = app.rules.choices();
+    /** A best score is compared with runs under the same rules only. */
+    const rulesKey = formatRuleSpec(app.rules.spec());
     const rules = assemblyRules(choices, mode);
     const run = runRules(choices);
     const options = puzzleOptions(choices, app.content.frames);
@@ -111,13 +113,13 @@ export function startFlow(app: App): void {
     const progress = (): string => `${deck.title} · ${session.index + 1} / ${session.queue.length}`;
     enterRun(() => {
       const char = currentChar(session);
-      app.record(
-        gameEvent("deck_abandoned", char === null ? { ts: Date.now(), task } : at(char), {
-          deck: deck.id,
-          position: session.index,
-          ...summarize(session),
-        }),
-      );
+      if (char === null) {
+        // Nothing is left to play: the last character is settled, or the lives ran out.
+        // The run is over, and only its summary was not looked at.
+        complete();
+        return;
+      }
+      app.record(gameEvent("deck_abandoned", at(char), { deck: deck.id, position: session.index, ...summaryData(summarize(session)) }));
     });
 
     const next = (): void => {
@@ -201,16 +203,22 @@ export function startFlow(app: App): void {
       app.show("reveal", view.screen, view.leave);
     };
 
-    const finish = (): void => {
-      endRun();
-      clearProbe();
+    /** Count the finished run: its best score and its event. Returns what the summary shows. */
+    const complete = (): { summary: SessionSummary; keepsBest: boolean; previousBest: number | null } => {
       const summary = summarize(session);
       const saved = app.store.get();
       // Best scores belong to the classic scoring; the demo's has a running total and nothing to beat.
       const keepsBest = choices.scoring === "classic";
-      const previousBest = bestScore(saved, deck.id, mode);
-      if (keepsBest && !summary.outOfLives) app.store.patch({ best: withScore(saved, deck.id, mode, summary.score) });
-      app.record(gameEvent("deck_complete", { ts: Date.now(), task }, { deck: deck.id, ...summary }));
+      const previousBest = bestScore(saved, deck.id, mode, rulesKey);
+      if (keepsBest && !summary.outOfLives) app.store.patch({ best: withScore(saved, deck.id, mode, summary.score, rulesKey) });
+      app.record(gameEvent("deck_complete", { ts: Date.now(), task }, { deck: deck.id, ...summaryData(summary) }));
+      return { summary, keepsBest, previousBest };
+    };
+
+    const finish = (): void => {
+      endRun();
+      clearProbe();
+      const { summary, keepsBest, previousBest } = complete();
       app.sound.cue(summary.outOfLives ? "error" : "complete");
       app.show(
         "summary",

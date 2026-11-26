@@ -2,7 +2,7 @@
 
 import type { Deck } from "../content";
 import type { Mode } from "../round";
-import { livesLine } from "../rules";
+import { formatRuleSpec, livesLine } from "../rules";
 import { bestScore } from "../saved";
 import type { App } from "./app";
 import { button, h } from "./dom";
@@ -72,7 +72,7 @@ export function homeScreen(app: App, actions: HomeActions): HTMLElement {
     decks.replaceChildren(
       ...app.content.decks.map((deck) => {
         // Only the classic scoring keeps a best score; the demo's has a running total and nothing to beat.
-        const best = choices.scoring === "classic" ? bestScore(saved, deck.id, saved.mode) : null;
+        const best = choices.scoring === "classic" ? bestScore(saved, deck.id, saved.mode, formatRuleSpec(app.rules.spec())) : null;
         const played = choices.scoring === "classic";
         const card = h(
           "button",

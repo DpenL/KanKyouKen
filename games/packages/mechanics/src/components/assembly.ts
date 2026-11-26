@@ -34,6 +34,14 @@ export const DEMO_SCORING = {
   belongs: 10,
   /** Per part in its own slot, in a wrong attempt. */
   inPlace: 10,
+  /**
+   * How many wrong attempts on one character earn points. Ours, not the demo's: the
+   * demo's three hearts allow five wrong attempts before a solve, and within those every
+   * number here is the demo's. With more lives or none, wrong attempts would otherwise
+   * add up without end, and a character would be worth more failed on purpose than
+   * solved at once (five wrong attempts and a solve stay 100 below a first-try solve).
+   */
+  paidWrongAttempts: 5,
   /** Any solve. */
   solve: 100,
   /** Per part of a solved character, less `perAttempt` for every attempt made (the solving one included). */
@@ -151,10 +159,13 @@ export function heartsFor(rules: AssemblyRules, parts: number): number | null {
 /**
  * Points a wrong attempt earns: under "demo" scoring 100 for the right structure, 10 per
  * placed part that belongs and 10 per part in its own slot; under "classic" nothing.
- * A solving attempt gives 0 here: see `solvePoints`.
+ * Only the first `DEMO_SCORING.paidWrongAttempts` wrong attempts on a character earn
+ * anything: `wrongBefore` is how many were made before this one. A solving attempt gives
+ * 0 here: see `solvePoints`.
  */
-export function attemptPoints(rules: AssemblyRules, feedback: AssemblyFeedback): number {
+export function attemptPoints(rules: AssemblyRules, feedback: AssemblyFeedback, wrongBefore = 0): number {
   if (rules.scoring !== "demo" || feedback.solved) return 0;
+  if (wrongBefore >= DEMO_SCORING.paidWrongAttempts) return 0;
   return (
     (feedback.structureCorrect ? DEMO_SCORING.structure : 0) +
     DEMO_SCORING.belongs * feedback.correctComponents +
@@ -371,7 +382,7 @@ export function submitAttempt(
         : Math.max(0, state.livesLeft - rules.wrongCost);
   const earned = feedback.solved
     ? solvePoints(rules, puzzle.solution.length, state.attempts + 1, state.hintsUsed)
-    : attemptPoints(rules, feedback);
+    : attemptPoints(rules, feedback, state.attempts);
   const firstTry = feedback.solved && state.attempts === 0 && state.hintsUsed === 0;
   const next: AssemblyState = {
     attempts: state.attempts + 1,
