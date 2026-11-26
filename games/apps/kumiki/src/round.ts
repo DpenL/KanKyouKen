@@ -4,9 +4,12 @@
  */
 
 import {
+  canHint,
   createAssemblyPuzzle,
+  hintPrice,
   judgesItself,
   placementsAfterCheck,
+  solvePoints,
   startAssembly,
   submitAttempt,
   useHint,
@@ -14,7 +17,10 @@ import {
   type AssemblyPuzzle,
   type AssemblyRules,
   type AssemblyState,
+  type HintPolicy,
+  type HintPrice,
   type PuzzleOptions,
+  type RoundStart,
 } from "@kankyouken/mechanics/components";
 import type { ChoiceAttemptData } from "@kankyouken/mechanics/telemetry";
 import type { Rng } from "@kankyouken/mechanics/util";
@@ -34,7 +40,7 @@ export function buildPuzzle(
   char: string,
   content: Content,
   rng: Rng,
-  options: PuzzleOptions = puzzleOptions(resolveChoices(DEFAULT_SPEC)),
+  options: PuzzleOptions = puzzleOptions(resolveChoices(DEFAULT_SPEC), content.frames),
 ): AssemblyPuzzle {
   const glyph = content.glyphs.get(char);
   if (glyph === undefined) throw new Error(`No glyph for ${char}`);
@@ -56,13 +62,21 @@ export interface Round {
   readonly since: number;
 }
 
-export function startRound(char: string, mode: Mode, puzzle: AssemblyPuzzle, now: number, rules: AssemblyRules = rulesFor(mode)): Round {
+/** Start a round; `start` is what the run hands on from the round before (hearts left, hint tokens). */
+export function startRound(
+  char: string,
+  mode: Mode,
+  puzzle: AssemblyPuzzle,
+  now: number,
+  rules: AssemblyRules = rulesFor(mode),
+  start: RoundStart = {},
+): Round {
   return {
     char,
     mode,
     puzzle,
     rules,
-    state: startAssembly(puzzle, rules),
+    state: startAssembly(puzzle, rules, start),
     board: EMPTY_BOARD,
     feedback: null,
     checked: null,
@@ -115,7 +129,33 @@ export interface CheckData extends ChoiceAttemptData {
   readonly structure_correct: boolean;
   readonly correct_components: number;
   readonly correct_positions: number;
+  /** Hearts after this check (whole or half), or null without lives. */
   readonly lives_left: number | null;
+  /** The most hearts the round can hold, or null without lives. */
+  readonly lives_max: number | null;
+  /** Hearts this check cost (a wrong one) and gave back (a solve). */
+  readonly lives_lost: number;
+  readonly lives_gained: number;
+  /** Points this check earned, and the round's points so far. */
+  readonly points: number;
+  readonly score: number;
+}
+
+/** Payload of the `hint_shown` event: what the look cost under the hint policy in force. */
+export interface HintData {
+  readonly hint: "character";
+  readonly hints_used: number;
+  readonly policy: HintPolicy;
+  /** Hearts, points off the solve, and tokens the hint took. */
+  readonly lives_lost: number;
+  readonly points_lost: number;
+  readonly tokens_spent: number;
+  /** What it means for the character in its run: it returns later, or does not count as mastered. */
+  readonly consequence: HintPrice["consequence"];
+  readonly lives_left: number | null;
+  readonly tokens_left: number;
+  /** The hint took the last of the hearts. */
+  readonly out_of_lives: boolean;
 }
 
 /** What the player built, as text: the structure's signature, then what each slot shows. */
@@ -145,17 +185,51 @@ export function check(round: Round, now: number): { round: Round; data: CheckDat
     correct_components: feedback.correctComponents,
     correct_positions: feedback.correctPositions,
     lives_left: state.livesLeft,
+    lives_max: state.livesMax,
+    lives_lost: Math.max(0, (round.state.livesLeft ?? 0) - (state.livesLeft ?? 0)),
+    lives_gained: Math.max(0, (state.livesLeft ?? 0) - (round.state.livesLeft ?? 0)),
+    points: state.score - (round.rules.scoring === "demo" ? round.state.score : 0),
+    score: state.score,
   };
   return { round: { ...round, state, feedback, board, checked: round.board, since: now }, data };
 }
 
-/** Count a look at the whole character; it lowers what a solved round is worth. */
-export function takeHint(round: Round): Round {
-  return { ...round, state: useHint(round.state) };
+/** Whether a hint can be taken now (see `canHint`): not after the round, not without hints, not without a token when hints cost one. */
+export function canTakeHint(round: Round): boolean {
+  return canHint(round.state, round.rules);
 }
 
-/** Points a solved round would earn right now, shown while playing. */
+/** What the next hint would cost (see `hintPrice`). */
+export function hintCharge(round: Round): HintPrice {
+  return hintPrice(round.state, round.puzzle, round.rules);
+}
+
+/** Count a look at the whole character and charge what the hint policy asks (see `useHint`). */
+export function takeHint(round: Round): Round {
+  return { ...round, state: useHint(round.state, round.rules) };
+}
+
+/** Take a hint and say what it cost; null when none can be taken. */
+export function lookAtCharacter(round: Round): { round: Round; data: HintData } | null {
+  if (!canTakeHint(round)) return null;
+  const price = hintCharge(round);
+  const after = takeHint(round);
+  const data: HintData = {
+    hint: "character",
+    hints_used: after.state.hintsUsed,
+    policy: price.policy,
+    lives_lost: price.lives,
+    points_lost: price.points,
+    tokens_spent: price.tokens,
+    consequence: price.consequence,
+    lives_left: after.state.livesLeft,
+    tokens_left: after.state.hintTokens,
+    out_of_lives: after.state.failed,
+  };
+  return { round: after, data };
+}
+
+/** Points solving would earn right now, shown while playing (see `solvePoints`). */
 export function potentialScore(round: Round): number {
-  const { baseScore, attemptCost, hintCost, minScore } = round.rules;
-  return Math.max(minScore, baseScore - attemptCost * round.state.attempts - hintCost * round.state.hintsUsed);
+  return solvePoints(round.rules, round.puzzle.solution.length, round.state.attempts + 1, round.state.hintsUsed);
 }

@@ -4,6 +4,9 @@ import {
   CLASSIC_RULES,
   MIN_MALFORMED_DIFFERENCE,
   MIN_TILE_DIFFERENCE,
+  decompose,
+  evaluateAttempt,
+  layoutsLookAlike,
   tellApart,
   type AssemblyPuzzle,
 } from "@kankyouken/mechanics/components";
@@ -13,10 +16,13 @@ import { examChar, examTotals, startExam, submitExamItem } from "./exam";
 import {
   buildPuzzle,
   canCheck,
+  canTakeHint,
   check,
   checksItself,
   describeBoard,
+  hintCharge,
   isOver,
+  lookAtCharacter,
   moveTile,
   potentialScore,
   returnTile,
@@ -26,7 +32,7 @@ import {
   type Mode,
   type Round,
 } from "./round";
-import { puzzleOptions, presetChoices } from "./rules";
+import { TRAYS, TRAY_COPIES, assemblyRules, puzzleOptions, presetChoices, type RuleChoices } from "./rules";
 
 const { glyphs, set } = loadStarterJa();
 const content = buildContent(glyphs, set);
@@ -98,6 +104,168 @@ describe("puzzles", () => {
 
   it("refuse characters without a glyph", () => {
     expect(() => buildPuzzle("？", content, createRng(1))).toThrow();
+  });
+});
+
+describe("puzzles under the default preset (the demo's tray and structures)", () => {
+  const ZEN = presetChoices("zen-hanzi");
+  const all = content.decks.at(-1)!.chars;
+  /** Puzzles are built once per character, seed and change: building one takes a moment. */
+  const built = new Map<string, AssemblyPuzzle>();
+  const zenPuzzle = (char: string, seed: string, changes: Partial<RuleChoices> = {}): AssemblyPuzzle => {
+    const key = `${char} ${seed} ${JSON.stringify(changes)}`;
+    const puzzle = built.get(key) ?? buildPuzzle(char, content, createRng(seed), puzzleOptions({ ...ZEN, ...changes }, content.frames));
+    built.set(key, puzzle);
+    return puzzle;
+  };
+  /** Tests that build a puzzle for every character get more time than the default. */
+  const SLOW = 30_000;
+  const isRight = (tile: AssemblyPuzzle["tray"][number]): boolean => tile.role === "correct" || tile.role === "copy";
+  const twins = new Set(Object.entries(set.sameShape ?? {}).flatMap(([a, list]) => list.flatMap((b) => [a + b, b + a])));
+  /** The rule that stays in force whatever the tray: no WRONG tile looks like another tile. */
+  function expectTellable(puzzle: AssemblyPuzzle): void {
+    puzzle.tray.forEach((a, i) => {
+      for (const b of puzzle.tray.slice(i + 1)) {
+        if (isRight(a) && isRight(b)) continue;
+        expect(twins.has(a.shows + b.shows), `${puzzle.target}: ${a.shows} and ${b.shows}`).toBe(false);
+        const least = a.role === "malformed" || b.role === "malformed" ? MIN_MALFORMED_DIFFERENCE : MIN_TILE_DIFFERENCE;
+        expect(tellApart(a.glyph, b.glyph, least), `${puzzle.target}: ${a.shows} and ${b.shows}`).toBe(true);
+      }
+    });
+  }
+
+  it("is what buildPuzzle makes when no options are given", () => {
+    const byDefault = buildPuzzle("持", content, createRng("s"));
+    const named = zenPuzzle("持", "s");
+    expect(byDefault.tray.map((tile) => tile.shows)).toEqual(named.tray.map((tile) => tile.shows));
+    expect(byDefault.layouts.map((layout) => layout.signature)).toEqual(named.layouts.map((layout) => layout.signature));
+  });
+
+  it("deals 18 tiles in 3 rows of 6 for every character of the set, with copies that are accepted", () => {
+    for (const char of all) {
+      for (const seed of ["a", "b"]) {
+        const puzzle = zenPuzzle(char, seed);
+        expect(puzzle.tray, char).toHaveLength(18);
+        expect(puzzle.trayRows).toBe(3);
+        expectTellable(puzzle);
+        for (const component of new Set(puzzle.solution)) {
+          expect(puzzle.tray.some((tile) => tile.imitates === component), `${char}: nothing passes for ${component}`).toBe(true);
+        }
+        const copies = puzzle.tray.filter((tile) => tile.role === "copy");
+        expect(copies, char).toHaveLength(TRAY_COPIES);
+        // Any copy does in place of its original.
+        const used = new Set<string>();
+        const placements = puzzle.solution.map((shows) => {
+          const free = puzzle.tray.filter((candidate) => candidate.shows === shows && !used.has(candidate.id));
+          const tile = free.find((candidate) => candidate.role === "copy") ?? free[0]!;
+          used.add(tile.id);
+          return tile.id;
+        });
+        expect(placements.some((id) => copies.some((copy) => copy.id === id))).toBe(true);
+        expect(evaluateAttempt(puzzle, { layout: puzzle.correctLayout, placements }).solved).toBe(true);
+      }
+    }
+  }, SLOW);
+
+  it("offers four frames: the character's own, always the same, among decoys from the catalogue that change", () => {
+    for (const char of all) {
+      const own = decompose(glyphs.get(char)!, { known: content.context.known }).layout.signature;
+      const boards = new Set<string>();
+      for (const seed of ["a", "b", "c", "d"]) {
+        const puzzle = zenPuzzle(char, seed);
+        expect(puzzle.layouts, char).toHaveLength(4);
+        expect(puzzle.layouts[puzzle.correctLayout]!.signature, char).toBe(own);
+        puzzle.layouts.forEach((a, i) => {
+          for (const b of puzzle.layouts.slice(i + 1)) expect(layoutsLookAlike(a, b), char).toBe(false);
+          // Every decoy is a frame of the catalogue (the right one may be finer than the catalogue allows).
+          if (i !== puzzle.correctLayout) {
+            expect(content.frames.parts.some((frame) => frame.signature === a.signature), `${char}: ${a.signature}`).toBe(true);
+          }
+        });
+        boards.add(puzzle.layouts.map((layout) => layout.signature).join(" "));
+      }
+      expect(boards.size, char).toBeGreaterThan(1);
+    }
+  }, SLOW);
+
+  it("lets a decoy have another number of slots than the character has parts, and shows enclosures as decoys too", () => {
+    let otherCount = 0;
+    let enclosureDecoys = 0;
+    for (const char of all) {
+      // A seed of its own for every character, as every round of a run has.
+      const puzzle = zenPuzzle(char, `seed for ${char}`);
+      const right = puzzle.layouts[puzzle.correctLayout]!;
+      for (const layout of puzzle.layouts) {
+        if (layout === right) continue;
+        if (layout.slots.length !== right.slots.length) otherCount++;
+        if (layout.signature.startsWith("E:")) enclosureDecoys++;
+      }
+    }
+    expect(otherCount).toBeGreaterThan(10);
+    // An enclosure is not the right answer just because it is one.
+    expect(enclosureDecoys).toBeGreaterThan(5);
+  });
+
+  it("sizes the tray as chosen, never leaving out a needed tile or its look-alike", () => {
+    // One character of every deck: 持 and its like have three parts, 路 four, 門's family two.
+    const sample = [...new Set([...content.decks.map((deck) => deck.chars[0]!), "路", "落", "閣", "返"])].filter((char) => all.includes(char));
+    for (const tray of ["3x6", "3x4", "2x4", "4x6"] as const) {
+      for (const char of sample) {
+        const puzzle = zenPuzzle(char, "a", { tray });
+        expect(puzzle.trayRows, tray).toBe(TRAYS[tray].rows);
+        expect(puzzle.tray.length, `${tray} ${char}`).toBe(TRAYS[tray].size);
+        expectTellable(puzzle);
+        for (const shows of puzzle.solution) expect(puzzle.tray.some((tile) => tile.role === "correct" && tile.shows === shows)).toBe(true);
+        for (const component of new Set(puzzle.solution)) {
+          expect(puzzle.tray.some((tile) => tile.imitates === component), `${tray} ${char}: nothing passes for ${component}`).toBe(true);
+        }
+      }
+    }
+  }, SLOW);
+
+  it("deals every right part once when copies are off", () => {
+    for (const char of all) {
+      const puzzle = zenPuzzle(char, "a", { copies: "no" });
+      expect(puzzle.tray.some((tile) => tile.role === "copy")).toBe(false);
+      expect(puzzle.tray, char).toHaveLength(18);
+    }
+  });
+
+  it("shows the same four frames in the same places for every character under 'fixed'", () => {
+    const usual = content.frames.parts.slice(0, 4).map((frame) => frame.signature);
+    let odd = 0;
+    for (const char of all) {
+      const own = decompose(glyphs.get(char)!, { known: content.context.known }).layout.signature;
+      for (const seed of ["a", "b"]) {
+        const puzzle = zenPuzzle(char, seed, { structures: "fixed" });
+        const shown = puzzle.layouts.map((layout) => layout.signature);
+        expect(puzzle.layouts[puzzle.correctLayout]!.signature, char).toBe(own);
+        // Only a character whose structure is none of the four changes the last frame.
+        expect(shown.slice(0, 3), char).toEqual(usual.slice(0, 3));
+        if (usual.includes(own)) expect(shown, char).toEqual(usual);
+        else odd++;
+      }
+    }
+    expect(odd / 2).toBeLessThan(all.length / 8);
+  }, SLOW);
+
+  it("splits every character in two by position under 'positions', with the four position classes as frames", () => {
+    const classes = content.frames.positions.slice(0, 4).map((frame) => frame.signature);
+    for (const char of all) {
+      const puzzle = zenPuzzle(char, "a", { structures: "positions" });
+      expect(puzzle.solution, char).toHaveLength(2);
+      expect(puzzle.layouts.map((layout) => layout.signature), char).toEqual(classes);
+      expect(puzzle.parts.flat().sort((a, b) => a - b), char).toEqual(glyphs.get(char)!.strokes.map((_, index) => index));
+      expect(puzzle.tray, char).toHaveLength(18);
+      expectTellable(puzzle);
+    }
+  }, SLOW);
+
+  it("makes classic puzzles under 'alternatives', whatever frames the content has", () => {
+    const withFrames = buildPuzzle("持", content, createRng("s"), puzzleOptions(CLASSIC, content.frames));
+    const without = buildPuzzle("持", content, createRng("s"), puzzleOptions(CLASSIC));
+    expect(withFrames.layouts.map((layout) => layout.signature)).toEqual(without.layouts.map((layout) => layout.signature));
+    for (const layout of withFrames.layouts) expect(layout.slots).toHaveLength(withFrames.solution.length);
   });
 });
 
@@ -286,6 +454,89 @@ describe("checking", () => {
     const failed = check(full, 2000)!.round;
     expect(failed.state.failed).toBe(true);
     expect(failed.board).toEqual(full.board);
+  });
+});
+
+describe("a round by the demo's rules", () => {
+  const ZEN = presetChoices("zen-hanzi");
+  const zenRound = (change: Partial<RuleChoices> = {}, start = {}): Round =>
+    startRound("持", "review", puzzleFor("持"), 1000, assemblyRules({ ...ZEN, ...change }, "review"), start);
+
+  it("loses half a heart per wrong check and reports it, with the points the check earned", () => {
+    let round = zenRound();
+    const { puzzle } = round;
+    const tiles = solving(puzzle);
+    expect(round.state).toMatchObject({ livesLeft: 3, livesMax: 3 });
+    const swapped = [tiles[1]!, tiles[0]!, ...tiles.slice(2)];
+    const first = check(fill(round, puzzle.correctLayout, swapped), 2000)!;
+    // Right structure, three parts that belong, one in place: 100 + 30 + 10.
+    expect(first.data).toMatchObject({ correct: false, lives_left: 2.5, lives_max: 3, lives_lost: 0.5, lives_gained: 0, points: 140, score: 140 });
+    round = first.round;
+    expect(potentialScore(round)).toBe(540);
+    const second = check(fill(round, puzzle.correctLayout, tiles), 3000)!;
+    // The solve gives the half heart back (never beyond three) and 540 for a second try.
+    expect(second.data).toMatchObject({ correct: true, lives_left: 3, lives_lost: 0, lives_gained: 0.5, points: 540, score: 680 });
+  });
+
+  it("starts with what the round before left", () => {
+    const round = zenRound({}, { livesLeft: 1.5, livesMax: 3, hintTokens: 2 });
+    expect(round.state).toMatchObject({ livesLeft: 1.5, livesMax: 3, hintTokens: 2 });
+  });
+
+  it("charges half a heart for a hint and nothing off the score", () => {
+    const round = zenRound();
+    expect(potentialScore(round)).toBe(900);
+    expect(hintCharge(round)).toMatchObject({ policy: "life", lives: 0.5, points: 0 });
+    const looked = lookAtCharacter(round)!;
+    expect(looked.data).toEqual({
+      hint: "character",
+      hints_used: 1,
+      policy: "life",
+      lives_lost: 0.5,
+      points_lost: 0,
+      tokens_spent: 0,
+      consequence: null,
+      lives_left: 2.5,
+      tokens_left: 1,
+      out_of_lives: false,
+    });
+    expect(potentialScore(looked.round)).toBe(900);
+  });
+
+  it("loses the round to a hint bought with the last half heart", () => {
+    const round = zenRound({}, { livesLeft: 0.5, livesMax: 3 });
+    expect(canTakeHint(round)).toBe(true);
+    const looked = lookAtCharacter(round)!;
+    expect(looked.data).toMatchObject({ lives_lost: 0.5, lives_left: 0, out_of_lives: true });
+    expect(isOver(looked.round)).toBe(true);
+    expect(looked.round.state).toMatchObject({ failed: true, solved: false });
+    expect(lookAtCharacter(looked.round)).toBeNull();
+  });
+
+  it("reports what each other hint policy takes", () => {
+    const data = (hint: RuleChoices["hint"]) => lookAtCharacter(zenRound({ hint }))?.data;
+    expect(data("points")).toMatchObject({ policy: "points", points_lost: 25, lives_lost: 0, lives_left: 3 });
+    expect(data("token")).toMatchObject({ policy: "token", tokens_spent: 1, tokens_left: 0, lives_lost: 0 });
+    expect(data("later")).toMatchObject({ policy: "return", consequence: "returns", lives_lost: 0, points_lost: 0 });
+    expect(data("unmastered")).toMatchObject({ policy: "unmastered", consequence: "unmastered" });
+    expect(data("free")).toMatchObject({ policy: "free", lives_lost: 0, points_lost: 0, tokens_spent: 0, consequence: null });
+    expect(data("off")).toBeUndefined();
+    // Without a token there is no hint to take.
+    const spent = lookAtCharacter(zenRound({ hint: "token" }))!.round;
+    expect(canTakeHint(spent)).toBe(false);
+    expect(lookAtCharacter(spent)).toBeNull();
+  });
+
+  it("plays without lives when the rules have none", () => {
+    let round = zenRound({ lives: "none" });
+    const { puzzle } = round;
+    const tiles = solving(puzzle);
+    expect(round.state.livesLeft).toBeNull();
+    for (let attempt = 0; attempt < 8; attempt++) {
+      round = check(fill(round, puzzle.correctLayout, [...tiles].reverse()), 2000 + attempt)!.round;
+    }
+    expect(round.state).toMatchObject({ attempts: 8, failed: false, livesLeft: null });
+    expect(lookAtCharacter(round)!.data).toMatchObject({ policy: "life", lives_lost: 0, lives_left: null });
   });
 });
 

@@ -5,3 +5,4 @@ export * from "./lookalike";
 export * from "./mutate";
 export * from "./puzzle";
 export * from "./assembly";
+export * from "./run";

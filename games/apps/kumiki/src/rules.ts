@@ -12,7 +12,12 @@ import {
   CLASSIC_RULES,
   type AfterCheck,
   type AssemblyRules,
+  type HintPolicy,
+  type Layout,
   type PuzzleOptions,
+  type RunRules,
+  type Scoring,
+  type StructureMode,
 } from "@kankyouken/mechanics/components";
 import type { Mode } from "./round";
 
@@ -32,6 +37,59 @@ export interface RuleChoices {
   readonly feedback: "lines" | "panel";
   /** Learn mode gives unlimited tries ("unlimited", Kumiki) or plays by the same lives as Review ("same", the demo). */
   readonly learnLives: "unlimited" | "same";
+  /**
+   * Hearts: none at all, a fixed number (the demo: 3; Kumiki: 5), or a dynamic rule:
+   * "parts" gives a character as many hearts as it has parts, "adaptive" one more after a
+   * hard character and one fewer after an easy one (both around 3, and per character).
+   */
+  readonly lives: "none" | "1" | "2" | "3" | "5" | "parts" | "adaptive";
+  /** The hearts left go from character to character ("run", the demo), or every character starts full ("character", Kumiki). */
+  readonly livesScope: "run" | "character";
+  /** What a wrong check costs: half a heart (the demo), a whole one (Kumiki), or nothing. */
+  readonly wrongCost: "half" | "whole" | "none";
+  /** What solving a character gives back: one heart (the demo), half, or nothing (Kumiki). */
+  readonly solveGain: "one" | "half" | "none";
+  /** Out of hearts: the run ends ("end-run", the demo), or the character is lost and returns at the end of the deck ("retry-later", Kumiki). */
+  readonly atZero: "end-run" | "retry-later";
+  /**
+   * What a hint costs: half a heart ("life", the demo), points ("points", Kumiki), a
+   * token earned by first-try solves ("token"), the character coming back later
+   * ("later") or not counting as mastered ("unmastered"), or nothing ("free"). "off"
+   * takes the hint away.
+   */
+  readonly hint: "life" | "points" | "token" | "later" | "unmastered" | "free" | "off";
+  /** The hint stays until Continue ("continue", the demo) or goes away by itself ("timed", Kumiki). */
+  readonly hintStays: "continue" | "timed";
+  /**
+   * "demo": a running total, points for what was right in a wrong check, no best score
+   * (the demo). "classic": points per solved character, less per wrong check, and a best
+   * score per deck (Kumiki).
+   */
+  readonly scoring: Scoring;
+  /**
+   * The tray, as rows x tiles per row: 3x6 (the demo), 3x4 (Kumiki), 2x4 (few tiles, for
+   * beginners) or 4x6 (crowded). The needed tiles and their look-alikes are never left
+   * out, and a tray stays short when the set has no more parts to fill it with.
+   */
+  readonly tray: "3x6" | "3x4" | "2x4" | "4x6";
+  /** Identical copies of right parts in the tray, any of which is accepted ("yes", the demo), or every right part once ("no", Kumiki). */
+  readonly copies: "yes" | "no";
+  /**
+   * The structures offered beside the right one (which is the same under all of them):
+   * decoys drawn afresh from a fixed catalogue, whatever their number of slots
+   * ("catalogue", the demo); wrong structures made for the character, with as many slots
+   * as it has parts ("alternatives", Kumiki); one fixed set of frames in fixed places for
+   * every character ("fixed"); or the character split once, into two parts by position,
+   * with the position classes as the fixed set ("positions").
+   */
+  readonly structures: StructureMode;
+  /**
+   * How the screen is laid out. "compact" (the demo's arrangement): lives and score in
+   * the top bar, Hint beside the prompt, the structures two by two above the tray, on
+   * every screen. "wide" (Kumiki): on a wide screen the structures in one row, and Hint
+   * below the tray.
+   */
+  readonly board: "compact" | "wide";
 }
 
 export type ChoiceKey = keyof RuleChoices;
@@ -85,11 +143,153 @@ export const CHOICES: Definitions = {
       { value: "unlimited", label: "Unlimited tries" },
     ],
   },
+  lives: {
+    key: "lives",
+    label: "Lives",
+    options: [
+      { value: "3", label: "3" },
+      { value: "5", label: "5" },
+      { value: "2", label: "2" },
+      { value: "1", label: "1" },
+      { value: "parts", label: "As many as the character has parts" },
+      { value: "adaptive", label: "More after a hard character, fewer after an easy one" },
+      { value: "none", label: "No lives: unlimited tries" },
+    ],
+  },
+  livesScope: {
+    key: "livesScope",
+    label: "Lives last",
+    options: [
+      { value: "run", label: "For the whole run" },
+      { value: "character", label: "For one character" },
+    ],
+  },
+  wrongCost: {
+    key: "wrongCost",
+    label: "A wrong check costs",
+    options: [
+      { value: "half", label: "Half a life" },
+      { value: "whole", label: "A life" },
+      { value: "none", label: "Nothing" },
+    ],
+  },
+  solveGain: {
+    key: "solveGain",
+    label: "A solved character gives back",
+    options: [
+      { value: "one", label: "A life" },
+      { value: "half", label: "Half a life" },
+      { value: "none", label: "Nothing" },
+    ],
+  },
+  atZero: {
+    key: "atZero",
+    label: "Out of lives",
+    options: [
+      { value: "end-run", label: "The run ends" },
+      { value: "retry-later", label: "The character comes back at the end" },
+    ],
+  },
+  hint: {
+    key: "hint",
+    label: "A hint costs",
+    options: [
+      { value: "life", label: "Half a life" },
+      { value: "points", label: "Points" },
+      { value: "token", label: "A token, earned by first-try solves" },
+      { value: "later", label: "The character comes back later" },
+      { value: "unmastered", label: "The character does not count as mastered" },
+      { value: "free", label: "Nothing" },
+      { value: "off", label: "No hints" },
+    ],
+  },
+  hintStays: {
+    key: "hintStays",
+    label: "The hint stays",
+    options: [
+      { value: "continue", label: "Until Continue" },
+      { value: "timed", label: "A few seconds" },
+    ],
+  },
+  scoring: {
+    key: "scoring",
+    label: "Score",
+    options: [
+      { value: "demo", label: "Running total, points for what was right" },
+      { value: "classic", label: "Per character, less per wrong check, with a best score" },
+    ],
+  },
+  tray: {
+    key: "tray",
+    label: "Tray",
+    options: [
+      { value: "3x6", label: "18 tiles in 3 rows" },
+      { value: "3x4", label: "12 tiles in 3 rows" },
+      { value: "2x4", label: "8 tiles in 2 rows" },
+      { value: "4x6", label: "24 tiles in 4 rows" },
+    ],
+  },
+  copies: {
+    key: "copies",
+    label: "Copies of right parts",
+    options: [
+      { value: "yes", label: "Some parts are there more than once" },
+      { value: "no", label: "Every right part once" },
+    ],
+  },
+  structures: {
+    key: "structures",
+    label: "Structures",
+    options: [
+      { value: "catalogue", label: "The right one among frames drawn from a catalogue" },
+      { value: "alternatives", label: "The right one among near misses with as many slots" },
+      { value: "fixed", label: "The same four frames for every character" },
+      { value: "positions", label: "Two parts by position, the same four frames" },
+    ],
+  },
+  board: {
+    key: "board",
+    label: "Board",
+    options: [
+      { value: "compact", label: "Structures two by two, Hint at the top" },
+      { value: "wide", label: "Structures in a row on a wide screen, Hint below" },
+    ],
+  },
 };
 
 export const CHOICE_KEYS = Object.keys(CHOICES) as ChoiceKey[];
 
-export type PresetId = "zen-hanzi" | "classic";
+/** The choices under the headings Settings shows them under. Every choice is in exactly one group. */
+export const CHOICE_GROUPS: readonly { readonly title: string; readonly keys: readonly ChoiceKey[] }[] = [
+  { title: "Checking", keys: ["check", "afterCheck", "feedback"] },
+  { title: "Lives", keys: ["lives", "livesScope", "wrongCost", "solveGain", "atZero", "learnLives"] },
+  { title: "Hints", keys: ["hint", "hintStays"] },
+  { title: "Score", keys: ["scoring"] },
+  { title: "Board", keys: ["structures", "tray", "copies", "board"] },
+];
+
+/**
+ * False when `key` changes nothing under `choices`: what lives cost and give back when
+ * there are none, where they last when a dynamic rule counts them per character, how long
+ * a hint stays when there is none. Settings shows such a choice switched off.
+ */
+export function choiceApplies(choices: RuleChoices, key: ChoiceKey): boolean {
+  switch (key) {
+    case "livesScope":
+      return choices.lives !== "none" && choices.lives !== "parts" && choices.lives !== "adaptive";
+    case "wrongCost":
+    case "solveGain":
+    case "atZero":
+    case "learnLives":
+      return choices.lives !== "none";
+    case "hintStays":
+      return choices.hint !== "off";
+    default:
+      return true;
+  }
+}
+
+export type PresetId = "zen-hanzi" | "classic" | "gentle" | "study-no-hints";
 
 export interface Preset {
   readonly id: PresetId;
@@ -99,18 +299,78 @@ export interface Preset {
   readonly choices: RuleChoices;
 }
 
+/** As the Zen Hanzi demo was seen to play; the default, and what the study presets start from. */
+const ZEN_HANZI_CHOICES: RuleChoices = {
+  check: "frame",
+  afterCheck: "keep-correct",
+  feedback: "panel",
+  learnLives: "same",
+  lives: "3",
+  livesScope: "run",
+  wrongCost: "half",
+  solveGain: "one",
+  atZero: "end-run",
+  hint: "life",
+  hintStays: "continue",
+  scoring: "demo",
+  tray: "3x6",
+  copies: "yes",
+  structures: "catalogue",
+  board: "compact",
+};
+
 export const PRESETS: readonly Preset[] = [
   {
     id: "zen-hanzi",
     title: "Close to the paper",
-    note: "As the Zen Hanzi demo plays: a Check button by the full structure, a feedback panel, the same lives in both modes.",
-    choices: { check: "frame", afterCheck: "keep-correct", feedback: "panel", learnLives: "same" },
+    note: "As the Zen Hanzi demo plays: a Check button by the full structure, a feedback panel, three lives for the whole run lost in halves, a hint for half a life, a running total, 18 tiles, frames from a catalogue.",
+    choices: ZEN_HANZI_CHOICES,
   },
   {
     id: "classic",
     title: "Kumiki classic",
-    note: "Kumiki as it first was: Check below the board, every tile stays, unlimited tries in Learn.",
-    choices: { check: "bar", afterCheck: "keep", feedback: "lines", learnLives: "unlimited" },
+    note: "Kumiki as it first was: Check below the board, every tile stays, five lives per character in Review and unlimited tries in Learn, hints for points, a best score, 12 tiles, near-miss structures.",
+    choices: {
+      check: "bar",
+      afterCheck: "keep",
+      feedback: "lines",
+      learnLives: "unlimited",
+      lives: "5",
+      livesScope: "character",
+      wrongCost: "whole",
+      solveGain: "none",
+      atZero: "retry-later",
+      hint: "points",
+      hintStays: "timed",
+      scoring: "classic",
+      tray: "3x4",
+      copies: "no",
+      structures: "alternatives",
+      board: "wide",
+    },
+  },
+  {
+    id: "gentle",
+    title: "Gentle",
+    note: "For young children: no lives, hints are free and stay, the same four frames every time, eight tiles, and a full structure is judged by itself.",
+    choices: {
+      ...ZEN_HANZI_CHOICES,
+      check: "auto",
+      lives: "none",
+      wrongCost: "none",
+      solveGain: "none",
+      atZero: "retry-later",
+      hint: "free",
+      tray: "2x4",
+      copies: "no",
+      structures: "fixed",
+    },
+  },
+  {
+    id: "study-no-hints",
+    title: "Study: no hints",
+    note: "Close to the paper without the Hint button, for a study arm that must not look at the character.",
+    choices: { ...ZEN_HANZI_CHOICES, hint: "off" },
   },
 ];
 
@@ -162,6 +422,11 @@ export function resolveChoices(spec: RuleSpec): RuleChoices {
   return { ...presetChoices(spec.preset), ...spec.changes };
 }
 
+/** `spec` with one choice set to `value`; a value that is the preset's own takes the change away again. */
+export function withChoice<K extends ChoiceKey>(spec: RuleSpec, key: K, value: RuleChoices[K]): RuleSpec {
+  return cleanSpec({ preset: spec.preset, changes: { ...spec.changes, [key]: value } });
+}
+
 /** True when the spec plays exactly as its preset does. */
 export function isPlainPreset(spec: RuleSpec): boolean {
   return Object.keys(spec.changes).length === 0;
@@ -201,19 +466,92 @@ export function formatRuleSpec(spec: RuleSpec): string {
   return [spec.preset, ...CHOICE_KEYS.flatMap((key) => (key in spec.changes ? [`${key}:${String(spec.changes[key])}`] : []))].join(",");
 }
 
-/** What the mechanics library plays a round of `mode` by. */
+const HEARTS = { none: 0, half: 0.5, whole: 1, one: 1 } as const;
+const HINT_POLICY: Readonly<Record<RuleChoices["hint"], HintPolicy>> = {
+  life: "life",
+  points: "points",
+  token: "token",
+  later: "return",
+  unmastered: "unmastered",
+  free: "free",
+  off: "off",
+};
+/** What the dynamic lives rules count around: the demo's three hearts. */
+const DYNAMIC_LIVES = 3;
+
+/**
+ * What the mechanics library plays a round of `mode` by. The numbers no choice names
+ * (the classic score, half a heart per hint, one hint token to start with and three at
+ * most) are Kumiki's own.
+ */
 export function assemblyRules(choices: RuleChoices, mode: Mode): AssemblyRules {
-  const rules: AssemblyRules = {
+  const dynamic = choices.lives === "parts" || choices.lives === "adaptive";
+  const none = choices.lives === "none" || (mode === "learn" && choices.learnLives === "unlimited");
+  return {
     ...CLASSIC_RULES,
     check: choices.check === "auto" ? "auto" : "button",
     afterCheck: choices.afterCheck,
+    lives: none ? null : dynamic ? DYNAMIC_LIVES : Number(choices.lives),
+    livesRule: choices.lives === "parts" || choices.lives === "adaptive" ? choices.lives : "fixed",
+    wrongCost: HEARTS[choices.wrongCost],
+    solveGain: HEARTS[choices.solveGain],
+    scoring: choices.scoring,
+    hint: HINT_POLICY[choices.hint],
   };
-  return mode === "learn" && choices.learnLives === "unlimited" ? { ...rules, lives: null } : rules;
 }
 
-/** How puzzles are put together. */
-export function puzzleOptions(_choices: RuleChoices): PuzzleOptions {
-  return { layoutChoices: 4, lookAlikesPerComponent: 2, trayRows: 3, traySize: 12 };
+/** What the mechanics library plays a run by. */
+export function runRules(choices: RuleChoices): RunRules {
+  return { livesScope: choices.livesScope, atZero: choices.atZero === "end-run" ? "end-run" : "fail-character" };
+}
+
+/**
+ * The lives of a mode in a few words, for the mode switch: "Unlimited tries.", "3 lives
+ * for the run.", "5 lives per character.".
+ */
+export function livesLine(choices: RuleChoices, mode: Mode): string {
+  const rules = assemblyRules(choices, mode);
+  if (rules.lives === null) return "Unlimited tries.";
+  if (rules.livesRule === "parts") return "A life per part.";
+  const count = `${rules.lives} ${rules.lives === 1 ? "life" : "lives"}`;
+  if (rules.livesRule === "adaptive") return `About ${count} per character.`;
+  return choices.livesScope === "run" ? `${count} for the run.` : `${count} per character.`;
+}
+
+/** Rows and tiles of each tray, and how many look-alikes each right part gets in it. */
+export const TRAYS: Readonly<Record<RuleChoices["tray"], { readonly rows: number; readonly size: number; readonly lookAlikes: number }>> = {
+  "3x6": { rows: 3, size: 18, lookAlikes: 2 },
+  "3x4": { rows: 3, size: 12, lookAlikes: 2 },
+  // Four parts and one look-alike each fill it exactly.
+  "2x4": { rows: 2, size: 8, lookAlikes: 1 },
+  "4x6": { rows: 4, size: 24, lookAlikes: 2 },
+};
+
+/** Identical copies of right parts dealt when the rules ask for them; the demo showed up to three tiles of one part. */
+export const TRAY_COPIES = 2;
+
+/** The frames a set of characters offers the structure modes (see `Frames` in content.ts). */
+export interface FrameSets {
+  readonly parts: readonly Layout[];
+  readonly positions: readonly Layout[];
+}
+
+/**
+ * How puzzles are put together. `frames` are those of the content being played; without
+ * them the library's own are used (the nine frames of the demo, every two-slot structure).
+ */
+export function puzzleOptions(choices: RuleChoices, frames?: FrameSets): PuzzleOptions {
+  const tray = TRAYS[choices.tray];
+  const set = choices.structures === "positions" ? frames?.positions : frames?.parts;
+  return {
+    layoutChoices: 4,
+    structures: choices.structures,
+    ...(set === undefined || choices.structures === "alternatives" ? {} : { frames: set }),
+    lookAlikesPerComponent: tray.lookAlikes,
+    trayRows: tray.rows,
+    traySize: tray.size,
+    copies: choices.copies === "yes" ? TRAY_COPIES : 0,
+  };
 }
 
 /** Where the rules of a session come from. */

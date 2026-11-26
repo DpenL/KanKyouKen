@@ -108,6 +108,14 @@ async function dragTile(page: Page, tileId: string, layout: number, slot: number
   await expect(page.locator(`.slot[data-layout="${layout}"][data-slot="${slot}"]`)).toHaveAttribute("data-tile", tileId);
 }
 
+/** Put a tile into a slot by clicking the tile and then the slot. */
+async function clickTile(page: Page, tileId: string, layout: number, slot: number): Promise<void> {
+  await page.locator(`.tray .tile[data-tile="${tileId}"]`).click();
+  const at = await slotPoint(page, layout, slot);
+  await page.mouse.click(at.x, at.y);
+  await expect(page.locator(`.slot[data-layout="${layout}"][data-slot="${slot}"]`)).toHaveAttribute("data-tile", tileId);
+}
+
 /** Tile ids that solve the puzzle, one per slot of the right structure. */
 function solvingTiles(info: PuzzleInfo): string[] {
   const used = new Set<string>();
@@ -391,76 +399,451 @@ test("exam: no feedback until the end, then a score per character", async ({ pag
   expect(errors).toEqual([]);
 });
 
-test.describe("on a phone", () => {
-  test.use({ viewport: { width: 360, height: 740 }, hasTouch: true, isMobile: true });
+test.describe("the default rules, close to the Zen Hanzi demo", () => {
+  /** A structure filled with the solving tiles but for the last slot, which gets a tile that does not belong. */
+  async function fillAlmostRight(page: Page, info: PuzzleInfo): Promise<string> {
+    const stranger = info.tray.find((tile) => !info.solution.includes(tile.shows))!.id;
+    const tiles = solvingTiles(info);
+    const board = (await kk(page)).board;
+    for (const [slot, tileId] of tiles.entries()) {
+      const wanted = slot === tiles.length - 1 ? stranger : tileId;
+      // What a wrong check left in its right slot stays there.
+      if (board?.layout === info.correctLayout && board.slots[slot] === wanted) continue;
+      await clickTile(page, wanted, info.correctLayout, slot);
+    }
+    return stranger;
+  }
 
-  test("nothing scrolls sideways and tiles can be tapped or dragged into place by touch", async ({ page }) => {
+  test("Check by the full structure, a panel with counts, lives in halves, a hint that stays, a running total", async ({ page }) => {
     const errors = watchConsole(page);
     await page.goto(DEBUG);
-    const fits = (): Promise<boolean> => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
-    expect(await fits()).toBe(true);
+    expect((await events(page, "session_start"))[0]!.data).toMatchObject({
+      rules: "zen-hanzi",
+      rules_from: "player",
+      choices: { check: "frame", feedback: "panel", lives: "3", livesScope: "run", hint: "life", scoring: "demo", tray: "3x6", structures: "catalogue", board: "compact" },
+    });
 
-    await page.getByRole("radio", { name: /Review/ }).tap();
-    await page.locator(".deck").first().tap();
-    await expect(page.locator(".tray .tile")).toHaveCount(12);
-    expect(await fits()).toBe(true);
+    await page.getByRole("radio", { name: /Review/ }).click();
+    await expect(page.getByRole("radio", { name: /Review/ })).toContainText("3 lives for the run.");
+    // The demo keeps a running total and no best score.
+    await expect(page.locator(".deck-best")).toHaveCount(0);
+    await page.locator(".deck").first().click();
+    const screen = page.locator(".assembly");
+    await expect(screen).toHaveAttribute("data-board", "compact");
+    await expect(page.locator(".tray .tile")).toHaveCount(18);
+    await expect(page.locator(".structure")).toHaveCount(4);
+    const lives = page.locator(".lives");
+    await expect(lives).toHaveAttribute("aria-label", "3 of 3 lives left");
 
-    // Everything that is tapped is at least 44 px in both directions.
-    const smallest = await page.evaluate(() =>
-      Math.min(
-        ...[...document.querySelectorAll(".slot-shape, .tray .tile, .screen button")].map((element) => {
-          const box = element.getBoundingClientRect();
-          return Math.min(box.width, box.height);
-        }),
-      ),
-    );
-    expect(smallest).toBeGreaterThanOrEqual(44);
+    // 18 tiles in 3 rows of 6 under 4 structures two by two, all on screen without scrolling.
+    const shape = await page.evaluate(() => {
+      const rowsOf = (selector: string): number[] => {
+        const tops = [...document.querySelectorAll(selector)].map((element) => Math.round(element.getBoundingClientRect().top));
+        return [...new Set(tops)].map((top) => tops.filter((other) => other === top).length);
+      };
+      return {
+        tray: rowsOf(".tray .tile"),
+        frames: rowsOf(".structure"),
+        scrolls: document.documentElement.scrollHeight > window.innerHeight || document.documentElement.scrollWidth > window.innerWidth,
+        hintAbove: document.querySelector('[data-action="hint"]')!.getBoundingClientRect().bottom <= document.querySelector(".frames")!.getBoundingClientRect().top,
+      };
+    });
+    expect(shape).toEqual({ tray: [6, 6, 6], frames: [2, 2], scrolls: false, hintAbove: true });
 
     const info = await puzzleInfo(page);
-    const tile = solvingTiles(info)[0]!;
-    await page.locator(`.tray .tile[data-tile="${tile}"]`).tap();
-    const at = await slotPoint(page, info.correctLayout, 0);
-    await page.touchscreen.tap(at.x, at.y);
-    await expect(page.locator(`.slot[data-layout="${info.correctLayout}"][data-slot="0"]`)).toHaveAttribute("data-tile", tile);
+    const parts = info.solution.length;
+    // The tray holds identical copies of right parts.
+    expect(info.tray.filter((tile) => tile.role === "copy")).toHaveLength(2);
+    // No Check anywhere until a structure is full.
+    await expect(page.locator('[data-action="check"]')).toHaveCount(0);
+    const stranger = await fillAlmostRight(page, info);
+    const check = page.locator(".frame-check");
+    await expect(check).toBeVisible();
+    await expect(page.locator('.structure[data-dim="true"]')).toHaveCount(3);
+    // It lies beside the structure, over its neighbour, not over the structure itself.
+    const overlap = await page.evaluate((layout) => {
+      const button = document.querySelector(".frame-check")!.getBoundingClientRect();
+      const own = document.querySelector(`.structure[data-layout="${layout}"]`)!.getBoundingClientRect();
+      return button.left < own.right && button.right > own.left && button.top < own.bottom && button.bottom > own.top;
+    }, info.correctLayout);
+    expect(overlap).toBe(false);
+    await check.click();
 
-    // A finger drags the next tile into its slot.
-    const second = solvingTiles(info)[1]!;
-    const from = await centre(page, `.tray .tile[data-tile="${second}"]`);
-    const to = await slotPoint(page, info.correctLayout, 1);
-    const client = await page.context().newCDPSession(page);
-    const touch = (type: "touchStart" | "touchMove" | "touchEnd", points: { x: number; y: number }[]): Promise<unknown> =>
-      client.send("Input.dispatchTouchEvent", { type, touchPoints: points });
-    await touch("touchStart", [from]);
-    for (let step = 1; step <= 6; step++) {
-      await touch("touchMove", [{ x: from.x + ((to.x - from.x) * step) / 6, y: from.y + ((to.y - from.y) * step) / 6 }]);
+    const panel = page.locator(".feedback-panel");
+    await expect(panel).toBeVisible();
+    await expect(panel.locator(".panel-title")).toHaveText("Not yet");
+    await expect(panel.locator('[data-line="structure"]')).toContainText("right");
+    await expect(panel.locator('[data-line="parts that belong"]')).toContainText(`${parts - 1} of ${parts}`);
+    await expect(panel.locator('[data-line="in their place"]')).toContainText(`${parts - 1} of ${parts}`);
+    // 100 for the structure, 10 per part that belongs, 10 per part in its place; half a life gone.
+    const partial = 100 + 20 * (parts - 1);
+    await expect(panel.locator(".panel-points")).toHaveText(`+${partial} points`);
+    await expect(lives).toHaveAttribute("aria-label", "2½ of 3 lives left");
+    // While the panel is up nothing can be placed under it.
+    await expect(page.locator(".tray .tile").first()).toBeDisabled();
+    await panel.getByRole("button", { name: "Continue" }).click();
+    await expect(panel).toBeHidden();
+
+    // The tiles in their right slot stay; the other is back in the tray, marked.
+    const solving = solvingTiles(info);
+    expect((await kk(page)).board).toEqual({ layout: info.correctLayout, slots: [...solving.slice(0, -1), null] });
+    await expect(page.locator(`.tray .tile[data-tile="${stranger}"]`)).toHaveAttribute("data-mark", "wrong");
+    await expect(page.locator(`.tray .tile[data-tile="${stranger}"]`)).toHaveAttribute("data-placed", "false");
+    await expect(page.locator(`.structure[data-layout="${info.correctLayout}"]`)).toHaveAttribute("data-mark", "right");
+    // Every tile showing a part that belongs is marked with it, its copies too.
+    const marks = (await kk(page)).state!.memory.tiles;
+    for (const tile of info.tray.filter((candidate) => candidate.shows === info.solution[0])) expect(marks[tile.id]).toBe("right");
+
+    // A hint costs half a life and no points, and stays until Continue.
+    const hintButton = page.getByRole("button", { name: /Hint/ });
+    await expect(hintButton).toContainText("½ life");
+    await hintButton.click();
+    const hint = page.locator(".hint-overlay");
+    await expect(hint).toBeVisible();
+    await expect(lives).toHaveAttribute("aria-label", "2 of 3 lives left");
+    await page.waitForTimeout(3000);
+    await expect(hint).toBeVisible();
+    await hint.getByRole("button", { name: "Continue" }).click();
+    await expect(hint).toBeHidden();
+
+    // The last part in place: solved at the second attempt, one life back.
+    await clickTile(page, solving.at(-1)!, info.correctLayout, parts - 1);
+    await page.locator(".frame-check").click();
+    const solve = 100 + parts * (120 - 20 * 2) + 200;
+    await expect(panel.locator(".panel-title")).toHaveText("Joined!");
+    await expect(panel.locator(".panel-points")).toHaveText(`+${solve} points`);
+    await expect(lives).toHaveAttribute("aria-label", "3 of 3 lives left");
+    await panel.getByRole("button", { name: "Continue" }).click();
+    const reveal = page.locator(".reveal");
+    await expect(reveal).toBeVisible();
+    await expect(reveal.locator(".points")).toHaveText(`+${partial + solve} points`);
+
+    const attempts = await events(page, "choice_attempt");
+    expect(attempts).toHaveLength(2);
+    expect(attempts[0]!.data).toMatchObject({ correct: false, attempt: 1, lives_left: 2.5, lives_max: 3, lives_lost: 0.5, lives_gained: 0, points: partial, score: partial });
+    expect(attempts[0]!.data!.options).toHaveLength(18);
+    expect(attempts[1]!.data).toMatchObject({ correct: true, attempt: 2, lives_left: 3, lives_lost: 0, lives_gained: 1, points: solve, score: partial + solve });
+    expect((await events(page, "hint_shown"))[0]!.data).toMatchObject({
+      hint: "character",
+      hints_used: 1,
+      policy: "life",
+      lives_lost: 0.5,
+      points_lost: 0,
+      tokens_spent: 0,
+      consequence: null,
+      lives_left: 2,
+      out_of_lives: false,
+    });
+    expect((await events(page, "item_complete"))[0]!.data).toMatchObject({
+      solved: true,
+      attempts: 2,
+      hints: 1,
+      score: partial + solve,
+      mastered: true,
+      returns: false,
+      ends_run: false,
+      hint_policy: "life",
+      lives_left: 3,
+      lives_max: 3,
+      lives_rule: "fixed",
+    });
+
+    // The next character: the lives and the total go on, and the right structure sits among other frames.
+    await reveal.getByRole("button", { name: "Next" }).click();
+    await expect(page.locator(".assembly .bar-progress")).toContainText("2 /");
+    await expect(lives).toHaveAttribute("aria-label", "3 of 3 lives left");
+    await expect(page.locator('[data-stat="score"] strong')).toHaveText(String(partial + solve));
+
+    expect(errors).toEqual([]);
+  });
+
+  test("out of lives the whole run ends, and nothing comes back", async ({ page }) => {
+    const errors = watchConsole(page);
+    await page.goto(DEBUG);
+    await page.getByRole("radio", { name: /Review/ }).click();
+    await page.locator(".deck").first().click();
+    const info = await puzzleInfo(page);
+    const panel = page.locator(".feedback-panel");
+    // Six wrong checks of the same answer empty three hearts: the demo charges for each.
+    for (let attempt = 1; attempt <= 6; attempt++) {
+      await fillAlmostRight(page, info);
+      await page.locator(".frame-check").click();
+      await expect(panel.locator(".panel-title")).toHaveText(attempt < 6 ? "Not yet" : "Out of lives");
+      await panel.getByRole("button", { name: "Continue" }).click();
     }
-    await expect(page.locator(".drag-ghost")).toBeVisible();
-    await touch("touchEnd", []);
-    await expect(page.locator(`.slot[data-layout="${info.correctLayout}"][data-slot="1"]`)).toHaveAttribute("data-tile", second);
-    await expect(page.locator(".drag-ghost")).toHaveCount(0);
-    expect(await fits()).toBe(true);
+    const reveal = page.locator(".reveal");
+    await expect(reveal).toHaveAttribute("data-outcome", "failed");
+    await expect(reveal.locator(".points")).toContainText("The run ends here.");
+    await reveal.getByRole("button", { name: "See the run" }).click();
+
+    const summary = page.locator(".summary");
+    await expect(summary).toHaveAttribute("data-ended", "out-of-lives");
+    await expect(summary.locator('[data-total="solved"]')).toContainText("0 of");
+    await expect(summary.locator(".best-line")).toHaveCount(0);
+    const completed = await events(page, "item_complete");
+    expect(completed).toHaveLength(1);
+    expect(completed[0]!.data).toMatchObject({ solved: false, attempts: 6, ends_run: true, returns: false, lives_left: 0 });
+    expect((await events(page, "deck_complete"))[0]!.data).toMatchObject({ outOfLives: true, solved: 0, chars: 1 });
+    // Trying again starts from three lives and no points.
+    await summary.getByRole("button", { name: "Try again" }).click();
+    await expect(page.locator(".lives")).toHaveAttribute("aria-label", "3 of 3 lives left");
+    await expect(page.locator('[data-stat="score"] strong')).toHaveText("0");
 
     expect(errors).toEqual([]);
   });
 });
 
+test.describe("choosing the rules", () => {
+  test("Settings: a preset and single rules; the choice is recorded, kept, and played from the next deck", async ({ page }) => {
+    const errors = watchConsole(page);
+    await page.goto(DEBUG);
+    await page.getByRole("button", { name: "Settings" }).click();
+    const dialog = page.getByRole("dialog");
+    const preset = dialog.locator("#setting-preset");
+    const link = dialog.locator('[data-setting="rules-link"]');
+    await expect(preset).toHaveValue("zen-hanzi");
+    await expect(preset.locator("option")).toHaveText(["Close to the paper", "Kumiki classic", "Gentle", "Study: no hints"]);
+    await expect(dialog.locator('[data-setting="rules-fixed"]')).toHaveCount(0);
+    await expect(link).toHaveText("?rules=zen-hanzi");
+
+    await preset.selectOption("classic");
+    await expect(dialog.locator('[data-setting="preset-note"]')).toContainText("Kumiki as it first was");
+    await expect(link).toHaveText("?rules=classic");
+    // The mode switch behind the dialog says what the rules give.
+    await expect(page.locator('.mode[data-mode="review"]')).toContainText("5 lives per character.");
+
+    // Every single rule is there, showing the preset's value.
+    const details = dialog.locator('[data-setting="single-rules"]');
+    await details.locator("summary").click();
+    await expect(details.locator("select")).toHaveCount(16);
+    await expect(dialog.locator("#rule-hint")).toHaveValue("points");
+    await expect(dialog.locator("#rule-tray")).toHaveValue("3x4");
+    await expect(dialog.getByRole("button", { name: "Back to the preset" })).toBeHidden();
+    await dialog.locator("#rule-hint").selectOption("free");
+    await expect(dialog.locator('[data-rule-row="hint"]')).toHaveAttribute("data-changed", "");
+    await expect(details.locator("summary")).toHaveText("Single rules (1 changed)");
+    await expect(link).toHaveText("?rules=classic,hint:free");
+    // Without lives, what they cost is switched off.
+    await dialog.locator("#rule-lives").selectOption("none");
+    await expect(dialog.locator("#rule-wrongCost")).toBeDisabled();
+    await expect(page.locator('.mode[data-mode="review"]')).toContainText("Unlimited tries.");
+    await dialog.locator("#rule-lives").selectOption("5");
+    await expect(dialog.locator("#rule-wrongCost")).toBeEnabled();
+    await expect(link).toHaveText("?rules=classic,hint:free");
+
+    const changes = await events(page, "rules_change");
+    expect(changes.map((event) => event.data!.rules)).toEqual(["classic", "classic,hint:free", "classic,lives:none,hint:free", "classic,hint:free"]);
+    expect(changes[0]!.data).toMatchObject({ from: "zen-hanzi", choices: { check: "bar", tray: "3x4", structures: "alternatives" } });
+    expect(changes[1]!.data).toMatchObject({ from: "classic", choices: { hint: "free" } });
+    await dialog.getByRole("button", { name: "Close" }).click();
+
+    // The next deck plays by them: Kumiki's board, with a hint that costs nothing.
+    await page.getByRole("radio", { name: /Review/ }).click();
+    await page.locator(".deck").first().click();
+    await expect(page.locator(".assembly")).toHaveAttribute("data-board", "wide");
+    await expect(page.locator(".assembly")).toHaveAttribute("data-check", "bar");
+    await expect(page.locator(".tray .tile")).toHaveCount(12);
+    await expect(page.locator(".lives")).toHaveAttribute("aria-label", "5 of 5 lives left");
+    await expect(page.locator('[data-stat="worth"]')).toContainText("+100");
+    await page.getByRole("button", { name: "Hint" }).click();
+    await expect(page.locator('[data-stat="worth"]')).toContainText("+100");
+    expect((await events(page, "hint_shown"))[0]!.data).toMatchObject({ policy: "free", points_lost: 0, lives_lost: 0 });
+
+    // They are kept for the next visit, and the session says so.
+    await page.goto(DEBUG);
+    expect((await events(page, "session_start"))[0]!.data).toMatchObject({ rules: "classic,hint:free", rules_from: "player", choices: { hint: "free", check: "bar" } });
+    await page.getByRole("button", { name: "Settings" }).click();
+    await expect(preset).toHaveValue("classic");
+    await details.locator("summary").click();
+    await expect(dialog.locator("#rule-hint")).toHaveValue("free");
+    await dialog.getByRole("button", { name: "Back to the preset" }).click();
+    await expect(dialog.locator("#rule-hint")).toHaveValue("points");
+    await expect(link).toHaveText("?rules=classic");
+    expect((await events(page, "rules_change")).map((event) => event.data!.rules)).toEqual(["classic"]);
+
+    expect(errors).toEqual([]);
+  });
+
+  test("a link that names the rules fixes them: Settings shows them but cannot change them", async ({ page }) => {
+    const errors = watchConsole(page);
+    await page.goto(`${DEBUG}&rules=study-no-hints,tray:2x4,colour:red`);
+    expect((await events(page, "session_start"))[0]!.data).toMatchObject({
+      rules: "study-no-hints,tray:2x4",
+      rules_from: "link",
+      rules_ignored: ["colour:red"],
+      choices: { hint: "off", tray: "2x4", check: "frame" },
+    });
+    await page.getByRole("button", { name: "Settings" }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.locator('[data-setting="rules-fixed"]')).toContainText("set by the link");
+    await expect(dialog.locator("#setting-preset")).toBeDisabled();
+    await expect(dialog.locator("#setting-preset")).toHaveValue("study-no-hints");
+    await dialog.locator('[data-setting="single-rules"] summary').click();
+    await expect(dialog.locator("#rule-tray")).toHaveValue("2x4");
+    await expect(dialog.locator("#rule-hint")).toHaveValue("off");
+    await expect(dialog.locator("select:enabled")).toHaveCount(0);
+    await expect(dialog.getByRole("button", { name: "Back to the preset" })).toBeHidden();
+    await expect(dialog.locator('[data-setting="rules-link"]')).toHaveText("?rules=study-no-hints,tray:2x4");
+    // Sound stays the player's own.
+    await expect(dialog.locator("#setting-sound")).toBeEnabled();
+    await dialog.getByRole("button", { name: "Close" }).click();
+    expect(await events(page, "rules_change")).toEqual([]);
+
+    // The deck plays by them: no Hint, eight tiles in two rows.
+    await page.getByRole("radio", { name: /Review/ }).click();
+    await page.locator(".deck").first().click();
+    await expect(page.locator(".tray .tile")).toHaveCount(8);
+    await expect(page.locator('[data-action="hint"]')).toHaveCount(0);
+    expect(await page.evaluate(() => new Set([...document.querySelectorAll(".tray .tile")].map((tile) => Math.round(tile.getBoundingClientRect().top))).size)).toBe(2);
+
+    // The link's rules are not stored as the player's own.
+    await page.goto(DEBUG);
+    expect((await events(page, "session_start"))[0]!.data).toMatchObject({ rules: "zen-hanzi", rules_from: "player" });
+
+    expect(errors).toEqual([]);
+  });
+
+  test("a study condition that names a preset fixes the rules too: gentle judges a full structure by itself", async ({ page }) => {
+    const errors = watchConsole(page);
+    await page.goto(`${DEBUG}&condition=gentle`);
+    expect((await events(page, "session_start"))[0]!.data).toMatchObject({
+      condition: "gentle",
+      rules: "gentle",
+      rules_from: "condition",
+      choices: { lives: "none", hint: "free", check: "auto", structures: "fixed", tray: "2x4" },
+    });
+    await page.getByRole("button", { name: "Settings" }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.locator('[data-setting="rules-fixed"]')).toContainText("study condition");
+    await expect(dialog.locator("#setting-preset")).toBeDisabled();
+    await dialog.getByRole("button", { name: "Close" }).click();
+
+    await page.getByRole("radio", { name: /Review/ }).click();
+    await expect(page.getByRole("radio", { name: /Review/ })).toContainText("Unlimited tries.");
+    await page.locator(".deck").first().click();
+    await expect(page.locator(".assembly")).toHaveAttribute("data-check", "auto");
+    await expect(page.locator(".lives")).toHaveAttribute("aria-label", "Unlimited tries");
+    await expect(page.locator(".tray .tile")).toHaveCount(8);
+    const first = await kk(page);
+    const frames = first.puzzle!.layouts.map((layout) => layout.signature);
+    expect(frames).toHaveLength(4);
+
+    // No Check button: the structure is judged once its last slot is filled.
+    const info = await puzzleInfo(page);
+    for (const [slot, tileId] of solvingTiles(info).entries()) await clickTile(page, tileId, info.correctLayout, slot);
+    await expect(page.locator('[data-action="check"]')).toHaveCount(0);
+    const panel = page.locator(".feedback-panel");
+    await expect(panel.locator(".panel-title")).toHaveText("Joined!");
+    await panel.getByRole("button", { name: "Continue" }).click();
+    await page.locator(".reveal").getByRole("button", { name: "Next" }).click();
+    // The same frames in the same places for the next character of the deck.
+    await expect(page.locator(".assembly .bar-progress")).toContainText("2 /");
+    expect((await kk(page)).puzzle!.layouts.map((layout) => layout.signature)).toEqual(frames);
+
+    expect(errors).toEqual([]);
+  });
+
+  test("structures by position: every character in two parts, the same four frames", async ({ page }) => {
+    const errors = watchConsole(page);
+    await page.goto(`${DEBUG}&rules=zen-hanzi,structures:positions`);
+    await page.getByRole("radio", { name: /Review/ }).click();
+    await page.locator(".deck").first().click();
+    const info = await puzzleInfo(page);
+    expect(info.solution).toHaveLength(2);
+    expect(info.slotCounts).toEqual([2, 2, 2, 2]);
+    expect((await kk(page)).puzzle!.layouts.map((layout) => layout.signature)).toEqual(["R(S,S)", "E:top(S)", "C(S,S)", "E:bottom-left(S)"]);
+    for (const [slot, tileId] of solvingTiles(info).entries()) await clickTile(page, tileId, info.correctLayout, slot);
+    await page.locator(".frame-check").click();
+    await expect(page.locator(".feedback-panel .panel-title")).toHaveText("Joined!");
+    await page.locator(".feedback-panel").getByRole("button", { name: "Continue" }).click();
+    // The reveal shows the two parts the puzzle had.
+    await expect(page.locator(".reveal .part")).toHaveCount(2);
+
+    expect(errors).toEqual([]);
+  });
+});
+
+test.describe("on a phone", () => {
+  test.use({ viewport: { width: 360, height: 740 }, hasTouch: true, isMobile: true });
+
+  // Written for Kumiki's classic board of 12 tiles; the default board (the demo's 18 tiles in rows of six) has to pass it too.
+  for (const [label, url, tiles] of [
+    ["", DEBUG, 18],
+    [" (Kumiki classic)", CLASSIC, 12],
+  ] as const) {
+    test(`nothing scrolls sideways and tiles can be tapped or dragged into place by touch${label}`, async ({ page }) => {
+      const errors = watchConsole(page);
+      await page.goto(url);
+      const fits = (): Promise<boolean> => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+      expect(await fits()).toBe(true);
+
+      await page.getByRole("radio", { name: /Review/ }).tap();
+      await page.locator(".deck").first().tap();
+      await expect(page.locator(".tray .tile")).toHaveCount(tiles);
+      expect(await fits()).toBe(true);
+
+      // Everything that is tapped is at least 44 px in both directions.
+      const smallest = await page.evaluate(() =>
+        Math.min(
+          ...[...document.querySelectorAll(".slot-shape, .tray .tile, .screen button")].map((element) => {
+            const box = element.getBoundingClientRect();
+            return Math.min(box.width, box.height);
+          }),
+        ),
+      );
+      expect(smallest).toBeGreaterThanOrEqual(44);
+
+      const info = await puzzleInfo(page);
+      const tile = solvingTiles(info)[0]!;
+      await page.locator(`.tray .tile[data-tile="${tile}"]`).tap();
+      const at = await slotPoint(page, info.correctLayout, 0);
+      await page.touchscreen.tap(at.x, at.y);
+      await expect(page.locator(`.slot[data-layout="${info.correctLayout}"][data-slot="0"]`)).toHaveAttribute("data-tile", tile);
+
+      // A finger drags the next tile into its slot.
+      const second = solvingTiles(info)[1]!;
+      const from = await centre(page, `.tray .tile[data-tile="${second}"]`);
+      const to = await slotPoint(page, info.correctLayout, 1);
+      const client = await page.context().newCDPSession(page);
+      const touch = (type: "touchStart" | "touchMove" | "touchEnd", points: { x: number; y: number }[]): Promise<unknown> =>
+        client.send("Input.dispatchTouchEvent", { type, touchPoints: points });
+      await touch("touchStart", [from]);
+      for (let step = 1; step <= 6; step++) {
+        await touch("touchMove", [{ x: from.x + ((to.x - from.x) * step) / 6, y: from.y + ((to.y - from.y) * step) / 6 }]);
+      }
+      await expect(page.locator(".drag-ghost")).toBeVisible();
+      await touch("touchEnd", []);
+      await expect(page.locator(`.slot[data-layout="${info.correctLayout}"][data-slot="1"]`)).toHaveAttribute("data-tile", second);
+      await expect(page.locator(".drag-ghost")).toHaveCount(0);
+      expect(await fits()).toBe(true);
+
+      expect(errors).toEqual([]);
+    });
+  }
+});
+
 test.describe("on a phone with the browser's toolbars showing", () => {
   test.use({ viewport: { width: 390, height: 664 }, hasTouch: true, isMobile: true });
 
-  for (const [label, url] of [
-    ["", DEBUG],
+  for (const [label, url, classic] of [
+    // The default board: the demo's 18 tiles in three rows of six under four structures.
+    ["", DEBUG, false],
     // A study link without its api and token: the notice that the session is not being recorded stays for good.
-    [", also with the recording notice showing", `${DEBUG}&study=S1&participant=P1`],
+    [", also with the recording notice showing", `${DEBUG}&study=S1&participant=P1`, false],
+    // Kumiki's classic board, which these tests were written for: 12 tiles and a bar with Hint and Check.
+    [" (Kumiki classic)", CLASSIC, true],
+    [" (Kumiki classic), also with the recording notice showing", `${CLASSIC}&study=S1&participant=P1`, true],
   ] as const) {
     test(`the whole board fits: nothing lies under the Check bar or below the screen${label}`, async ({ page }) => {
       const errors = watchConsole(page);
       await page.goto(url);
       const notice = page.locator("[data-kk-recording-notice]");
-      if (url === DEBUG) await expect(notice).toHaveCount(0);
+      if (!url.includes("study=")) await expect(notice).toHaveCount(0);
       else await expect(notice).toContainText("Not being recorded");
       await page.getByRole("radio", { name: /Review/ }).tap();
       await page.locator(".deck").first().tap();
-      await expect(page.locator(".tray .tile")).toHaveCount(12);
+      await expect(page.locator(".tray .tile")).toHaveCount(classic ? 12 : 18);
+      await expect(page.locator(".structure")).toHaveCount(4);
 
       const layout = await page.evaluate(() => {
         const onTop = (element: Element): boolean => {
@@ -470,7 +853,7 @@ test.describe("on a phone with the browser's toolbars showing", () => {
         };
         return {
           scrolls: document.documentElement.scrollHeight > window.innerHeight,
-          hidden: [...document.querySelectorAll(".tray .tile, .structure, .assembly .actions button, .assembly .back, .assembly .status")].filter(
+          hidden: [...document.querySelectorAll(".tray .tile, .structure, .assembly button:not(.tile), .assembly .status")].filter(
             (element) => !onTop(element),
           ).length,
           worth: document.querySelector('[data-stat="worth"]')?.getBoundingClientRect().width ?? 0,
@@ -481,22 +864,60 @@ test.describe("on a phone with the browser's toolbars showing", () => {
             const box = element.getBoundingClientRect();
             return notice !== undefined && notice.height > 0 && box.top < notice.bottom && box.bottom > notice.top;
           }).length,
+          trayRows: new Set([...document.querySelectorAll(".tray .tile")].map((tile) => Math.round(tile.getBoundingClientRect().top))).size,
+          below: [...document.querySelectorAll(".tray .tile, .assembly button")].filter((element) => element.getBoundingClientRect().bottom > window.innerHeight)
+            .length,
         };
       });
       expect(layout.scrolls).toBe(false);
       expect(layout.hidden).toBe(0);
       expect(layout.underNotice).toBe(0);
+      expect(layout.below).toBe(0);
       // What the round is worth stays visible, so the cost of a hint shows.
       expect(layout.worth).toBeGreaterThan(10);
-      await expect(page.locator('[data-stat="worth"]')).toContainText("+100");
 
-      // A tile of the bottom row can be tapped, and Hint lowers what the round is worth.
       const info = await puzzleInfo(page);
       const last = info.tray.at(-1)!.id;
-      await page.locator(`.tray .tile[data-tile="${last}"]`).tap();
-      await expect(page.locator(`.tray .tile[data-tile="${last}"]`)).toHaveAttribute("data-selected", "true");
-      await page.getByRole("button", { name: "Hint" }).tap();
-      await expect(page.locator('[data-stat="worth"]')).toContainText("+75");
+      if (classic) {
+        // The short screen turns the three rows of four into two of six.
+        expect(layout.trayRows).toBe(2);
+        await expect(page.locator('[data-stat="worth"]')).toContainText("+100");
+        // A tile of the bottom row can be tapped, and Hint lowers what the round is worth.
+        await page.locator(`.tray .tile[data-tile="${last}"]`).tap();
+        await expect(page.locator(`.tray .tile[data-tile="${last}"]`)).toHaveAttribute("data-selected", "true");
+        await page.getByRole("button", { name: "Hint" }).tap();
+        await expect(page.locator('[data-stat="worth"]')).toContainText("+75");
+      } else {
+        expect(layout.trayRows).toBe(3);
+        // A tile of the bottom row can be tapped, and Hint costs half a life and stays until Continue.
+        await page.locator(`.tray .tile[data-tile="${last}"]`).tap();
+        await expect(page.locator(`.tray .tile[data-tile="${last}"]`)).toHaveAttribute("data-selected", "true");
+        await page.getByRole("button", { name: /Hint/ }).tap();
+        await expect(page.locator(".lives")).toHaveAttribute("aria-label", "2½ of 3 lives left");
+        const proceed = page.locator(".hint-overlay").getByRole("button", { name: "Continue" });
+        await expect(proceed).toBeVisible();
+        expect((await proceed.boundingBox())!.y + (await proceed.boundingBox())!.height).toBeLessThanOrEqual(664);
+        await proceed.tap();
+        await expect(page.locator(".hint-overlay")).toBeHidden();
+        // The Check button of a full structure lies beside it, on screen, and the result panel with its Continue too.
+        const tiles = solvingTiles(info);
+        for (const [slot, tileId] of tiles.entries()) {
+          await page.locator(`.tray .tile[data-tile="${tileId}"]`).tap();
+          const at = await slotPoint(page, info.correctLayout, slot);
+          await page.touchscreen.tap(at.x, at.y);
+        }
+        const check = page.locator(".frame-check");
+        await expect(check).toBeVisible();
+        const box = (await check.boundingBox())!;
+        expect(box.x).toBeGreaterThanOrEqual(0);
+        expect(box.x + box.width).toBeLessThanOrEqual(390);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+        await check.tap();
+        const done = page.locator(".feedback-panel").getByRole("button", { name: "Continue" });
+        await expect(done).toBeVisible();
+        const doneBox = (await done.boundingBox())!;
+        expect(doneBox.y + doneBox.height).toBeLessThanOrEqual(664);
+      }
 
       expect(errors).toEqual([]);
     });
@@ -504,7 +925,8 @@ test.describe("on a phone with the browser's toolbars showing", () => {
 
   test("a burst of taps on the exam's Finish leaves the results on screen and starts no deck", async ({ page }) => {
     const errors = watchConsole(page);
-    await page.goto(DEBUG);
+    // Written for the classic tray of 12 tiles: with it Finish, the results' Decks and a deck card share one spot.
+    await page.goto(CLASSIC);
     await page.getByRole("button", { name: "Exam" }).tap();
     await page.getByRole("dialog").locator("[data-deck]").first().tap();
     const finish = page.getByRole("button", { name: "Finish" });

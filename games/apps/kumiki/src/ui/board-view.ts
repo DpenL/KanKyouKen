@@ -56,7 +56,13 @@ export function createBoardView(root: HTMLElement, host: BoardHost): BoardView {
   const tiles = new Map(puzzle.tray.map((tile) => [tile.id, tile]));
   const frames = h("div", { class: "frames", "data-count": host.layouts.length });
   const tray = h("div", { class: "tray", role: "group", "aria-label": "Tiles" });
-  tray.style.setProperty("--tray-columns", String(Math.ceil(puzzle.tray.length / puzzle.trayRows)));
+  // The layout sizes tiles and structures by how the tray is arranged: on the board's own
+  // rows, and on a short phone, where Kumiki's wide board puts six tiles in a row.
+  const columns = String(Math.ceil(puzzle.tray.length / puzzle.trayRows));
+  tray.style.setProperty("--tray-columns", columns);
+  root.style.setProperty("--tray-columns", columns);
+  root.style.setProperty("--tray-rows", String(puzzle.trayRows));
+  root.style.setProperty("--tray-rows-of-six", String(Math.ceil(puzzle.tray.length / 6)));
   let selected: string | null = null;
 
   const refresh = (): void => {
@@ -204,7 +210,11 @@ export function createBoardView(root: HTMLElement, host: BoardHost): BoardView {
     },
     ghost(tileId) {
       const tile = tiles.get(tileId)!;
-      return h("div", { class: "tile drag-ghost", "data-mark": host.memory()?.tiles[tileId] ?? "untried" }, tileShape(tile.glyph));
+      const ghost = h("div", { class: "tile drag-ghost", "data-mark": host.memory()?.tiles[tileId] ?? "untried" }, tileShape(tile.glyph));
+      // The ghost lives outside the board; it is as large as the tiles are here.
+      const side = tray.querySelector(".tile")?.getBoundingClientRect().width ?? 0;
+      if (side > 0) ghost.style.setProperty("--tile", `${side}px`);
+      return ghost;
     },
     lifted(tileId) {
       const tile = tiles.get(tileId);

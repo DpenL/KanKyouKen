@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { loadStarterJa } from "@kankyouken/glyph-data";
-import { decompose } from "@kankyouken/mechanics/components";
+import { DEMO_FRAMES, decompose, decomposeByPosition, layoutsLookAlike } from "@kankyouken/mechanics/components";
 import { createRng } from "@kankyouken/mechanics/util";
-import { MIXED_DECK_ID, MIXED_DECK_SIZE, buildContent, drawDeck } from "./content";
+import { MIN_FRAME_SLOT, MIXED_DECK_ID, MIXED_DECK_SIZE, buildContent, drawDeck } from "./content";
 
 const { glyphs, set } = loadStarterJa();
 const content = buildContent(glyphs, set);
@@ -78,5 +78,54 @@ describe("drawDeck", () => {
     expect(drawn).toHaveLength(MIXED_DECK_SIZE);
     expect(new Set(drawn).size).toBe(MIXED_DECK_SIZE);
     expect(drawDeck(mixed, createRng("b"))).not.toEqual(drawn);
+  });
+});
+
+describe("frames for the structure modes", () => {
+  const chars = content.decks.at(-1)!.chars;
+  const signatures = (frames: readonly { signature: string }[]): string[] => frames.map((frame) => frame.signature);
+
+  it("hold the structures the characters have, the most frequent first, and the demo's nine", () => {
+    const layouts = chars.map((char) => decompose(glyphs.get(char)!, { known: content.context.known }).layout);
+    // All but the one too fine to hit on a phone (落: a part over a part beside two stacked ones).
+    const fine = layouts.filter((layout) => layout.slots.some((slot) => Math.min(slot.rect.w, slot.rect.h) < MIN_FRAME_SLOT));
+    expect([...new Set(fine.map((layout) => layout.signature))]).toEqual(["C(S,R(S,C(S,S)))"]);
+    const used = layouts.filter((layout) => !fine.includes(layout)).map((layout) => layout.signature);
+    for (const signature of used) expect(signatures(content.frames.parts)).toContain(signature);
+    expect(signatures(content.frames.parts)).not.toContain("C(S,R(S,C(S,S)))");
+    for (const frame of content.frames.parts) {
+      for (const slot of frame.slots) expect(Math.min(slot.rect.w, slot.rect.h), frame.signature).toBeGreaterThanOrEqual(MIN_FRAME_SLOT);
+    }
+    const count = (signature: string): number => used.filter((other) => other === signature).length;
+    const leading = signatures(content.frames.parts).slice(0, new Set(used).size);
+    expect(new Set(leading)).toEqual(new Set(used));
+    expect(leading.map(count)).toEqual([...leading.map(count)].sort((a, b) => b - a));
+    // Side by side is the commonest structure of the starter set.
+    expect(leading[0]).toBe("R(S,S)");
+    for (const frame of DEMO_FRAMES) {
+      expect(content.frames.parts.some((own) => layoutsLookAlike(own, frame)), frame.signature).toBe(true);
+    }
+    content.frames.parts.forEach((a, i) => {
+      for (const b of content.frames.parts.slice(i + 1)) expect(layoutsLookAlike(a, b)).toBe(false);
+    });
+  });
+
+  it("can be read off the position labels for every character of the set, in agreement with the geometry", () => {
+    // What the position-based mode rests on: KanjiVG labels the top-level parts of all of them.
+    for (const char of chars) {
+      const glyph = glyphs.get(char)!;
+      const labels = decomposeByPosition(glyph);
+      expect(labels, char).not.toBeNull();
+      const boxes = decompose(glyph, { known: content.context.known, maxSlots: 2 });
+      expect(labels!.layout.signature, char).toBe(boxes.layout.signature);
+      expect(labels!.components, char).toEqual(boxes.components);
+      expect(labels!.strokes, char).toEqual(boxes.strokes);
+    }
+  });
+
+  it("offer the position classes in use first: side by side, under a roof, stacked, in a sweep", () => {
+    expect(signatures(content.frames.positions).slice(0, 4)).toEqual(["R(S,S)", "E:top(S)", "C(S,S)", "E:bottom-left(S)"]);
+    expect(content.frames.positions).toHaveLength(9);
+    for (const frame of content.frames.positions) expect(frame.slots).toHaveLength(2);
   });
 });

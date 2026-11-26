@@ -2,6 +2,19 @@
 
 import { STARTER_JA_GLYPHS } from "@kankyouken/glyph-data";
 import type { Deck } from "../content";
+import {
+  CHOICES,
+  CHOICE_GROUPS,
+  PRESETS,
+  choiceApplies,
+  formatRuleSpec,
+  isPlainPreset,
+  presetById,
+  resolveChoices,
+  withChoice,
+  type ChoiceKey,
+  type RuleChoices,
+} from "../rules";
 import type { App } from "./app";
 import { armOverlay, noteClick, type Switchable } from "./arm";
 import { button, h } from "./dom";
@@ -52,7 +65,90 @@ export function openAbout(app: App): void {
   );
 }
 
-export function openSettings(app: App): void {
+/**
+ * The rules of the game in Settings: a preset, then every single rule under it. While a
+ * study link or condition fixes the rules they are shown switched off. A change is
+ * stored (and recorded) at once and applies from the next deck; `changed` runs after it.
+ */
+function rulesSection(app: App, changed: () => void): HTMLElement {
+  const fixed = app.rules.from !== "player";
+  const preset = h("select", { id: "setting-preset", "data-setting": "preset", disabled: fixed });
+  for (const option of PRESETS) preset.append(h("option", { value: option.id }, option.title));
+  const presetNote = h("p", { class: "setting-note", "data-setting": "preset-note" });
+  const summary = h("summary", {});
+  const link = h("code", { "data-setting": "rules-link" });
+  const reset = button("Back to the preset", { class: "ghost small", "data-action": "reset-rules" }, () => {
+    app.rules.choose({ preset: app.rules.spec().preset, changes: {} });
+    sync();
+    changed();
+  });
+
+  const selects = new Map<ChoiceKey, { readonly row: HTMLElement; readonly select: HTMLSelectElement }>();
+  const row = <K extends ChoiceKey>(key: K): HTMLElement => {
+    const select = h("select", { id: `rule-${key}`, "data-rule": key });
+    for (const option of CHOICES[key].options) select.append(h("option", { value: String(option.value) }, option.label));
+    select.addEventListener("change", () => {
+      app.rules.choose(withChoice(app.rules.spec(), key, select.value as RuleChoices[K]));
+      sync();
+      changed();
+    });
+    const element = h("div", { class: "setting rule", "data-rule-row": key }, h("label", { for: select.id }, CHOICES[key].label), select);
+    selects.set(key, { row: element, select });
+    return element;
+  };
+  const groups = CHOICE_GROUPS.map((group) => h("fieldset", { class: "rule-group" }, h("legend", {}, group.title), ...group.keys.map((key) => row(key))));
+
+  /** Show what is in force now. */
+  function sync(): void {
+    const spec = app.rules.spec();
+    const choices = resolveChoices(spec);
+    const own = presetById(spec.preset)!;
+    preset.value = spec.preset;
+    presetNote.textContent = own.note;
+    const count = Object.keys(spec.changes).length;
+    summary.textContent = count === 0 ? "Single rules" : `Single rules (${count} changed)`;
+    for (const [key, { row: element, select }] of selects) {
+      select.value = String(choices[key]);
+      // A rule that changes nothing under the others (what lives cost when there are none) is switched off.
+      select.disabled = fixed || !choiceApplies(choices, key);
+      element.toggleAttribute("data-changed", key in spec.changes);
+      element.toggleAttribute("data-idle", !choiceApplies(choices, key));
+    }
+    link.textContent = `?rules=${formatRuleSpec(spec)}`;
+    reset.hidden = fixed || isPlainPreset(spec);
+  }
+
+  preset.addEventListener("change", () => {
+    const chosen = presetById(preset.value);
+    if (chosen === undefined) return;
+    app.rules.choose({ preset: chosen.id, changes: {} });
+    sync();
+    changed();
+  });
+  sync();
+
+  return h(
+    "section",
+    { class: "rules", "data-rules-from": app.rules.from, "aria-labelledby": "settings-rules" },
+    h("h3", { id: "settings-rules" }, "Rules"),
+    fixed
+      ? h(
+          "p",
+          { class: "setting-note rules-fixed", "data-setting": "rules-fixed" },
+          app.rules.from === "link"
+            ? "These rules are set by the link this session was opened with and cannot be changed here."
+            : "These rules are set by the study condition of this session and cannot be changed here.",
+        )
+      : null,
+    h("div", { class: "setting" }, h("label", { for: preset.id }, "Preset"), preset),
+    presetNote,
+    h("details", { class: "rule-details", "data-setting": "single-rules" }, summary, ...groups, reset),
+    h("p", { class: "setting-note" }, fixed ? "As a link: " : "A change applies from the next deck. As a link: ", link),
+  );
+}
+
+/** Settings: sound, and the rules of the game. `changed` runs when a rule was changed, so that what is behind the dialog can follow. */
+export function openSettings(app: App, changed: () => void = () => {}): void {
   const saved = app.store.get();
   const sound = h("input", { type: "checkbox", id: "setting-sound", checked: saved.sound });
   const volume = h("input", {
@@ -79,6 +175,7 @@ export function openSettings(app: App): void {
     "Settings",
     h("div", { class: "setting" }, h("label", { for: sound.id }, "Sound"), sound),
     h("div", { class: "setting" }, h("label", { for: volume.id }, "Volume"), volume),
+    rulesSection(app, changed),
   );
 }
 

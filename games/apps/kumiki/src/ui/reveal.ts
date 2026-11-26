@@ -3,7 +3,7 @@
  * stroke in time with its melody, each part in a colour of its own.
  */
 
-import { decompose } from "@kankyouken/mechanics/components";
+import { outcomeNote } from "../feedback";
 import type { Round } from "../round";
 import type { App } from "./app";
 import { button, h } from "./dom";
@@ -20,8 +20,12 @@ const PLAIN_STROKE_MS = 320;
 export interface RevealOptions {
   readonly round: Round;
   readonly progress: string;
-  /** True when a failed character will come back at the end of the deck. */
+  /** True when the character will come back at the end of the deck (failed, or solved with a hint that costs that). */
   readonly returns: boolean;
+  /** True when the run is over: out of lives under the rule that ends it there. */
+  readonly endsRun: boolean;
+  /** False when the character was solved with a hint under the rule that does not count that as mastered. */
+  readonly mastered: boolean;
   next(): void;
 }
 
@@ -30,9 +34,10 @@ export function revealScreen(app: App, options: RevealOptions): { screen: HTMLEl
   const glyph = app.content.glyphs.get(round.char)!;
   const entry = app.content.lexicon.get(round.char);
   const solved = round.state.solved;
-  const parts = decompose(glyph, { known: app.content.context.known });
+  // The parts as the puzzle had them (the rules decide how far a character is split).
+  const { parts, solution } = round.puzzle;
   const colorOf = (stroke: number): string => {
-    const part = parts.strokes.findIndex((strokes) => strokes.includes(stroke));
+    const part = parts.findIndex((strokes) => strokes.includes(stroke));
     return PART_COLORS[Math.max(0, part) % PART_COLORS.length]!;
   };
 
@@ -40,7 +45,7 @@ export function revealScreen(app: App, options: RevealOptions): { screen: HTMLEl
   const legend = h(
     "ul",
     { class: "parts", "aria-label": "Parts" },
-    ...parts.components.map((component, index) => {
+    ...solution.map((component, index) => {
       const tile = round.puzzle.tray.find((candidate) => candidate.role === "correct" && candidate.shows === component);
       const chip = h("li", { class: "part" });
       chip.style.color = PART_COLORS[index % PART_COLORS.length]!;
@@ -68,14 +73,12 @@ export function revealScreen(app: App, options: RevealOptions): { screen: HTMLEl
     legend,
     h("h1", { class: "meaning" }, entry?.meaning ?? ""),
     h("p", { class: "reading", lang: "ja" }, entry?.reading ?? ""),
-    solved
-      ? h("p", { class: "points", "data-points": round.state.score }, `+${round.state.score} points`)
-      : h(
-          "p",
-          { class: "points points-none" },
-          options.returns ? "No points this time. It comes back at the end of the deck." : "No points this time.",
-        ),
-    h("div", { class: "actions" }, button("Next", { class: "primary", "data-action": "next" }, options.next)),
+    h(
+      "p",
+      { class: solved ? "points" : "points points-none", "data-points": round.state.score },
+      outcomeNote({ solved, score: round.state.score, mastered: options.mastered, returns: options.returns, endsRun: options.endsRun }),
+    ),
+    h("div", { class: "actions" }, button(options.endsRun ? "See the run" : "Next", { class: "primary", "data-action": "next" }, options.next)),
   );
 
   return {

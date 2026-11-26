@@ -2,10 +2,11 @@
  * Structures: how a character's area is divided into slots.
  *
  * Zen Hanzi offers a hand-made set of structures and counts picking the right one as
- * part of the answer. Everything in this file is our own design: the geometry of the
- * frames, deriving a structure from the boxes of a character's components (a recursive
- * XY-cut with an enclosure test), and choosing which wrong structures to put next to
- * the right one.
+ * part of the answer. Our own design: the geometry of the frames, deriving a structure
+ * from the boxes of a character's components (a recursive XY-cut with an enclosure
+ * test), and choosing near misses to put next to the right one. Observed in the public
+ * demo: the nine frames it draws its wrong structures from (`DEMO_FRAMES`,
+ * `catalogueDecoys`).
  */
 
 import { boxCenter, boxHeight, boxWidth, unionBox, type Box } from "../util/geometry";
@@ -193,6 +194,24 @@ export function parseLayout(signature: string): Layout {
 /** True when two layouts are the same structure (same signature). */
 export function layoutsEqual(a: Layout, b: Layout): boolean {
   return a.signature === b.signature;
+}
+
+function areaKey(slot: LayoutSlot): string {
+  const round = (rect: Rect): string => [rect.x, rect.y, rect.w, rect.h].map((value) => Math.round(value * 1e6)).join(",");
+  return slot.hole === undefined ? round(slot.rect) : `${round(slot.rect)}/${round(slot.hole)}`;
+}
+
+/**
+ * True when two layouts are one picture on screen: the same areas, whatever their order
+ * and grouping. A two-by-two grid is drawn alike as two rows of two ("C(R(S,S),R(S,S))")
+ * and as two columns of two ("R(C(S,S),C(S,S))"), though their slots are numbered
+ * differently; a player could not tell which of the two was the right one.
+ */
+export function layoutsLookAlike(a: Layout, b: Layout): boolean {
+  if (a.signature === b.signature) return true;
+  if (a.slots.length !== b.slots.length) return false;
+  const areas = new Set(a.slots.map(areaKey));
+  return b.slots.every((slot) => areas.has(areaKey(slot)));
 }
 
 // ---------------------------------------------------------------------------
@@ -501,4 +520,92 @@ export function alternativeLayouts(layout: Layout, count: number, rng: Rng): Lay
   take(sameCount);
   take([...layoutCatalogue(slotCount + 1), ...layoutCatalogue(slotCount - 1)]);
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Frames from a catalogue, and one fixed set of frames
+// ---------------------------------------------------------------------------
+
+/**
+ * The nine frames the public Zen Hanzi demo was seen to draw its structures from (see
+ * MECHANICS.md Part 2, "observed in the public demo"): two and three rows, two and three
+ * columns, a two-by-two grid, two cells over one, one over two, two stacked cells beside
+ * a tall one, and a tall one beside two stacked cells. None is nested deeper and none is
+ * an enclosure. Only the shapes are the demo's; how they are drawn is ours.
+ */
+export const DEMO_FRAMES: readonly Layout[] = [
+  "C(S,S)",
+  "R(S,S)",
+  "C(S,S,S)",
+  "R(S,S,S)",
+  "C(R(S,S),R(S,S))",
+  "C(R(S,S),S)",
+  "C(S,R(S,S))",
+  "R(C(S,S),S)",
+  "R(S,C(S,S))",
+].map(parseLayout);
+
+/**
+ * A catalogue of frames for a set of characters (our own design): the structures the
+ * characters have (`used`, one entry per character) with the most frequent first, then
+ * `rest`. A frame that looks like an earlier one (`layoutsLookAlike`) is left out, so the
+ * result can be offered side by side. In the demo the nine frames are exactly the
+ * structures its ten characters have; `frameSet(structures, DEMO_FRAMES)` gives a set
+ * with other structures (enclosures, deeper nesting) the same footing.
+ */
+export function frameSet(used: readonly Layout[], rest: readonly Layout[] = []): Layout[] {
+  const counted: { layout: Layout; count: number }[] = [];
+  for (const layout of used) {
+    const known = counted.find((entry) => layoutsLookAlike(entry.layout, layout));
+    if (known) known.count++;
+    else counted.push({ layout, count: 1 });
+  }
+  // The sort is stable: among equally frequent structures the first seen stays first.
+  const out = counted.sort((a, b) => b.count - a.count).map((entry) => entry.layout);
+  for (const layout of rest) {
+    if (!out.some((taken) => layoutsLookAlike(taken, layout))) out.push(layout);
+  }
+  return out;
+}
+
+/**
+ * Wrong structures drawn from a catalogue, as the Zen Hanzi demo was seen to do: up to
+ * `count` of `frames` in random order, none of which looks like `layout` or like another
+ * one chosen (`layoutsLookAlike`). The number of slots plays no part, so a decoy may
+ * have more or fewer slots than the character has parts. `count` below 1 gives an empty
+ * list; the result is shorter than `count` when the catalogue runs out.
+ */
+export function catalogueDecoys(layout: Layout, frames: readonly Layout[], count: number, rng: Rng): Layout[] {
+  const wanted = Math.floor(count);
+  const out: Layout[] = [];
+  if (!(wanted > 0)) return out;
+  for (const candidate of rng.shuffle(frames)) {
+    if (out.length >= wanted) break;
+    if (layoutsLookAlike(candidate, layout) || out.some((taken) => layoutsLookAlike(taken, candidate))) continue;
+    out.push(candidate);
+  }
+  return out;
+}
+
+/**
+ * One fixed set of frames for every character (our own design, the simplest way to ask
+ * for the structure): the first `count` frames of `frames` that look different, always in
+ * the same places. The frame that looks like `layout` is `layout` itself (so that its
+ * slots are numbered as the character's parts are); when there is none, `layout` takes
+ * the place of the last frame. `correct` is its index. `count` below 1 counts as 1.
+ */
+export function fixedFrames(layout: Layout, frames: readonly Layout[], count: number): { layouts: Layout[]; correct: number } {
+  const wanted = Math.max(1, Math.floor(count) || 1);
+  const layouts: Layout[] = [];
+  for (const candidate of frames) {
+    if (layouts.length >= wanted) break;
+    if (!layouts.some((taken) => layoutsLookAlike(taken, candidate))) layouts.push(candidate);
+  }
+  let correct = layouts.findIndex((candidate) => layoutsLookAlike(candidate, layout));
+  if (correct < 0) {
+    if (layouts.length >= wanted) layouts.pop();
+    correct = layouts.length;
+  }
+  layouts[correct] = layout;
+  return { layouts, correct };
 }

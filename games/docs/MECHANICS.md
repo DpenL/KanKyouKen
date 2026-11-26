@@ -30,9 +30,12 @@ The three parts rest on sources of different quality:
   near-verbatim quotations by several differently worded queries and agree with each
   other, but wording, numbers and figure references have not been checked against the
   PDFs. Before citing anything from Part 1 in a publication, check it against the source.
-- **Part 2 (Zen Hanzi) has been checked against the paper.** It was first reconstructed
-  the same way; in November 2026 every rule was checked against the full text and the
-  figures of the paper. Its quotations are verbatim and carry page numbers.
+- **Part 2 (Zen Hanzi) has been checked against the paper, and the public demo has been
+  played.** It was first reconstructed the same way; in November 2026 every rule was
+  checked against the full text and the figures of the paper. Its quotations are
+  verbatim and carry page numbers. What the paper leaves open was then looked up by
+  playing the public demo; those findings are observations of one build, kept apart
+  from what the paper says and labelled as such.
 - **Part 3 (Kanji Workbook)** was written from the full text of its paper.
 
 Each rule carries one of these labels:
@@ -41,6 +44,7 @@ Each rule carries one of these labels:
 |---|---|
 | **stated** | Part 1: returned as a quotation from the paper or dissertation by a search engine. Parts 2 and 3: read in the paper, in its text or a figure caption. |
 | **shown** | Part 2: visible in a figure of the paper (a screenshot), not said in its text. A screenshot shows one moment of play, so this is evidence, not a rule. |
+| **observed** | Part 2: *observed in the public demo* of Zen Hanzi while playing it (November 2026), with how sure: *seen several times* or *seen once*. One build of the game on one day; the paper stays the citable source. |
 | **inferred** | Follows from what the source says or shows, but the source does not say it outright. |
 | **ours** | Not in the sources (or left open by them). A design decision made here. |
 
@@ -240,8 +244,11 @@ Awareness", FDG ’22, 11 pages, DOI 10.1145/3555858.3555875. This part was firs
 reconstructed from search-engine excerpts; every rule has since been checked against the
 paper's full text and its figures. Page numbers are the paper's own (1 to 11).
 Quotations are verbatim, the paper's spelling included; words read off a screenshot are
-given without quotation marks or are marked as such. The playable original was not
-consulted: what the paper leaves open is listed under "Open questions".
+given without quotation marks or are marked as such. What the paper leaves open (what
+makes an attempt, what lives and hints cost, how points are earned, which structures
+are offered) was then looked up in the playable original: see "What the public demo
+does". The rules of this library and of Kumiki default to what the demo does, and every
+alternative is an option: see "The options".
 
 ### What the figures show — *shown*
 
@@ -286,6 +293,121 @@ Figure 9 (p. 5), feedback, in two screenshots:
 Figure 7 (p. 5) shows look-alikes (ZH-3), Figure 10 (p. 6) component variants (ZH-10),
 Figure 11 (p. 6) the four-part split of 路 (ZH-4), Figure 13 (p. 8) the test (ZH-9).
 
+### What the public demo does — *observed in the public demo*
+
+The public web demo of Zen Hanzi was played on 25 November 2026, by mouse only, in a
+headless browser: Learn twice (one run lost on lives at the fourth character, one
+complete) and Review three times (one complete, one lost on purpose, one short). Only
+the running game was looked at: nothing was downloaded or unpacked, and no art, sound,
+wording or data is reproduced here or in the games. The full notes, with the evidence
+for each finding, are in `docs/research/zen-hanzi-demo.md`. Everything below was *seen
+several times* unless it says *seen once*. The demo is one public build and may differ
+from the build of the study; where it and the paper disagree, the paper is what the
+study used.
+
+- **D-1 Checking.** There is a Check button, and nothing is judged before it is
+  pressed. It appears beside a frame, over the neighbouring frame, once every slot of
+  that frame holds a tile; the other frames dim. (Figure 6 of the paper shows no button
+  because no frame is full in it.) Tiles are dragged; a tile dropped on a taken slot
+  sends the old one back to its place in the tray; tiles can sit in several frames at
+  once. The same wrong answer built again is judged, and charged for, again.
+- **D-2 Feedback.** A panel over the board repeats the attempt and says: structure
+  correct or incorrect; a/b components correct; c/b in the correct position, where b
+  is the number of slots of the frame that was *tried* (路, four parts, tried in a
+  three-slot frame: 3/3 and 0/3). Continue closes it. Then the tiles in their right
+  slot stay in the frame (they can still be taken out), all others are back at their
+  own places in the tray, tinted; all copies of a part share the tint; the tried frame
+  stays tinted, and each slot shows a small mark of what was tried in it. A solve shows
+  the reading and the meaning, the parts merge into the character, and a first-try
+  solve gets a bonus splash. Unclear: inside a wrong frame the colours of the tiles did
+  not always match the panel's text.
+- **D-3 Lives.** Three hearts, lost in halves. Every wrong attempt costs half a heart,
+  whatever was wrong with it, and so does every hint. Placing and moving tiles costs
+  nothing, nor does time (a wait of 60 seconds changed nothing). A solve gives one
+  heart back, up to three (1½ to 2½, 2 to 3, 2½ to 3). Hearts go from character to
+  character. At zero the whole run ends, in both modes, and nothing comes back; a hint
+  can be bought with the last half heart, and that ends the run.
+- **D-4 Score.** A running total for the run, shown out of 8900; no best score
+  anywhere. A wrong attempt still earns 100 for the right frame, 10 for each placed
+  part that belongs and 10 for each part in its own slot (seen: +140, +160, +130, +120,
+  +100, +30, +10, +0). A solve of a character of n parts earned 800, 900, 1000 at the
+  first attempt for n = 2, 3, 4; 460 and 540 at the second for n = 2, 3; 280 and 220
+  at the third and fourth for n = 3. One formula fits all of these (*inferred* from
+  the values): 100 + n x (120 - 20k) at attempt k, plus 500 at the first attempt and
+  200 at the second. The ten first-try values add up to 8900, the maximum on screen.
+  Hints and time take no points off.
+- **D-5 Hint.** The button shows the Learn card (the whole character, its reading and
+  meaning) over the dimmed board until Continue is pressed; it was still up after ten
+  seconds. It costs half a heart and no points, can be used as often as hearts last,
+  works in both modes, and never marks or places anything.
+- **D-6 Tray.** Always 18 tiles in three rows of six. On them: every needed part, once
+  per occurrence (路 needs two 口); identical copies of right parts, any of which is
+  accepted (three 寸 tiles all turned green when 对 was solved); made-up stroke variants
+  of right parts, which are wrong; real look-alikes; and parts of the other characters
+  of the set. A tile is used once and returns to its own place. The tray stays the same
+  across attempts on a character; another showing of the character gets another tray.
+- **D-7 Structures.** Every board shows four frames, two by two, of which one is
+  right. Nine shapes were seen: two rows, two columns, three rows, three columns, a
+  two-by-two grid, two cells over one, one over two, two stacked cells beside a tall
+  one, a tall one beside two stacked cells. The right structure of a character never
+  changes; the three other frames and the place of the right one change every time the
+  character is shown, and a decoy may have another number of slots than the character
+  has parts. Nothing is nested deeper; the ten characters between them have exactly
+  the nine shapes.
+- **D-8 Run and modes.** One fixed set of ten characters, shuffled for every run. Learn
+  shows a card with the character before each board; Review does not; everything else
+  is the same in both. A character can only be left by solving it. After the tenth an
+  end panel gives the total and offers another run.
+- **D-9 Screen.** Top to bottom on the upright canvas: a header with score, hearts and
+  progress (about 11% of the height); the prompt between a music button and the hint
+  button (12%); the four frames (45%); the tray (23%). The frames take about 77% of
+  the width, the tray 81%, a tile 11%. Panels (feedback, hint, end) are about 81% wide
+  and 34% high, over the frames; the header stays visible and up to date behind them.
+  There is no pause, skip, undo or settings. The music button switches between two
+  icons (*seen once*; sound could not be heard in a headless browser).
+
+### The options — where each comes from, and its default
+
+Every rule the paper leaves open is an option of the library, and of Kumiki through its
+presets (README, "Kumiki: rules and presets"). The default preset, "Close to the paper"
+(`zen-hanzi`), follows the demo as observed; "Kumiki classic" (`classic`) is Kumiki as
+it was before the demo was played. *Source* says where each value comes from: the
+**paper**, the **demo** (observed, see above) or **ours**.
+
+| Option (Kumiki's rule) | Values and their source | Default | Classic | In the library |
+|---|---|---|---|---|
+| When an attempt is judged (`check`) | A Check button beside the full structure: **demo** (D-1). A Check button below the board: **ours**. By itself once every slot is filled: **ours**, for players who should not have to find a button. | beside the structure | below the board | `AssemblyRules.check` (`"button"`, `"auto"`), `judgesItself`. Where a button sits is the host's affair. |
+| What stays after a wrong check (`afterCheck`) | The tiles in their right slot: **demo** (D-2), *shown* in the paper's Figure 9. Every tile: **ours**. No tile: **ours**. | right-slot tiles | every tile | `AfterCheck`, `placementsAfterCheck` |
+| Feedback (`feedback`) | A panel with counts, closed with Continue: **paper** (Figure 9) and **demo** (D-2); the counts are out of the slots of the tried frame, as in the demo. Three lines (structure, how many belong, whether any is in place): the wording of the **paper**'s caption, **ours** in form. | panel | lines | `AssemblyFeedback` (`slotCount`, `correctPositions`, `anyInCorrectPosition`) |
+| Lives (`lives`) | 3: **paper** (Figure 6) and **demo** (D-3). 5, 2, 1, none: **ours**. Dynamic, **ours**: `parts` scales them to the number of parts (3 for three parts, 2 for two, 4 for four); `adaptive` gives one more after a character that was lost or took two wrong attempts, one fewer after a first-try solve, within two of 3. | 3 | 5 | `AssemblyRules.lives`, `livesRule`, `heartsFor`, `nextRoundStart`, `ADAPTIVE_RANGE` |
+| Where lives last (`livesScope`) | The whole run: **demo** (D-3). One character: **ours**. | run | character | `RunRules.livesScope` |
+| A wrong check costs (`wrongCost`) | Half a life: **demo**. A life, nothing: **ours**. | half | a life | `AssemblyRules.wrongCost` |
+| A solve gives back (`solveGain`) | A life: **demo**. Half, nothing: **ours**. | a life | nothing | `AssemblyRules.solveGain` |
+| Out of lives (`atZero`) | The run ends: **demo**. Only the character is lost and returns once at the end of the deck: **ours**. | the run ends | returns | `RunRules.atZero`, `roundOutcome` |
+| Lives in Learn (`learnLives`) | As in Review: **demo** (D-8). Unlimited tries: **ours**. | as in Review | unlimited | the host gives each mode its rules |
+| What a hint costs (`hint`) | Half a life and no points: **demo** (D-5). **Ours**: points off what the character is worth; a token paid up front, earned by first-try solves without a hint (one to start with, three at most); a consequence, the character returning at the end of the deck or not counting as mastered; nothing; no hints at all. | half a life | 25 points | `HintPolicy`, `canHint`, `hintPrice`, `useHint`, `roundOutcome` |
+| How long a hint stays (`hintStays`) | Until Continue: **demo**. 2.5 seconds: **ours**. | until Continue | 2.5 s | the host |
+| Score (`scoring`) | A running total with points for what was right in a wrong check and a first-try bonus: **demo** (D-4; the formula is *inferred* from the values seen). 100 per character less 15 per wrong check and 25 per hint, at least 10, with a best score per deck and mode: **ours**. | demo | classic | `Scoring`, `DEMO_SCORING`, `attemptPoints`, `solvePoints` |
+| Structures on offer (`structures`) | The right one among three decoys drawn afresh from a catalogue of frames, whatever their number of slots: **demo** (D-7). Near misses with as many slots as the character has parts: **ours**. One fixed set of four frames for every character: **ours**. Two parts by position with the position classes as frames: **ours**. See ZH-2. | catalogue | near misses | `StructureMode`, `DEMO_FRAMES`, `catalogueDecoys`, `alternativeLayouts`, `fixedFrames`, `decomposeByPosition` |
+| Tray size (`tray`) | 18 tiles in 3 rows of 6: **paper** (Figure 6) and **demo** (D-6). 12 in 3 rows, 8 in 2, 24 in 4: **ours**. | 3 x 6 | 3 x 4 | `PuzzleOptions.traySize`, `trayRows`, `lookAlikesPerComponent` |
+| Copies of right parts (`copies`) | Identical copies, any of which is accepted: **demo** (D-6); two per tray is **ours** (the demo showed one to three). None: **ours**. | yes | no | `PuzzleOptions.copies`, tile role `"copy"` |
+| Board (`board`) | Status in the top bar, Hint beside the prompt, structures two by two over the tray, on every screen: the arrangement and proportions of the **demo** (D-9) in Kumiki's own look. Kumiki's wide board: **ours**. | compact | wide | the host |
+
+The library's named sets are `ZEN_HANZI_RULES` with `ZEN_HANZI_RUN` and
+`ZEN_HANZI_PUZZLE`, and `CLASSIC_RULES` with `CLASSIC_RUN` and `CLASSIC_PUZZLE`.
+`DEFAULT_RULES` and `DEFAULT_RUN` are the demo's. `createAssemblyPuzzle` without options
+still builds the smallest puzzle it can (one look-alike per part, just enough tiles,
+near-miss structures); pass `ZEN_HANZI_PUZZLE` for the demo's.
+
+Whatever the options: the right structure of a character never changes; a tray stays
+the same across the attempts on a character; no *wrong* tile may look like another tile
+(ZH-3; copies are right, so they are exempt); and Kumiki's decks stay as they are (the
+demo's single set of ten characters, which can only be left by solving, is not copied).
+Two more presets are made of these options: "Gentle" for young children (no lives,
+free hints that stay, judged by itself, 8 tiles, the same four frames) and "Study: no
+hints". A study fixes a preset and single rules in its link (`?rules=`), and the
+session records them (`session_start`, `rules_change`).
+
 ### ZH-1 Assemble the character from components — *stated* (pp. 4, 5)
 
 In Zen Hanzi "the player must assemble a given hanzi by selecting correct components and
@@ -294,9 +416,15 @@ English meaning and the pinyin; four structures are offered above three rows of
 component tiles; tiles are dragged into a structure (Figure 6 caption, p. 4).
 
 - Code: `components/puzzle.ts` (`createAssemblyPuzzle`), `components/assembly.ts`.
-- What makes an attempt is not in the paper. Figure 6 has no Check button, so the
-  original probably judges a structure as soon as its last slot is filled (*inferred*).
-- *Ours*: an explicit Check action, tap-to-place, and how tiles move between slots.
+- What makes an attempt is not in the paper, and Figure 6 has no Check button. The demo
+  has one: it appears beside a structure once every slot is filled, and nothing is
+  judged before it is pressed (*observed in the public demo*, D-1, seen several times).
+  `AssemblyRules.check` `"button"` is that; the library says when a board is complete
+  (`isComplete`) and leaves the button to the host.
+- *Ours*: judging a full structure by itself (`check: "auto"`, `judgesItself`), the
+  Check button below the board of Kumiki classic, tap-to-place, and how tiles move
+  between slots. Kumiki keeps one structure in play at a time; the demo lets tiles sit
+  in several.
 
 ### ZH-2 Structure is part of the answer — *stated* (pp. 5, 6, 10)
 
@@ -311,10 +439,57 @@ caption, p. 5), on a line of its own, apart from the components.
   as the target has parts (*shown*). How the three wrong ones are chosen is not said. In
   its current form the game "supports only a subset of possible hanzi structures"
   (p. 10); no figure shows an enclosure.
+- *Observed in the public demo* (D-7, seen several times): the right structure of a
+  character never changes; the three wrong frames are drawn afresh, at every showing,
+  from a catalogue of nine shapes, and may have another number of slots than the
+  character has parts; nothing is nested deeper than one level. In the paper's Figure
+  6 all four frames happen to have three slots.
 - *Ours*: deriving the right structure from stroke data (`layoutFromBoxes`), the
-  catalogue of structures (rows, columns and seven shapes of enclosure) and how wrong
-  ones are chosen (`alternativeLayouts`: near misses first, then others with the same
-  number of slots).
+  catalogue of structures (rows, columns and seven shapes of enclosure) and Kumiki's
+  first way of choosing wrong ones (`alternativeLayouts`: near misses first, then
+  others with the same number of slots).
+- Which structures are offered is an option, `PuzzleOptions.structures`:
+  - `"catalogue"` (the demo; Kumiki's default): the right one among decoys drawn from
+    `frames` (`catalogueDecoys`), by default the demo's nine shapes (`DEMO_FRAMES`).
+    Kumiki's catalogue is the structures its characters have plus the demo's nine
+    (`frameSet`), as the demo's nine are exactly the structures of its ten characters;
+    without that, an enclosure (the 門 family) would be the only one of its kind on its
+    board and give itself away. Frames with a slot narrower than 0.3 of the frame are
+    left out of the decoys (落's own structure, hard to hit on a phone).
+  - `"alternatives"` (Kumiki classic): as above; the number of slots gives the number
+    of parts away.
+  - `"fixed"` (*ours*, the simplest version): one set of frames for every character, in
+    the same places; only the character and its parts change (`fixedFrames`). Kumiki
+    takes the four commonest structures of its set; a character with another one gets
+    it in the last place (閣, 返 and 落 of the 38). Picking the frame soon becomes a
+    reflex (half of the starter set is side by side), which suits a first run.
+  - `"positions"` (*ours*): the character is split once, into two parts, where its
+    source labels their positions: left and right (hen and tsukuri), top and bottom
+    (kanmuri and ashi), an enclosing part (tare, nyo, kamae) and what it holds
+    (`decomposeByPosition`; for kamae the shape comes from a table of enclosing
+    components, `KAMAE_SHAPES`, or from the strokes). The frames are the position
+    classes, one fixed set: for the starter set side by side, under a roof, stacked,
+    and in a sweep. The data supports this one level deep: KanjiVG labels the top level
+    of 97% of its characters and of all 38 in Kumiki's decks, where the labels give the
+    same split as the stroke geometry (a test pins that); below the top level only
+    about half the splits are labelled, and inconsistently (寺 has top and bottom in
+    待, 特, 侍 but not in 持, 時, 詩), so finer splits stay with the geometry.
+    `docs/research/component-positions.md` has the counts.
+  - Not built, a design only: **recursive assembly**. For 持, first build 寺 from 土
+    over 寸 in a frame of its own, then place 寺 as one tile beside 扌. It needs a frame
+    for every level (from the position labels where they exist, else from geometry)
+    and a tile for every intermediate part (its own glyph, or its strokes cut from the
+    character). Eleven of the 38 starter characters are nested; for the others it is
+    the same as the modes above. Open problems: every level adds a step and another
+    frame to choose; some inner parts are not characters and have no name to show; a
+    part written in two goes (囗, 行) must stay one tile; and a part changes shape with
+    its position (木 narrows on the left), so a sub-assembly looks squashed unless it
+    is cut from the target. The most dynamic version would choose a part's sub-frame
+    and form by where its parent puts it, which is where the rules of hen and kanmuri
+    come in.
+- Two frames that are one picture on screen are never offered together
+  (`layoutsLookAlike`): a two-by-two grid is drawn alike whether it is read as two rows
+  of two or as two columns of two.
 - The derivation does not always succeed. Parts that fit neither a row, a column nor
   an enclosure are lined up by their centres as a last resort, and the result says so:
   `Decomposition.layoutGuessed` (from `layoutFromBoxes(...).guessed`). 原 comes out as
@@ -349,7 +524,17 @@ learner might make" (p. 6).
   `components/mutate.ts` (`mutateGlyph`: drop a stroke, double a stroke, swap two
   lengths).
 - How many: the paper says at least one per component; Figures 6 and 9 show 18 tiles
-  for three parts (*shown*).
+  for three parts (*shown*). *Observed in the public demo* (D-6, seen several times):
+  always 18 tiles in three rows of six, among them identical copies of right parts
+  (any copy is accepted), made-up stroke variants (wrong), real look-alikes and parts
+  of the other characters of the set; the tray does not change between attempts on a
+  character.
+- Code for the tray: `PuzzleOptions.traySize`, `trayRows`, `lookAlikesPerComponent`
+  and `copies`; `ZEN_HANZI_PUZZLE` is 18 tiles in three rows with two look-alikes per
+  part and two copies. A copy has the role `"copy"` and shows what its original shows,
+  so it is accepted in its place. The other tiles come from the parts in use across
+  the set (`PuzzleContext.fillers`). Size and rows are options; needed tiles and their
+  look-alikes are never left out.
 - *Ours*: measuring resemblance by pairing strokes, and generating wrong versions by
   rule (the original picked both by hand). Hand-picked pairs are still supported and
   take precedence (`curated`). A look-alike that differs only in whether a stroke
@@ -432,9 +617,16 @@ until the player presses Continue (*shown*).
 
 - Code: `evaluateAttempt` → `AssemblyFeedback` (`correctPositions` is the count,
   `anyInCorrectPosition` the yes or no); `AssemblyMemory.slotMisses`.
+- *Observed in the public demo* (D-2, seen several times): both counts are out of the
+  slots of the frame that was tried, not of the character's parts, so a wrong frame
+  does not give the number of parts away (`AssemblyFeedback.slotCount`); in a wrong
+  frame the position count read 0 (路 in a three-slot frame: 0/3). After Continue only
+  the tiles in their right slot
+  stay (`AfterCheck` `"keep-correct"`, `placementsAfterCheck`).
 - *Ours*: counting with multiplicity, and judging positions only once the structure is
-  right. The paper shows feedback for a right structure only, so what the original says
-  about positions after a wrong one is unknown.
+  right (a wrong frame's slots have no counterpart, so the count is 0, as in the demo).
+  Kumiki's panel uses its own words ("Parts that belong", "In their place") and adds
+  the points the check earned.
 
 ### ZH-6 Memory of tried options — *stated* (p. 5)
 
@@ -446,6 +638,8 @@ because it belongs to the character, and the red is a brownish orange (*shown*).
 
 - Code: `AssemblyMemory.layouts`, `AssemblyMemory.tiles` (a tile is "right" when it
   belongs to the target, wherever it was tried, as in the figure).
+- *Observed in the public demo* (D-2): all copies of a part share its colour. So every
+  tile showing what a tried tile shows is marked with it.
 
 ### ZH-7 Learn and Review modes, glyph hint — *stated* (p. 5)
 
@@ -456,9 +650,17 @@ hanzi—requiring players to recall the structure of the hanzi without guidance.
 Additionally, the “Hint” button allows the player to view the hanzi one more time if
 they are stuck." (p. 5)
 
-- Code: `AssemblyMode`, `useHint`.
-- *Ours*: what a hint costs, how long the character stays on show, and Kumiki's
-  unlimited tries in Learn mode. The paper names no cost and ties no rule to a mode.
+- Code: `AssemblyMode`, `HintPolicy`, `canHint`, `hintPrice`, `useHint`.
+- The paper names no cost and ties no rule to a mode. *Observed in the public demo*
+  (D-5, D-8, seen several times): the hint shows the Learn card until Continue, costs
+  half a heart and no points, and can be used as often as hearts last, down to the last
+  half heart, which ends the run; Learn and Review differ in the card alone.
+- *Ours*: every other price of a hint, so that a study can compare them (`HintPolicy`):
+  `"points"` off what the character is worth, `"token"` (an up-front cost: a token
+  earned by a first-try solve without a hint), `"return"` and `"unmastered"` (a
+  consequence: the character comes back later, or does not count as mastered),
+  `"free"` and `"off"`. Also *ours*: a hint that goes away by itself, and unlimited
+  tries in Learn mode. Each hint's price goes into its event.
 
 ### ZH-8 Score and lives — *stated* to exist (p. 5); three lives *shown* (Figure 6)
 
@@ -470,7 +672,19 @@ is gone, how points are earned, or whether lives last for one character or for t
 whole run; that they share the status bar with the run's progress suggests the run
 (*inferred*).
 
-- Code: `AssemblyRules`, `DEFAULT_RULES`. Every number is *ours*.
+- *Observed in the public demo* (D-3, D-4, seen several times): three hearts for the
+  whole run, lost in halves (half for a wrong attempt, half for a hint), one back for
+  every solve, and the run over at zero; a running total in which a wrong attempt
+  still earns points for what was right, and no best score.
+- Code: `AssemblyRules` (`lives`, `wrongCost`, `solveGain`, `scoring`, `hint`),
+  `RunRules` (`livesScope`, `atZero`), `roundOutcome` and `nextRoundStart` in
+  `components/run.ts`; `ZEN_HANZI_RULES` and `ZEN_HANZI_RUN` are the demo's numbers and
+  the default, `CLASSIC_RULES` and `CLASSIC_RUN` Kumiki's own (five lives per
+  character, one per wrong check, 100 points less 15 per wrong check and 25 per hint).
+  The demo's score formula is *inferred* from the values seen (`DEMO_SCORING`).
+- *Ours*: the number of lives as an option, no lives at all, and two dynamic rules
+  (`LivesRule` `"parts"`, `"adaptive"`); what a wrong attempt costs and a solve gives
+  back; losing only the character at zero. See "The options".
 
 ### ZH-9 Composition test — *stated* (pp. 8, 9; study instrument)
 
@@ -592,38 +806,53 @@ characters and the screenshots are simplified forms (帮, 对, 谢, 讠).
 
 What the paper does, what Kumiki does, and a recommendation: *keep ours*, *follow the
 paper* (make the paper's way the default), or *offer both* (a setting, default named).
-Defaults stay close to the original wherever the paper states or shows it. Where the
-paper's side is only *inferred*, the recommendation waits for a look at the playable
-original before changing a default.
+Defaults stay close to the original wherever the paper states or shows it. The list was
+written before the demo was played, when Kumiki had one set of rules; where the paper's
+side was only *inferred*, the recommendation waited for a look at the playable
+original. That look has been taken ("What the public demo does"), and items 1 to 7, 9,
+10 and 16 have been carried out: each ends with **Now**, which says what was done.
+"Kumiki" in the text of an item is what is now the preset "Kumiki classic".
 
 1. **What makes an attempt.** Paper: no Check button in Figure 6; a full frame is
    probably judged at once (*inferred*). Kumiki: a Check button; each arrangement can
    be checked once. *Offer both*; keep Check as the default until the original is seen
-   to judge a full frame by itself, then follow it.
+   to judge a full frame by itself, then follow it. **Now:** the demo has a Check
+   button beside the full frame (D-1), which is the default; Check below the board and
+   judging by itself are options (`check`).
 2. **Number of lives.** Paper: three hearts (Figure 6); what costs one is unknown.
    Kumiki: five per character in Review, unlimited in Learn; every failed check costs
    one. *Follow the paper*: three by default, the count (or none) configurable.
+   **Now:** three, lost in halves as in the demo (D-3); the count, none, and two
+   dynamic rules are options (`lives`, `wrongCost`, `solveGain`).
 3. **What the lives belong to.** Paper: shown beside the run's progress, so probably the
    whole run (*inferred*). Kumiki: each character. *Offer both*; per character until
-   the original is checked.
+   the original is checked. **Now:** the whole run, as the demo plays (D-3), with the
+   run ending at zero; per character, and losing only the character, are options
+   (`livesScope`, `atZero`).
 4. **Score.** Paper: a running total under a trophy, rule unknown. Kumiki: per
    character 100, minus 15 per failed check and 25 per hint, at least 10; best result
    per deck and mode. *Keep ours* as one scheme and *offer others* (a high score that
-   costs something to chase; no score at all for young players).
+   costs something to chase; no score at all for young players). **Now:** the demo's
+   running total, which also pays for what was right in a wrong check (D-4), is the
+   default and keeps no best score; ours is the other scheme (`scoring`).
 5. **Hint.** Paper: shows the character again, cost unknown. Kumiki: shows it for
    2.5 s and costs 25 points. *Keep ours*, the cost configurable (points, a life, or
-   free).
+   free). **Now:** half a life and until Continue, as in the demo (D-5), is the
+   default; points, an up-front token, two consequences, free and no hint at all are
+   options (`hint`, `hintStays`).
 6. **Feedback panel.** Paper: a panel over the board repeats the attempt with coloured
    tiles, gives counts (1/3 Correct, 1/3 Correct Position) and is closed with Continue.
    Kumiki: three lines between the structures and the tray, with icons, and no panel to
    close; the position line says only whether any part is in place, and "cannot be
    judged yet" after a wrong structure. *Offer both*: the paper's panel and counts as
    the default look, the yes-or-no position line (the caption's wording) as a harder
-   setting.
+   setting. **Now:** done as recommended (`feedback`); the panel counts out of the
+   slots of the tried frame, as the demo does (D-2).
 7. **The board after a check.** Paper: the correctly placed tile stays and the others
    are back in the tray (*shown* in one screenshot, Figure 9; as a rule *inferred*).
    Kumiki: every tile stays where the player put it. *Offer both*; the paper's way
-   becomes the default once the original confirms it.
+   becomes the default once the original confirms it. **Now:** confirmed (D-2) and the
+   default; every tile staying, and none, are options (`afterCheck`).
 8. **Colours.** Paper: whole tiles and frames filled green or red (orange in the
    screenshot). Kumiki: green and red outlines, not fills, with ✓ and ✕ badges; a wrong
    structure gets a dashed border and a wrong tile is hatched. *Offer both*: the
@@ -633,11 +862,16 @@ original before changing a default.
    look-alike per part; the other tiles look like parts of the other characters in the
    set. Kumiki: 12 tiles in three rows, two look-alikes per part, fillers from the parts
    used in the deck. *Follow the paper*: 18 tiles in rows of six by default, the size
-   configurable.
+   configurable. **Now:** 18 in three rows of six with two identical copies of right
+   parts, as the demo deals (D-6), by default; other sizes and no copies are options
+   (`tray`, `copies`).
 10. **Structures on offer.** Paper: four, each with as many slots as the target (Figure
     6), chosen by a rule the paper does not give, from "only a subset" of structures,
     no enclosure in any figure. Kumiki: four, with the same slot count, near misses
-    first, rows, columns and enclosures. *Keep ours.*
+    first, rows, columns and enclosures. *Keep ours.* **Now:** the demo draws its
+    decoys from a catalogue of nine frames, whatever their slot count (D-7); that is
+    the default, with Kumiki's enclosures added to the catalogue. Ours is an option,
+    next to a fixed set of frames and a split by position (`structures`, ZH-2).
 11. **Where the right structure comes from.** Paper: written into each character's
     entry, so fixed per character (ZH-11). Kumiki: derived from stroke data, which is
     also fixed per character; characters whose structure is only a guess are left out
@@ -666,7 +900,9 @@ original before changing a default.
     recordings under a suitable licence exist, never the original's.
 16. **Learn mode.** Paper: the character first, with pinyin, meaning and Continue; no
     rule tied to a mode. Kumiki: the same, with unlimited tries. *Offer both*;
-    unlimited tries stays the Learn default.
+    unlimited tries stays the Learn default. **Now:** in the demo Learn plays by the
+    same lives as Review (D-8), which is the default; unlimited tries in Learn is an
+    option (`learnLives`) and part of "Kumiki classic".
 17. **Composition test.** Paper: a separate Qualtrics test; the structure drawn with
     numbered slots, the meaning as prompt, a list of parts with look-alikes, and a
     meaning-matching task beside it. Kumiki: an in-game exam with only the right
@@ -823,8 +1059,11 @@ least intuitive. Worth remembering before putting ten star rows in front of a le
 | Timed round | repeats, shuffle, scoring | `scaffold` → `TimedRoundConfig` |
 | Judging | leniency, direction enforced or not | `stroke` → `MatchOptions`, `AttemptOptions` |
 | Assembly mode | `learn`, `review` | `components` → `AssemblyMode` |
-| Assembly rules | lives, score, costs | `components` → `AssemblyRules` |
-| Tray | look-alikes per component, malformed shapes, size | `components` → `PuzzleOptions` |
+| Assembly rules | when a check happens, what stays after it, lives (count, none, dynamic), what a wrong check costs and a solve gives back, scoring, hint cost | `components` → `AssemblyRules` (`ZEN_HANZI_RULES`, `CLASSIC_RULES`) |
+| Run rules | lives for the run or per character; at zero the run ends or the character is lost | `components` → `RunRules` (`ZEN_HANZI_RUN`, `CLASSIC_RUN`) |
+| Tray | size, rows, look-alikes per component, malformed shapes, copies of right parts | `components` → `PuzzleOptions` (`ZEN_HANZI_PUZZLE`, `CLASSIC_PUZZLE`) |
+| Structures on offer | `alternatives`, `catalogue`, `fixed`, `positions`; the frames | `components` → `PuzzleOptions.structures`, `frames` |
+| Kumiki's rules | a preset (`zen-hanzi`, `classic`, `gentle`, `study-no-hints`) and single rules, by Settings, `?rules=` or `condition` | `apps/kumiki/src/rules.ts`; README |
 | Decomposition | max slots, known components | `components` → `DecomposeOptions` |
 | Writing assessment | fit to reference, edit count, reference timing, thresholds | `stroke` → `WritingAssessmentOptions` |
 
@@ -837,12 +1076,16 @@ Only the PDFs or hands-on play can settle these:
   round; the hint threshold; scale, tempo and instruments; how the control melodies were
   generated.
 - Zen Hanzi. The paper settles the component database format (ZH-11) and shows four
-  structures, 18 tiles and three lives (Figures 6 and 9). It leaves open, for play with
-  the original: what makes an attempt (no Check button is visible); what costs a life,
-  what happens without one, and whether lives last a character or the run; how points
-  are earned; what a hint costs; how the wrong structures and the other tiles are
-  chosen; whether correctly placed tiles always stay after a check; what the position
-  line says after a wrong structure; the full set of structures.
+  structures, 18 tiles and three lives (Figures 6 and 9). Play with the public demo has
+  settled what it left open: what makes an attempt, what costs a life and what happens
+  without one, where lives last, how points are earned, what a hint costs, which
+  structures are offered, and that correctly placed tiles stay after a check ("What
+  the public demo does"). Still open after that: whether the demo is the build of the
+  study; the score formula, which is inferred from the values seen; what the tile
+  colours inside a wrong frame mean (they did not always match the panel's text); how
+  the look-alikes, variants and other tiles of a tray are chosen, and how many of
+  each; what the music button plays; and whether a character's parts are ever split
+  differently from one showing to the next (not seen).
 
 ## Using the mechanics in another game
 

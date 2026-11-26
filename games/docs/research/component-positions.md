@@ -61,6 +61,13 @@ The starter set has 38 characters. At up to 4 slots they come out as R(S,S) 19; 
 - *Breaks:* each level adds a step and another frame to choose. Some inner parts are not characters (龶, 𠂊, KanjiVG's CDP codes), so they have no name or tile. A component written in two goes (囗, 行, 弋) must stay one tile. A part changes shape with its position (木 narrows as a hen), so a sub-assembly looks squashed unless it is cut from the target's strokes.
 - *Most dynamic version:* pick a part's sub-frame and form from where its parent puts it (女 on the left in 好, at the bottom in 妾 [W5]). This is where the hen/kanmuri rules come in: narrow a hen, flatten a kanmuri, take the variant form from `kvg:original`.
 
+## 4. What was built from this (November 2026)
+
+- (a) is the option `structures: "fixed"` (`fixedFrames`): Kumiki shows the four commonest structures of its set, and a character with another one gets it in the last place.
+- (b) is `"alternatives"` (Kumiki classic). The Zen Hanzi demo's own way, decoys drawn afresh from a catalogue of nine frames, is `"catalogue"` and the default (MECHANICS.md Part 2, D-7).
+- (c) is built one level deep as `"positions"`: `decomposeByPosition` reads left/right, top/bottom and enclosure off the labels, `KAMAE_SHAPES` is the table for kamae, and the frames are the position classes. A test (`apps/kumiki/src/content.test.ts`) pins that for all 38 starter characters the labels give the same two parts and the same frame as the stroke geometry. Below the top level the labels are too sparse, so finer splits stay with the geometry.
+- (d) is not built. MECHANICS.md Part 2, ZH-2, keeps the design and its open problems.
+
 ## Sources (all seen only as search snippets)
 
 W1 https://www.wikiwand.com/en/articles/Simplified_table_of_Japanese_kanji_radicals · W2 https://hugkum.sho.jp/727585 (Shogakukan) · W3 https://kanjialive.com/214-traditiona · W4 https://ja.wiktionary.org/wiki/%E2%BB%81 · W5 https://www.wikipedia.org/wiki/Chinese_radical · W6 https://www.zdic.net/hant/偏旁 · W7 https://www.weblio.jp/content/部首 · W8 https://www.sohu.com/a/422293873_498038 and https://2blog.ilc.edu.tw/wp-content/uploads/sites/1163/24/24-2642056.pdf (blog-level) · W9 https://en.wikipedia.org/wiki/Chinese_character_structures · W10 https://en.wikipedia.org/wiki/Chinese_character_components · W11 https://www.unicode.org/charts/PDF/U2FF0.pdf · W12 https://www.unicode.org/irg/docs/n1107-IDSDecompositionGuidelines.pdf · W13 https://kanjivg.tagaini.net/svg-format.html · W14 https://en.wikipedia.org/wiki/Remembering_the_Kanji · W15 https://knowt.com/note/87bf076f-2843-4997-8975-299a8403eeed/Untitled · W16 https://hrussellzfac023.github.io/rtk/水/index.html · More IDS data for later: https://github.com/cjkvi/cjkvi-ids

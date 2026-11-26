@@ -461,6 +461,12 @@ button:disabled {
   box-shadow: 0 0 8px rgba(246, 196, 83, 0.7);
 }
 
+/* Half a heart: the left half lit. */
+.life[data-left="half"] {
+  background: linear-gradient(90deg, var(--accent) 0 50%, transparent 50% 100%);
+  box-shadow: 0 0 6px rgba(246, 196, 83, 0.4);
+}
+
 .life[data-leaving="true"] {
   animation: life-leaving 700ms ease-out both;
 }
@@ -476,9 +482,8 @@ button:disabled {
     border-color: var(--bad);
     transform: scale(1.7);
   }
+  /* Ends on what is left of the heart: nothing, or its half. */
   100% {
-    background: transparent;
-    box-shadow: 0 0 0 12px rgba(246, 196, 83, 0);
     transform: scale(1);
   }
 }
@@ -680,6 +685,39 @@ button:disabled {
   height: calc(100% - 16px);
   max-height: 260px;
   margin: 0;
+}
+
+/* A hint that stays until Continue: the character, then the button under it. */
+.hint-overlay[data-stays="continue"] {
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 8px 0 10px;
+}
+
+.hint-overlay[data-stays="continue"] .glyph-board {
+  height: 100%;
+}
+
+.hint-overlay .hint-note {
+  margin: 0;
+  color: var(--bad);
+  font-weight: 650;
+}
+
+.hint-cost {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.hint-cost:not(:empty)::before {
+  content: " · ";
+}
+
+.feedback-panel .panel-points {
+  margin: 4px 0 0;
+  color: var(--accent);
+  font-weight: 700;
+  text-align: center;
 }
 
 @keyframes fade-in {
@@ -1120,6 +1158,94 @@ button:disabled {
   accent-color: #1f3a93;
 }
 
+.setting select {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: min(320px, 62%);
+  text-overflow: ellipsis;
+  min-height: 44px;
+  padding: 0 8px;
+  border: 1px solid rgba(29, 26, 23, 0.45);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.55);
+  color: var(--ink);
+  font: inherit;
+}
+
+.setting select:disabled {
+  opacity: 0.6;
+}
+
+.rules {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(29, 26, 23, 0.25);
+}
+
+.rules h3 {
+  font-size: 1.1rem;
+}
+
+.setting-note {
+  color: rgba(29, 26, 23, 0.78);
+  font-size: 0.88rem;
+}
+
+.rules-fixed {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(31, 58, 147, 0.12);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.setting-note code {
+  overflow-wrap: anywhere;
+  font-size: 0.82rem;
+}
+
+.rule-details {
+  margin-bottom: 10px;
+}
+
+.rule-details summary {
+  min-height: 44px;
+  padding: 10px 0;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.rule-group {
+  /* A fieldset is as wide as its content unless told otherwise. */
+  min-width: 0;
+  margin: 0 0 8px;
+  padding: 4px 10px 6px;
+  border: 1px solid rgba(29, 26, 23, 0.25);
+  border-radius: 10px;
+}
+
+.rule-group legend {
+  padding: 0 6px;
+  font-size: 0.82rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.setting.rule {
+  font-size: 0.93rem;
+}
+
+/* A rule changed from its preset is marked by more than colour. */
+.setting.rule[data-changed] label::after {
+  content: " ●";
+  color: #1f3a93;
+}
+
+.setting.rule[data-idle] label {
+  opacity: 0.6;
+}
+
 .chooser {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
@@ -1223,6 +1349,16 @@ button:disabled {
     --frame: clamp(88px, calc((var(--screen) - 272px - 2 * var(--tile)) / 2), min(166px, calc((100vw - 34px) / 2)));
   }
 
+  /*
+   * The board was made for two rows of six tiles. A larger tray (the demo's 18 tiles on
+   * Kumiki's wide board, or in the exam) takes the height of its further rows from the
+   * structures.
+   */
+  .assembly {
+    --tray-extra: calc((max(2, var(--tray-rows-of-six, 2)) - 2) * (var(--tile) + 8px));
+    --frame: clamp(88px, calc((var(--screen) - 272px - 2 * var(--tile) - var(--tray-extra)) / 2), min(166px, calc((100vw - 34px) / 2)));
+  }
+
   .assembly .tray {
     grid-template-columns: repeat(6, var(--tile));
   }
@@ -1253,7 +1389,160 @@ button:disabled {
   }
 
   .frames[data-count="1"] {
-    grid-template-columns: min(230px, calc(var(--screen) - 270px - 2 * var(--tile)), 70vw);
+    grid-template-columns: min(230px, calc(var(--screen) - 270px - 2 * var(--tile) - var(--tray-extra, 0px)), 70vw);
+  }
+}
+
+/* ---------- The compact board ----------
+ * The arrangement of the Zen Hanzi demo, in Kumiki's own look: lives and score in the top
+ * bar, the prompt with Hint beside it, the structures two by two, the tray. The structures
+ * take the height that is left over, so the board fits a phone with the browser's toolbars
+ * showing whatever the tray holds; only below 90px a structure does the page scroll.
+ */
+.assembly[data-board="compact"] {
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 560px);
+  min-height: var(--screen);
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+  --tray-gap: 8px;
+  --tile: min(
+    clamp(46px, calc(var(--screen) * 0.216 / var(--tray-rows, 3)), 68px),
+    calc((min(100vw, 560px) - 24px - (var(--tray-columns, 6) - 1) * var(--tray-gap)) / var(--tray-columns, 6))
+  );
+}
+
+.assembly[data-board="compact"] .status {
+  display: flex;
+  flex: 1 1 auto;
+  justify-content: center;
+  gap: 14px;
+  min-height: 0;
+}
+
+.assembly[data-board="compact"] .stat-note-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.assembly[data-board="compact"] .bar-progress {
+  margin-left: 0;
+}
+
+.prompt-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+}
+
+.prompt-row > .prompt {
+  grid-column: 2;
+  flex-flow: row wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0 10px;
+}
+
+.prompt-row .meaning {
+  font-size: clamp(1.25rem, 3.6vw, 1.6rem);
+}
+
+.prompt-row .reading {
+  font-size: 1rem;
+}
+
+.prompt-row > .hint-button {
+  grid-column: 3;
+  justify-self: end;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 2px 12px;
+  line-height: 1.15;
+}
+
+.prompt-row .hint-cost {
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.prompt-row .hint-cost::before {
+  content: none;
+}
+
+.assembly[data-board="compact"] .frames-wrap {
+  flex: 1 1 0;
+  align-items: center;
+  /* Two structures of 90px at least, of 176px at most. */
+  min-height: 190px;
+  max-height: 372px;
+  container-type: size;
+}
+
+.assembly[data-board="compact"] .frames {
+  /* Where the size of the wrap cannot be asked for: from the screen, less everything else. */
+  --frame: clamp(90px, calc((var(--screen) - 190px - var(--tray-rows, 3) * (var(--tile) + 8px)) / 2), min(166px, calc((100vw - 34px) / 2)));
+  grid-template-columns: repeat(2, var(--frame));
+  align-content: center;
+}
+
+@supports (width: 1cqh) {
+  .assembly[data-board="compact"] .frames {
+    --frame: min(176px, calc((100cqh - 10px) / 2), calc((100cqw - 10px) / 2));
+  }
+}
+
+/* The panel says what a check found; what is left under the structures is one line of instructions. */
+.assembly[data-board="compact"][data-feedback="panel"] .feedback {
+  min-height: 0;
+  padding: 0;
+  background: none;
+  font-size: 0.85rem;
+}
+
+.assembly[data-board="compact"] .tray {
+  grid-template-columns: repeat(var(--tray-columns, 6), var(--tile));
+  gap: var(--tray-gap);
+}
+
+.assembly[data-board="compact"] > .actions {
+  position: static;
+  padding: 0;
+}
+
+/* Check beside the full structure, over its neighbour (which is dimmed and cannot be checked). */
+.assembly[data-board="compact"] .structure:nth-child(odd):not(:last-child) > .frame-check {
+  left: calc(150% + 10px);
+  top: 50%;
+  bottom: auto;
+  transform: translate(-50%, -50%);
+}
+
+.assembly[data-board="compact"] .structure:nth-child(even) > .frame-check {
+  left: calc(-50% - 10px);
+  top: 50%;
+  bottom: auto;
+  transform: translate(-50%, -50%);
+}
+
+.assembly[data-board="compact"] .structure:nth-child(odd):not(:last-child) > .frame-check:not(:disabled):active,
+.assembly[data-board="compact"] .structure:nth-child(even) > .frame-check:not(:disabled):active {
+  transform: translate(-50%, calc(-50% + 1px));
+}
+
+@media (max-width: 760px) {
+  .assembly[data-board="compact"] .status {
+    justify-content: flex-end;
+    gap: 12px;
+    font-size: 0.86rem;
   }
 }
 

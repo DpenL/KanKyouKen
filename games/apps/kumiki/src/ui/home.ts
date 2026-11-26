@@ -2,6 +2,7 @@
 
 import type { Deck } from "../content";
 import type { Mode } from "../round";
+import { livesLine } from "../rules";
 import { bestScore } from "../saved";
 import type { App } from "./app";
 import { button, h } from "./dom";
@@ -10,13 +11,14 @@ import { drawnChar } from "./shapes";
 export interface HomeActions {
   play(deck: Deck, mode: Mode): void;
   exam(): void;
-  settings(): void;
+  /** Open Settings; `changed` is to be called when the rules were changed there. */
+  settings(changed: () => void): void;
   about(): void;
 }
 
 const MODES: readonly { readonly id: Mode; readonly title: string; readonly line: string }[] = [
-  { id: "learn", title: "Learn", line: "You see the character first. Unlimited tries." },
-  { id: "review", title: "Review", line: "Meaning and reading only. Five lives." },
+  { id: "learn", title: "Learn", line: "You see the character first." },
+  { id: "review", title: "Review", line: "Meaning and reading only." },
 ];
 
 /** The block on a deck's card: its shared component, or for the Mixed deck a mosaic of all of them. */
@@ -33,6 +35,7 @@ export function homeScreen(app: App, actions: HomeActions): HTMLElement {
 
   const render = (): void => {
     const saved = app.store.get();
+    const choices = app.rules.choices();
     modes.replaceChildren(
       ...MODES.map((mode) => {
         const option = h(
@@ -47,7 +50,8 @@ export function homeScreen(app: App, actions: HomeActions): HTMLElement {
             tabindex: saved.mode === mode.id ? 0 : -1,
           },
           h("strong", {}, mode.title),
-          h("span", {}, mode.line),
+          // What the rules in force give each mode.
+          h("span", {}, `${mode.line} ${livesLine(choices, mode.id)}`),
         );
         const choose = (id: Mode): void => {
           app.store.patch({ mode: id });
@@ -67,7 +71,9 @@ export function homeScreen(app: App, actions: HomeActions): HTMLElement {
     );
     decks.replaceChildren(
       ...app.content.decks.map((deck) => {
-        const best = bestScore(saved, deck.id, saved.mode);
+        // Only the classic scoring keeps a best score; the demo's has a running total and nothing to beat.
+        const best = choices.scoring === "classic" ? bestScore(saved, deck.id, saved.mode) : null;
+        const played = choices.scoring === "classic";
         const card = h(
           "button",
           { type: "button", class: "deck", "data-deck": deck.id },
@@ -79,7 +85,7 @@ export function homeScreen(app: App, actions: HomeActions): HTMLElement {
             deck.shared === null
               ? h("span", { class: "deck-note" }, "A handful from every deck")
               : h("span", { class: "deck-chars" }, ...deck.chars.map((char) => drawnChar(app.content.glyphs.get(char), char, "deck-char"))),
-            h("span", { class: "deck-best" }, best === null ? "Not played yet" : `Best ${best}`),
+            played ? h("span", { class: "deck-best" }, best === null ? "Not played yet" : `Best ${best}`) : null,
           ),
         );
         card.addEventListener("click", () => actions.play(deck, app.store.get().mode));
@@ -105,7 +111,8 @@ export function homeScreen(app: App, actions: HomeActions): HTMLElement {
       "nav",
       { class: "home-actions", "aria-label": "More" },
       button("Exam", { class: "ghost", "data-action": "exam" }, actions.exam),
-      button("Settings", { class: "ghost", "data-action": "settings" }, actions.settings),
+      // The mode switch and the deck cards say what the rules give; they follow a change at once.
+      button("Settings", { class: "ghost", "data-action": "settings" }, () => actions.settings(render)),
       button("About", { class: "ghost", "data-action": "about" }, actions.about),
     ),
   );

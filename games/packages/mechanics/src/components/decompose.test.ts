@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { FIXTURES, fixture } from "../glyph/fixtures";
 import type { ComponentRecord, Glyph } from "../glyph/types";
-import { decompose } from "./decompose";
+import { KAMAE_SHAPES, decompose, decomposeByPosition } from "./decompose";
 import { createRng } from "../util/rng";
 import { boxLines, crossLines, handGlyph, randomTreeGlyph, type TestLine } from "./test-glyphs";
 
@@ -648,5 +648,99 @@ describe("decompose", () => {
       const single = handGlyph("王", [...cross], { c: [leaf("玉", 0, 2)] });
       expect(summary(single)).toEqual(["S", "王", [[0, 1]]]);
     });
+  });
+});
+
+describe("decomposeByPosition", () => {
+  const byPosition = (glyph: Glyph): [string, string, number[][]] | null => {
+    const d = decomposeByPosition(glyph);
+    return d === null ? null : [d.layout.signature, d.components.join(""), d.strokes.map((strokes) => [...strokes])];
+  };
+  /** Two parts with the given labels, drawn as boxes that say nothing about where they sit (one on top of the other). */
+  const labelled = (first: ComponentRecord, second: ComponentRecord): Glyph =>
+    handGlyph("字", [...boxLines(200, 200, 600, 600), ...boxLines(250, 250, 500, 500)], { c: [first, second] });
+
+  it("reads rows and columns off the labels, one level deep", () => {
+    expect(byPosition(fixture("沐"))).toEqual([
+      "R(S,S)",
+      "氵木",
+      [
+        [0, 1, 2],
+        [3, 4, 5, 6],
+      ],
+    ]);
+    expect(byPosition(fixture("古"))?.slice(0, 2)).toEqual(["C(S,S)", "十口"]);
+    // 胡 is split once: 古 stays whole on the left.
+    expect(byPosition(fixture("胡"))).toEqual([
+      "R(S,S)",
+      "古月",
+      [
+        [0, 1, 2, 3, 4],
+        [5, 6, 7, 8],
+      ],
+    ]);
+  });
+
+  it("agrees with the split by geometry at two slots for the fixtures", () => {
+    for (const char of ["古", "胡", "沐", "困", "林"]) {
+      const labels = decomposeByPosition(fixture(char))!;
+      const boxes = decompose(fixture(char), { maxSlots: 2 });
+      expect(labels.layout.signature, char).toBe(boxes.layout.signature);
+      expect(labels.components, char).toEqual(boxes.components);
+      expect(labels.strokes, char).toEqual(boxes.strokes);
+      expect(labels.layoutGuessed).toBe(false);
+    }
+  });
+
+  it("numbers the slots by position, whatever the order in the source", () => {
+    const glyph = labelled({ ...leaf("右", 0, 3), p: "right" }, { ...leaf("左", 3, 3), p: "left" });
+    expect(byPosition(glyph)?.slice(0, 2)).toEqual(["R(S,S)", "左右"]);
+    const stacked = labelled({ ...leaf("下", 0, 3), p: "bottom" }, { ...leaf("上", 3, 3), p: "top" });
+    expect(byPosition(stacked)?.slice(0, 2)).toEqual(["C(S,S)", "上下"]);
+  });
+
+  it("gives an enclosure the shape its label or its name says, the enclosing part first", () => {
+    expect(byPosition(fixture("困"))).toEqual([
+      "E:full(S)",
+      "囗木",
+      [
+        [0, 1, 6],
+        [2, 3, 4, 5],
+      ],
+    ]);
+    const shaped = (outer: ComponentRecord): string | undefined =>
+      byPosition(labelled({ ...leaf("中", 0, 3), p: "inside" }, { ...outer, p: "enclosure" }))?.[0];
+    expect(shaped({ ...leaf("广", 3, 3), pd: "tare" })).toBe("E:top-left(S)");
+    expect(shaped({ ...leaf("辶", 3, 3), pd: "nyo" })).toBe("E:bottom-left(S)");
+    expect(shaped({ ...leaf("門", 3, 3), pd: "kamae" })).toBe("E:top(S)");
+    expect(shaped({ ...leaf("勹", 3, 3), pd: "kamae" })).toBe("E:top-right(S)");
+    expect(KAMAE_SHAPES["囗"]).toBe("full");
+    // A name the table does not list: the shape is read off the strokes, here a closed box.
+    expect(shaped({ ...leaf("匣", 3, 3), pd: "kamae" })).toBe("E:full(S)");
+  });
+
+  it("gives up where the labels do not say", () => {
+    expect(decomposeByPosition(fixture("十"))).toBeNull();
+    expect(decomposeByPosition(labelled(leaf("甲", 0, 3), leaf("乙", 3, 3)))).toBeNull();
+    expect(decomposeByPosition(labelled({ ...leaf("甲", 0, 3), p: "left" }, leaf("乙", 3, 3)))).toBeNull();
+    expect(decomposeByPosition(labelled({ ...leaf("甲", 0, 3), p: "left" }, { ...leaf("乙", 3, 3), p: "left" }))).toBeNull();
+    expect(decomposeByPosition(labelled({ ...leaf("甲", 0, 3), p: "left" }, { ...leaf("乙", 3, 3), p: "bottom" }))).toBeNull();
+    // Three parts at the top: left, middle, right.
+    const three = handGlyph("字", [...boxLines(0, 0, 300, 900), ...boxLines(350, 0, 300, 900), ...boxLines(700, 0, 300, 900)], {
+      c: [
+        { ...leaf("甲", 0, 3), p: "left" },
+        { ...leaf("乙", 3, 3), p: "middle" },
+        { ...leaf("丙", 6, 3), p: "right" },
+      ],
+    });
+    expect(decomposeByPosition(three)).toBeNull();
+    // An enclosing part that shows no shape: a single stroke.
+    const stroke = handGlyph("字", [[[100, 100], [900, 900]], ...boxLines(250, 250, 500, 500)], {
+      c: [
+        { ...leaf("丿", 0, 1), p: "enclosure" },
+        { ...leaf("口", 1, 3), p: "inside" },
+      ],
+    });
+    expect(decomposeByPosition(stroke)).toBeNull();
   });
 });

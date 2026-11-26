@@ -10,7 +10,7 @@ import { splitRuns, strokesBox, walkComponents } from "../glyph/tree";
 import type { ComponentNode, Glyph } from "../glyph/types";
 import { boxCenter, boxHeight, boxWidth, distance, polylineLength, resample, type Box, type Point } from "../util/geometry";
 import { layoutFromBoxes, makeLayout } from "./layout";
-import type { Decomposition, EncloseShape } from "./types";
+import type { Decomposition, EncloseShape, LayoutNode } from "./types";
 
 export interface DecomposeOptions {
   /** Most parts (slots) the character may be broken into. Default 4. */
@@ -328,5 +328,81 @@ export function decompose(glyph: Glyph, options: DecomposeOptions = {}): Decompo
     layoutGuessed: guessed,
     components: order.map((p) => parts[p]!.key),
     strokes: order.map((p) => parts[p]!.strokes),
+  };
+}
+
+/**
+ * Enclosing components whose position label does not say which sides they cover
+ * (KanjiVG calls them all "kamae"), with the shape they have. Components outside this
+ * list have their shape read off their strokes.
+ */
+export const KAMAE_SHAPES: Readonly<Record<string, EncloseShape>> = {
+  門: "top",
+  冂: "top",
+  鬥: "top",
+  囗: "full",
+  匚: "left",
+  匸: "left",
+  凵: "bottom",
+  勹: "top-right",
+  弋: "top-right",
+  戈: "top-right",
+  气: "top-right",
+};
+
+/**
+ * Break a character once, by the position labels its source gives its two top-level
+ * parts (our own design; the labels are KanjiVG's `kvg:position`, the classes those of
+ * the Japanese radical positions):
+ *
+ *  - left and right (hen and tsukuri) give a row,
+ *  - top and bottom (kanmuri and ashi) a column,
+ *  - an enclosing part and what it holds an enclosure, whose shape is "top-left" for a
+ *    part labelled tare, "bottom-left" for nyo, and otherwise (kamae) looked up in
+ *    `KAMAE_SHAPES` or read off the part's strokes.
+ *
+ * Slots are numbered as in every layout: left before right, top before bottom, the
+ * enclosing part before what it holds. Nothing is measured, so this works where the
+ * parts' boxes overlap; but it needs the labels. Returns null when the character does
+ * not divide cleanly into exactly two named parts at the top, when a label is missing or
+ * names another arrangement (a middle part, say), or when an enclosing part shows no
+ * shape. KanjiVG labels the top level of 97% of its characters; below the top level only
+ * about half, which is why this goes one level deep and no further.
+ */
+export function decomposeByPosition(glyph: Glyph): Decomposition | null {
+  if (glyph.strokes.length === 0) return null;
+  const runs = splitRuns(glyph.root);
+  const parts = childParts(glyph.root, runs, standInRuns(glyph.root, runs));
+  if (parts === null || parts.length !== 2) return null;
+  const at = (position: string): Part | undefined => parts.find((part) => part.nodes[0]?.position === position);
+  const pair = (first: string, second: string): [Part, Part] | null => {
+    const a = at(first);
+    const b = at(second);
+    return a !== undefined && b !== undefined && a !== b ? [a, b] : null;
+  };
+
+  let tree: LayoutNode | null = null;
+  let order: [Part, Part] | null = null;
+  if ((order = pair("left", "right")) !== null) {
+    tree = { kind: "row", children: [{ kind: "slot" }, { kind: "slot" }] };
+  } else if ((order = pair("top", "bottom")) !== null) {
+    tree = { kind: "column", children: [{ kind: "slot" }, { kind: "slot" }] };
+  } else if ((order = pair("enclosure", "inside")) !== null) {
+    const outer = order[0];
+    const label = outer.nodes[0]?.positionDetail ?? "";
+    const shape = label.startsWith("tare")
+      ? "top-left"
+      : label.startsWith("nyo")
+        ? "bottom-left"
+        : (KAMAE_SHAPES[outer.key] ?? encloseHint(glyph, outer));
+    if (shape !== undefined) tree = { kind: "enclose", shape, inner: { kind: "slot" } };
+  }
+  if (tree === null || order === null) return null;
+  return {
+    char: glyph.char,
+    layout: makeLayout(tree),
+    layoutGuessed: false,
+    components: order.map((part) => part.key),
+    strokes: order.map((part) => part.strokes),
   };
 }

@@ -5,7 +5,15 @@ import { createRng } from "../util/rng";
 import { evaluateAttempt } from "./assembly";
 import { buildLookAlikeTable, tellApart, visibleDifference } from "./lookalike";
 import { mutateGlyph } from "./mutate";
-import { MIN_MALFORMED_DIFFERENCE, MIN_TILE_DIFFERENCE, createAssemblyPuzzle, type PuzzleContext } from "./puzzle";
+import { DEMO_FRAMES, layoutCatalogue, layoutsLookAlike, parseLayout } from "./layout";
+import {
+  CLASSIC_PUZZLE,
+  MIN_MALFORMED_DIFFERENCE,
+  MIN_TILE_DIFFERENCE,
+  ZEN_HANZI_PUZZLE,
+  createAssemblyPuzzle,
+  type PuzzleContext,
+} from "./puzzle";
 import { EARTH_LINES, SCHOLAR_LINES, boxLines, handGlyph, randomTreeGlyph, type TestLine } from "./test-glyphs";
 import type { AssemblyPuzzle, LookAlikeTable, PuzzleOptions } from "./types";
 
@@ -37,11 +45,14 @@ function solvingPlacements(puzzle: AssemblyPuzzle): string[] {
   });
 }
 
+const isRight = (tile: AssemblyPuzzle["tray"][number]): boolean => tile.role === "correct" || tile.role === "copy";
+
 /** Every distractor and filler can be told from every other tile; made-up shapes by a wider margin. */
 function expectDistinctTiles(puzzle: AssemblyPuzzle): void {
   puzzle.tray.forEach((a, i) => {
     for (const b of puzzle.tray.slice(i + 1)) {
-      if (a.role === "correct" && b.role === "correct") continue;
+      // Right tiles may repeat: a part needed twice, and identical copies of right parts.
+      if (isRight(a) && isRight(b)) continue;
       const least = a.role === "malformed" || b.role === "malformed" ? MIN_MALFORMED_DIFFERENCE : MIN_TILE_DIFFERENCE;
       expect(tellApart(a.glyph, b.glyph, least), `${a.shows} and ${b.shows} look alike`).toBe(true);
     }
@@ -56,7 +67,11 @@ function expectWellFormed(puzzle: AssemblyPuzzle): void {
 
   const correct = puzzle.tray.filter((t) => t.role === "correct");
   expect(correct.map((t) => t.shows).sort()).toEqual([...puzzle.solution].sort());
-  const others = puzzle.tray.filter((t) => t.role !== "correct");
+  for (const copy of puzzle.tray.filter((t) => t.role === "copy")) {
+    expect(puzzle.solution).toContain(copy.shows);
+    expect(copy.glyph).toBe(correct.find((t) => t.shows === copy.shows)!.glyph);
+  }
+  const others = puzzle.tray.filter((t) => !isRight(t));
   expect(new Set(others.map((t) => t.shows)).size).toBe(others.length);
   for (const tile of others) expect(puzzle.solution).not.toContain(tile.shows);
 
@@ -431,5 +446,184 @@ describe("createAssemblyPuzzle", () => {
     const first = createAssemblyPuzzle(fixture("胡"), ctx, { traySize: 9 }, rng);
     const second = createAssemblyPuzzle(fixture("胡"), ctx, { traySize: 9 }, rng);
     expect(second.tray.map((t) => t.shows).join()).not.toBe(first.tray.map((t) => t.shows).join());
+  });
+
+  describe("copies of right parts", () => {
+    const fillers = ["木", "氵", "土", "士", "月"];
+    const copiesOf = (puzzle: AssemblyPuzzle): string[] => puzzle.tray.filter((t) => t.role === "copy").map((t) => t.shows);
+
+    it("deals none unless asked", () => {
+      expect(copiesOf(make("胡", context(NO_TABLE, COMPONENTS)))).toEqual([]);
+      expect(copiesOf(make("胡", context(NO_TABLE, COMPONENTS), { copies: 0, traySize: 12 }))).toEqual([]);
+    });
+
+    it("deals identical copies, one per distinct part in turn, each accepted like its original", () => {
+      const two = make("古", context(NO_TABLE, fillers), { copies: 2, traySize: 12 });
+      expectWellFormed(two);
+      expect(copiesOf(two).sort()).toEqual(["十", "口"].sort());
+      const three = make("古", context(NO_TABLE, fillers), { copies: 3, traySize: 12 });
+      expectWellFormed(three);
+      expect(copiesOf(three)).toHaveLength(3);
+      expect(new Set(copiesOf(three))).toEqual(new Set(["十", "口"]));
+      // Any copy solves the puzzle in place of the original.
+      const layout = three.correctLayout;
+      for (const first of three.tray.filter((t) => t.shows === three.solution[0])) {
+        for (const second of three.tray.filter((t) => t.shows === three.solution[1])) {
+          expect(evaluateAttempt(three, { layout, placements: [first.id, second.id] }).solved).toBe(true);
+        }
+      }
+    });
+
+    it("keeps within an explicit tray size, and adds a row by itself without one", () => {
+      // 3 correct + 3 made-up shapes: a tray of 7 has room for one copy, a tray of 6 for none.
+      expect(copiesOf(make("胡", context(NO_TABLE, COMPONENTS), { copies: 3, traySize: 7 }))).toHaveLength(1);
+      expect(copiesOf(make("胡", context(NO_TABLE, COMPONENTS), { copies: 3, traySize: 6 }))).toEqual([]);
+      expect(copiesOf(make("胡", context(NO_TABLE, COMPONENTS), { copies: 3, traySize: 2 }))).toEqual([]);
+      const open = make("胡", context(), { copies: 3 });
+      expect(copiesOf(open)).toHaveLength(3);
+      expect(open.tray).toHaveLength(9);
+    });
+
+    it("leaves the rule for wrong tiles in force: no distractor or filler looks like another tile", () => {
+      for (let seed = 0; seed < 20; seed++) {
+        const puzzle = make("胡", context({ 十: ["土", "士"], 月: ["木"] }, [...COMPONENTS, "土", "士"]), { copies: 3, traySize: 18, lookAlikesPerComponent: 2 }, seed);
+        expectWellFormed(puzzle);
+        expect(copiesOf(puzzle)).toHaveLength(3);
+      }
+    });
+
+    it("refuses a negative number of copies", () => {
+      expect(() => make("胡", context(), { copies: -1 })).toThrow(RangeError);
+    });
+  });
+});
+
+describe("structures on offer", () => {
+  const signatures = (puzzle: AssemblyPuzzle): string[] => puzzle.layouts.map((layout) => layout.signature);
+  const demo = DEMO_FRAMES.map((frame) => frame.signature);
+
+  it("are made for the character unless the options say otherwise", () => {
+    const byDefault = make("胡", context());
+    expect(signatures(make("胡", context(), { structures: "alternatives" }))).toEqual(signatures(byDefault));
+    for (const layout of byDefault.layouts) expect(layout.slots).toHaveLength(3);
+  });
+
+  it("come from the catalogue under 'catalogue': the right one and decoys of any slot count, drawn afresh", () => {
+    const boards = new Set<string>();
+    const counts = new Set<number>();
+    for (let seed = 0; seed < 40; seed++) {
+      const puzzle = make("胡", context(), { structures: "catalogue" }, seed);
+      expectWellFormed(puzzle);
+      expect(puzzle.layouts).toHaveLength(4);
+      expect(puzzle.layouts[puzzle.correctLayout]!.signature).toBe("R(C(S,S),S)");
+      for (const signature of signatures(puzzle)) expect(demo).toContain(signature);
+      puzzle.layouts.forEach((a, i) => {
+        for (const b of puzzle.layouts.slice(i + 1)) expect(layoutsLookAlike(a, b)).toBe(false);
+      });
+      for (const layout of puzzle.layouts) counts.add(layout.slots.length);
+      boards.add(signatures(puzzle).join(" "));
+    }
+    // The decoys and the place of the right frame change from board to board; the right frame never does.
+    expect(boards.size).toBeGreaterThan(20);
+    expect([...counts].sort()).toEqual([2, 3, 4]);
+    expect(new Set(Array.from({ length: 40 }, (_, seed) => make("胡", context(), { structures: "catalogue" }, seed).correctLayout)).size).toBe(4);
+  });
+
+  it("take the frames given, and keep a structure outside them as the right one", () => {
+    const frames = ["R(S,S)", "C(S,S)", "E:top(S)", "E:full(S)", "R(S,S,S)"].map(parseLayout);
+    for (let seed = 0; seed < 10; seed++) {
+      const puzzle = make("胡", context(), { structures: "catalogue", frames }, seed);
+      expect(puzzle.layouts[puzzle.correctLayout]!.signature).toBe("R(C(S,S),S)");
+      expect(signatures(puzzle).filter((signature) => signature !== "R(C(S,S),S)").every((signature) => frames.some((f) => f.signature === signature))).toBe(true);
+    }
+    // A short catalogue gives a short board.
+    expect(make("沐", context(), { structures: "catalogue", frames: frames.slice(0, 2) }).layouts).toHaveLength(2);
+  });
+
+  it("are one fixed set in fixed places under 'fixed'", () => {
+    const frames = ["R(S,S)", "C(S,S)", "R(C(S,S),S)", "E:full(S)"].map(parseLayout);
+    const expected = frames.map((frame) => frame.signature);
+    for (const [char, correct] of [
+      ["沐", 0],
+      ["古", 1],
+      ["胡", 2],
+      ["困", 3],
+    ] as const) {
+      for (const seed of [1, 2, 3]) {
+        const puzzle = make(char, context(), { structures: "fixed", frames }, seed);
+        expectWellFormed(puzzle);
+        expect(signatures(puzzle), char).toEqual(expected);
+        expect(puzzle.correctLayout, char).toBe(correct);
+      }
+    }
+    // Without frames of its own: the first of the demo's nine, the character's own in the last place when it is none of them.
+    expect(signatures(make("困", context(), { structures: "fixed" }))).toEqual(["C(S,S)", "R(S,S)", "C(S,S,S)", "E:full(S)"]);
+    expect(signatures(make("沐", context(), { structures: "fixed", layoutChoices: 2 }))).toEqual(["C(S,S)", "R(S,S)"]);
+  });
+
+  it("split the character once by its position labels under 'positions'", () => {
+    const hu = make("胡", context(), { structures: "positions" });
+    expectWellFormed(hu);
+    expect(hu.solution).toEqual(["古", "月"]);
+    expect(hu.parts).toEqual([
+      [0, 1, 2, 3, 4],
+      [5, 6, 7, 8],
+    ]);
+    // The frames are the position classes, the same for every character.
+    const classes = layoutCatalogue(2).slice(0, 4).map((frame) => frame.signature);
+    expect(signatures(hu)).toEqual(classes);
+    expect(signatures(make("古", context(), { structures: "positions" }))).toEqual(classes);
+    expect(hu.layouts[hu.correctLayout]!.signature).toBe("R(S,S)");
+    const kun = make("困", context(), { structures: "positions", frames: ["R(S,S)", "C(S,S)", "E:full(S)"].map(parseLayout) });
+    expect(kun.solution).toEqual(["囗", "木"]);
+    expect(kun.correctLayout).toBe(2);
+    // maxSlots plays no part.
+    expect(make("胡", context(), { structures: "positions", maxSlots: 4 }).solution).toEqual(["古", "月"]);
+  });
+
+  it("fall back on geometry under 'positions' where the labels are missing", () => {
+    const unlabelled = handGlyph("字", [...boxLines(0, 0, 400, 900), ...boxLines(550, 0, 400, 900)], {
+      c: [
+        { e: "口", s: [0, 1, 2] },
+        { e: "口", s: [3, 4, 5] },
+      ],
+    });
+    const puzzle = createAssemblyPuzzle(unlabelled, context(), { structures: "positions" }, createRng(1));
+    expect(puzzle.solution).toEqual(["口", "口"]);
+    expect(puzzle.layouts[puzzle.correctLayout]!.signature).toBe("R(S,S)");
+  });
+
+  it("say which strokes each slot of the right structure holds", () => {
+    expect(make("胡", context()).parts).toEqual([
+      [0, 1],
+      [2, 3, 4],
+      [5, 6, 7, 8],
+    ]);
+  });
+
+  it("refuse an unknown mode", () => {
+    expect(() => make("胡", context(), { structures: "random" as never })).toThrow(RangeError);
+  });
+});
+
+describe("the named option sets", () => {
+  const fillers = ["十", "口", "木", "月", "氵", "土", "士"];
+
+  it("ZEN_HANZI_PUZZLE lays a puzzle out as the demo does", () => {
+    expect(ZEN_HANZI_PUZZLE).toMatchObject({ layoutChoices: 4, structures: "catalogue", trayRows: 3, traySize: 18 });
+    const puzzle = make("胡", context(NO_TABLE, fillers), ZEN_HANZI_PUZZLE);
+    expectWellFormed(puzzle);
+    expect(puzzle.layouts).toHaveLength(4);
+    expect(puzzle.trayRows).toBe(3);
+    expect(puzzle.tray.filter((tile) => tile.role === "copy")).toHaveLength(2);
+    expect(puzzle.tray.length).toBeLessThanOrEqual(18);
+  });
+
+  it("CLASSIC_PUZZLE lays it out as Kumiki did", () => {
+    expect(CLASSIC_PUZZLE).toMatchObject({ layoutChoices: 4, structures: "alternatives", trayRows: 3, traySize: 12, copies: 0 });
+    const puzzle = make("胡", context(NO_TABLE, fillers), CLASSIC_PUZZLE);
+    expectWellFormed(puzzle);
+    for (const layout of puzzle.layouts) expect(layout.slots).toHaveLength(3);
+    expect(puzzle.tray.some((tile) => tile.role === "copy")).toBe(false);
   });
 });

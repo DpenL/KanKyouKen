@@ -1,17 +1,20 @@
 /** The assembly screen: prompt, structures, tray, check and hint, and the staged feedback. */
 
 import type { ComponentTile } from "@kankyouken/mechanics/components";
-import { TONE_ICON, feedbackCounts, feedbackLines, type FeedbackLine } from "../feedback";
+import { TONE_ICON, feedbackCounts, feedbackLines, heartsText, hintCostNote, type FeedbackLine } from "../feedback";
 import {
   canCheck,
+  canTakeHint,
   check,
   checksItself,
+  hintCharge,
   isOver,
+  lookAtCharacter,
   moveTile,
   potentialScore,
   returnTile,
-  takeHint,
   type CheckData,
+  type HintData,
   type Round,
 } from "../round";
 import type { RuleChoices } from "../rules";
@@ -20,7 +23,7 @@ import { createBoardView } from "./board-view";
 import { backButton, button, h } from "./dom";
 import { createGlyphBoard, type GlyphBoard } from "./glyph-board";
 
-/** How long the hint keeps the character on show. */
+/** How long the hint keeps the character on show when it goes away by itself. */
 const HINT_MS = 2500;
 /** Pause between the final check and the reveal, so the last feedback can be read. */
 const OUTCOME_DELAY_MS = 900;
@@ -28,7 +31,7 @@ const OUTCOME_DELAY_MS = 900;
 const AUTO_CHECK_MS = 350;
 
 /** The choices of the rules that change how the screen looks and behaves. */
-export type AssemblyLook = Pick<RuleChoices, "check" | "feedback">;
+export type AssemblyLook = Pick<RuleChoices, "check" | "feedback" | "hintStays" | "board">;
 
 export interface AssemblyOptions {
   readonly round: Round;
@@ -40,7 +43,8 @@ export interface AssemblyOptions {
   quit(): void;
   /** A check was made; `data` is the payload of its event. */
   checked(data: CheckData): void;
-  hinted(round: Round): void;
+  /** A hint was taken; `data` is the payload of its event. */
+  hinted(round: Round, data: HintData): void;
   /** The round has just been solved or failed; its last feedback is on screen. */
   over(round: Round): void;
   /** Some time after `over`, when the last feedback has been read. Not called if the player leaves first. */
@@ -54,8 +58,12 @@ export function assemblyScreen(app: App, options: AssemblyOptions): { screen: HT
   let doneTimer: number | undefined;
   let autoTimer: number | undefined;
   let lostLife = false;
+  /** The round was lost to a hint that took the last of the hearts; the reveal follows once the hint is put away. */
+  let lostToHint = false;
   /** The feedback panel is up (look.feedback "panel"); the board waits until it is closed. */
   let panelUp = false;
+  /** What the latest check reported, for the panel. */
+  let lastCheck: CheckData | null = null;
   const { look } = options;
   const entry = app.content.lexicon.get(round.char);
   const glyph = app.content.glyphs.get(round.char)!;
@@ -70,11 +78,20 @@ export function assemblyScreen(app: App, options: AssemblyOptions): { screen: HT
     look.check === "frame" && round.board.layout === layout && canCheck(round) && !panelUp && hintBoard === null
       ? button("Check", { class: "primary frame-check", "data-action": "check" }, () => onCheck())
       : null;
-  const hintButton = button("Hint", { class: "ghost", "data-action": "hint" }, () => onHint());
+  const hintCost = h("span", { class: "hint-cost" });
+  const hintButton = button("Hint", { class: "ghost hint-button", "data-action": "hint" }, () => onHint());
+  hintButton.append(hintCost);
+  const hasHints = round.rules.hint !== "off";
   const hint = h("div", { class: "hint-overlay", hidden: true, "aria-hidden": "true" });
   const panel = h("div", { class: "feedback-panel", hidden: true, role: "dialog", "aria-modal": "false", "aria-label": "Result" });
 
-  const screen = h("main", { class: "screen assembly", "data-mode": round.mode, "data-check": look.check, "data-feedback": look.feedback });
+  const screen = h("main", {
+    class: "screen assembly",
+    "data-mode": round.mode,
+    "data-check": look.check,
+    "data-feedback": look.feedback,
+    "data-board": look.board,
+  });
   const sync = (): void => {
     app.probe.state = round.state;
     app.probe.board = round.board;
@@ -104,27 +121,29 @@ export function assemblyScreen(app: App, options: AssemblyOptions): { screen: HT
 
   function renderStatus(): void {
     sync();
-    const { livesLeft } = round.state;
+    const { livesLeft, livesMax } = round.state;
     if (livesLeft === null) {
       lives.replaceChildren(h("span", { class: "lives-free" }, "Unlimited tries"));
       lives.setAttribute("aria-label", "Unlimited tries");
     } else {
-      const total = round.rules.lives ?? livesLeft;
+      const total = livesMax ?? livesLeft;
       lives.replaceChildren(
-        ...Array.from({ length: total }, (_, index) =>
+        ...Array.from({ length: Math.ceil(total) }, (_, index) =>
           h("span", {
             class: "life",
-            "data-left": index < livesLeft ? "true" : "false",
-            "data-leaving": lostLife && index === livesLeft ? "true" : null,
+            // Hearts are lost and won in halves under some rules.
+            "data-left": livesLeft >= index + 1 ? "true" : livesLeft > index ? "half" : "false",
+            "data-leaving": lostLife && index === Math.min(Math.ceil(total) - 1, Math.floor(livesLeft)) ? "true" : null,
           }),
         ),
       );
-      lives.setAttribute("aria-label", `${livesLeft} of ${total} lives left`);
+      lives.setAttribute("aria-label", `${heartsText(livesLeft)} of ${heartsText(total)} lives left`);
     }
     attempts.replaceChildren(h("span", { class: "stat-label" }, "Checks"), h("strong", {}, String(round.state.attempts)));
     score.replaceChildren(
       h("span", { class: "stat-label" }, "Score"),
-      h("strong", {}, String(options.banked)),
+      // Under the demo's scoring a wrong check earns points too; they show at once.
+      h("strong", {}, String(options.banked + (round.state.solved ? 0 : round.state.score))),
       // What solving is worth right now; it drops with every check and hint.
       h(
         "span",
@@ -135,7 +154,8 @@ export function assemblyScreen(app: App, options: AssemblyOptions): { screen: HT
       ),
     );
     checkButton.disabled = !canCheck(round) || panelUp;
-    hintButton.disabled = isOver(round) || panelUp;
+    hintButton.disabled = !canTakeHint(round) || panelUp || hintBoard !== null;
+    hintCost.textContent = hasHints ? hintCostNote(hintCharge(round), round.state.hintTokens) : "";
   }
 
   const lineElement = (line: FeedbackLine): HTMLElement =>
@@ -167,11 +187,14 @@ export function assemblyScreen(app: App, options: AssemblyOptions): { screen: HT
     const result = round.feedback;
     if (result === null) return;
     const solved = round.state.solved;
+    const earned = lastCheck?.points ?? 0;
+    const points = earned > 0 ? [h("p", { class: "panel-points", "data-points": earned }, `+${earned} points`)] : [];
     const lines = solved
-      ? [h("p", { class: "panel-title" }, "Joined!"), h("p", { class: "panel-meaning" }, entry?.meaning ?? "")]
+      ? [h("p", { class: "panel-title" }, "Joined!"), h("p", { class: "panel-meaning" }, entry?.meaning ?? ""), ...points]
       : [
           h("p", { class: "panel-title" }, round.state.failed ? "Out of lives" : "Not yet"),
           ...feedbackCounts(result).map(lineElement),
+          ...points,
         ];
     const proceed = button("Continue", { class: "primary", "data-action": "continue" }, () => closePanel());
     panel.replaceChildren(...lines, h("div", { class: "actions" }, proceed));
@@ -204,8 +227,9 @@ export function assemblyScreen(app: App, options: AssemblyOptions): { screen: HT
     if (panelUp) return;
     const outcome = check(round, Date.now());
     if (outcome === null) return;
-    lostLife = outcome.round.state.livesLeft !== round.state.livesLeft;
+    lostLife = (outcome.round.state.livesLeft ?? 0) < (round.state.livesLeft ?? 0);
     round = outcome.round;
+    lastCheck = outcome.data;
     // The screen first: whatever follows (events, sound) must not keep the answer back.
     boardView.refresh();
     renderStatus();
@@ -229,59 +253,84 @@ export function assemblyScreen(app: App, options: AssemblyOptions): { screen: HT
     }, AUTO_CHECK_MS);
   }
 
-  function hideHint(): void {
+  /** Put the hint away. `proceed` false when the screen is being left. */
+  function hideHint(proceed = true): void {
     window.clearTimeout(hintTimer);
     hint.hidden = true;
     hint.replaceChildren();
     hintBoard?.dispose();
     const shown = hintBoard !== null;
     hintBoard = null;
-    if (shown) {
-      boardView.refresh();
-      scheduleAutoCheck();
+    if (!shown || !proceed) return;
+    if (lostToHint) {
+      options.done(round);
+      return;
     }
+    boardView.refresh();
+    renderStatus();
+    scheduleAutoCheck();
   }
 
   function onHint(): void {
-    if (isOver(round) || hintBoard !== null) return;
-    round = takeHint(round);
+    if (hintBoard !== null || panelUp) return;
+    const outcome = lookAtCharacter(round);
+    if (outcome === null) return;
+    lostLife = (outcome.round.state.livesLeft ?? 0) < (round.state.livesLeft ?? 0);
+    round = outcome.round;
+    lostToHint = isOver(round);
     hintBoard = createGlyphBoard(glyph, "The character");
     hintBoard.view.setAllStrokes("done");
-    hint.replaceChildren(hintBoard.element);
+    const stays = look.hintStays === "continue";
+    const proceed = stays ? button("Continue", { class: "primary", "data-action": "hint-continue" }, () => hideHint()) : null;
+    hint.replaceChildren(
+      hintBoard.element,
+      ...(lostToHint ? [h("p", { class: "hint-note" }, "That was the last of your lives.")] : []),
+      ...(proceed === null ? [] : [proceed]),
+    );
+    hint.setAttribute("data-stays", look.hintStays);
+    hint.setAttribute("aria-hidden", stays ? "false" : "true");
     hint.hidden = false;
     boardView.refresh();
     renderStatus();
-    hintTimer = window.setTimeout(hideHint, HINT_MS);
-    options.hinted(round);
-    app.sound.cue("hint");
+    if (proceed === null) hintTimer = window.setTimeout(() => hideHint(), HINT_MS);
+    else proceed.focus({ preventScroll: true });
+    options.hinted(round, outcome.data);
+    // Counted the moment it ends, like a round lost to a check.
+    if (lostToHint) options.over(round);
+    app.sound.cue(lostToHint ? "error" : "hint");
   }
 
+  // "compact" (the demo's arrangement): the status in the top bar and Hint beside the prompt, so
+  // that nothing but a Check bar, when the rules have one, lies below the tray.
+  const compact = look.board === "compact";
+  const status = h("div", { class: "status" }, lives, attempts, score);
+  const prompt = h(
+    "section",
+    { class: "prompt" },
+    h("h1", { class: "meaning" }, entry?.meaning ?? ""),
+    h("p", { class: "reading", lang: "ja" }, entry?.reading ?? ""),
+  );
+  const below = [compact || !hasHints ? null : hintButton, look.check === "bar" ? checkButton : null].filter((control) => control !== null);
   screen.append(
     h(
       "header",
       { class: "bar" },
       backButton(options.quit),
+      compact ? status : null,
       h("span", { class: "bar-progress" }, options.progress),
     ),
-    h(
-      "section",
-      { class: "prompt" },
-      h("h1", { class: "meaning" }, entry?.meaning ?? ""),
-      h("p", { class: "reading", lang: "ja" }, entry?.reading ?? ""),
-    ),
-    h("div", { class: "status" }, lives, attempts, score),
-    h("div", { class: "frames-wrap" }, boardView.frames, hint, panel),
-    feedback,
-    boardView.tray,
-    h("div", { class: "actions" }, hintButton, look.check === "bar" ? checkButton : null),
+    compact ? h("div", { class: "prompt-row" }, prompt, hasHints ? hintButton : null) : prompt,
   );
+  if (!compact) screen.append(status);
+  screen.append(h("div", { class: "frames-wrap" }, boardView.frames, hint, panel), feedback, boardView.tray);
+  if (below.length > 0) screen.append(h("div", { class: "actions" }, ...below));
   renderStatus();
   renderFeedback();
 
   return {
     screen,
     leave() {
-      hideHint();
+      hideHint(false);
       window.clearTimeout(doneTimer);
       window.clearTimeout(autoTimer);
       boardView.dispose();

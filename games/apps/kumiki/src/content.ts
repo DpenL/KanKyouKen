@@ -4,7 +4,16 @@
  */
 
 import { symmetricLookAlikes, type SetDefinition } from "@kankyouken/glyph-data";
-import { buildLookAlikeTable, decompose, type PuzzleContext } from "@kankyouken/mechanics/components";
+import {
+  DEMO_FRAMES,
+  buildLookAlikeTable,
+  decompose,
+  decomposeByPosition,
+  frameSet,
+  layoutCatalogue,
+  type Layout,
+  type PuzzleContext,
+} from "@kankyouken/mechanics/components";
 import { walkComponents, type Glyph } from "@kankyouken/mechanics/glyph";
 import type { Rng } from "@kankyouken/mechanics/util";
 
@@ -27,9 +36,39 @@ export interface LexiconEntry {
   readonly reading: string;
 }
 
+/**
+ * The frames the structure modes other than Kumiki's own draw on (see `StructureMode`),
+ * the structures the set's characters have first, most frequent first.
+ */
+export interface Frames {
+  /**
+   * For characters split into their parts: the structures the characters have, then the
+   * rest of the nine frames of the Zen Hanzi demo. In the demo the catalogue is exactly
+   * the structures of its ten characters; ours have enclosures too, which would give
+   * themselves away as the only one of their kind on a board without this. Frames with
+   * a slot narrower than `MIN_FRAME_SLOT` are left out.
+   */
+  readonly parts: readonly Layout[];
+  /** For characters split once by position: the position classes in use, then every other two-slot structure. */
+  readonly positions: readonly Layout[];
+}
+
+/**
+ * The narrowest slot a frame may have to be offered beside the right one, as a share of
+ * the frame: a little under the third that is the narrowest slot of the demo's nine
+ * frames. Finer frames (落 has one: a part over a part beside two stacked ones) are hard
+ * to hit on a phone; a character that has one still gets it as its own structure.
+ */
+export const MIN_FRAME_SLOT = 0.3;
+
+function roomy(layout: Layout): boolean {
+  return layout.slots.every((slot) => Math.min(slot.rect.w, slot.rect.h) >= MIN_FRAME_SLOT);
+}
+
 export interface Content {
   readonly glyphs: ReadonlyMap<string, Glyph>;
   readonly context: PuzzleContext & { readonly known: ReadonlySet<string> };
+  readonly frames: Frames;
   /** The family decks in set order, then the Mixed deck. */
   readonly decks: readonly Deck[];
   readonly lexicon: ReadonlyMap<string, LexiconEntry>;
@@ -98,7 +137,18 @@ export function buildContent(glyphs: ReadonlyMap<string, Glyph>, set: SetDefinit
 
   const lexicon = new Map<string, LexiconEntry>();
   for (const char of mixed.chars) lexicon.set(char, describe(set.lexicon[char]!));
-  return { glyphs, context: { glyphs, lookAlikes, fillers, known, sameShape }, decks: [...families, mixed], lexicon };
+  const playing = mixed.chars.map((char) => glyphs.get(char)!);
+  const frames: Frames = {
+    parts: frameSet(
+      playing.map((glyph) => decompose(glyph, { known }).layout),
+      DEMO_FRAMES,
+    ).filter(roomy),
+    positions: frameSet(
+      playing.map((glyph) => (decomposeByPosition(glyph) ?? decompose(glyph, { known, maxSlots: 2 })).layout),
+      layoutCatalogue(2),
+    ),
+  };
+  return { glyphs, context: { glyphs, lookAlikes, fillers, known, sameShape }, frames, decks: [...families, mixed], lexicon };
 }
 
 /** The characters of one run through a deck, shuffled; the Mixed deck is sampled down to `MIXED_DECK_SIZE`. */

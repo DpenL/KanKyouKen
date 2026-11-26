@@ -3,11 +3,11 @@
 import { drawDeck, type Deck } from "../content";
 import { examChar, examTotals, startExam, submitExamItem } from "../exam";
 import { buildPuzzle, startRound, type Mode, type Round } from "../round";
-import { assemblyRules, puzzleOptions } from "../rules";
+import { assemblyRules, puzzleOptions, runRules } from "../rules";
 import { bestScore, withScore } from "../saved";
-import { currentChar, finishRound, startSession, summarize } from "../session";
+import { canReturn, currentChar, finishRound, roundEnd, startSession, summarize } from "../session";
 import { choiceAttemptEvent, gameEvent } from "@kankyouken/mechanics/telemetry";
-import type { AssemblyPuzzle } from "@kankyouken/mechanics/components";
+import { nextRoundStart, roundOutcome, type AssemblyPuzzle } from "@kankyouken/mechanics/components";
 import type { App } from "./app";
 import { assemblyScreen } from "./assembly";
 import { openAbout, openExamChooser, openSettings } from "./dialogs";
@@ -92,7 +92,7 @@ export function startFlow(app: App): void {
       homeScreen(app, {
         play: playDeck,
         exam: () => openExamChooser(app, runExam),
-        settings: () => openSettings(app),
+        settings: (changed) => openSettings(app, changed),
         about: () => openAbout(app),
       }),
     );
@@ -104,7 +104,8 @@ export function startFlow(app: App): void {
     // A run keeps the rules it started with; a change in Settings applies from the next one.
     const choices = app.rules.choices();
     const rules = assemblyRules(choices, mode);
-    const options = puzzleOptions(choices);
+    const run = runRules(choices);
+    const options = puzzleOptions(choices, app.content.frames);
     let session = startSession(deck.id, mode, drawDeck(deck, rng.fork("order")));
     const at = (item: string): { ts: number; item: string; task: string } => ({ ts: Date.now(), item, task });
     const progress = (): string => `${deck.title} · ${session.index + 1} / ${session.queue.length}`;
@@ -139,15 +140,16 @@ export function startFlow(app: App): void {
     };
 
     const assemble = (char: string, puzzle: AssemblyPuzzle): void => {
-      const round = startRound(char, mode, puzzle, Date.now(), rules);
+      // Hearts and hint tokens come from the round before, as the rules of the run say.
+      const round = startRound(char, mode, puzzle, Date.now(), rules, session.carry);
       const view = assemblyScreen(app, {
         round,
-        look: { check: choices.check, feedback: choices.feedback },
+        look: { check: choices.check, feedback: choices.feedback, hintStays: choices.hintStays, board: choices.board },
         progress: progress(),
         banked: summarize(session).score,
         quit: home,
         checked: (data) => app.record(choiceAttemptEvent(at(char), data)),
-        hinted: (current) => app.record(gameEvent("hint_shown", at(char), { hint: "character", hints_used: current.state.hintsUsed })),
+        hinted: (_current, data) => app.record(gameEvent("hint_shown", at(char), { ...data })),
         over: settle,
         done: reveal,
       });
@@ -155,18 +157,47 @@ export function startFlow(app: App): void {
     };
 
     /** What the reveal of the round just settled needs to know about the deck as it was. */
-    let settled: { readonly label: string; readonly returns: boolean } | null = null;
+    let settled: { readonly label: string; readonly returns: boolean; readonly endsRun: boolean; readonly mastered: boolean } | null = null;
 
     /** Count the round the moment it ends, so that leaving during the pause before the reveal loses nothing. */
     const settle = (round: Round): void => {
-      const { solved, attempts, hintsUsed: hints, score } = round.state;
-      app.record(gameEvent("item_complete", at(round.char), { solved, attempts, hints, score }));
-      settled = { label: progress(), returns: !solved && !session.retried.includes(round.char) };
-      session = finishRound(session, { char: round.char, solved, attempts, hints, score });
+      const { solved, attempts, hintsUsed: hints, score, livesLeft, livesMax, hintTokens } = round.state;
+      const outcome = roundOutcome(round.state, rules, run);
+      // A character comes back once only.
+      const returns = outcome.returns && !outcome.endsRun && canReturn(session, round.char);
+      app.record(
+        gameEvent("item_complete", at(round.char), {
+          solved,
+          attempts,
+          hints,
+          score,
+          mastered: outcome.mastered,
+          returns,
+          ends_run: outcome.endsRun,
+          hint_policy: rules.hint,
+          lives_left: livesLeft,
+          lives_max: livesMax,
+          lives_rule: rules.lives === null ? "none" : rules.livesRule,
+          tokens_left: hintTokens,
+        }),
+      );
+      settled = { label: progress(), returns, endsRun: outcome.endsRun, mastered: outcome.mastered };
+      session = finishRound(
+        session,
+        { char: round.char, solved, attempts, hints, score, mastered: outcome.mastered },
+        roundEnd(outcome, nextRoundStart(round.state, rules, run)),
+      );
     };
 
     const reveal = (round: Round): void => {
-      const view = revealScreen(app, { round, progress: settled?.label ?? progress(), returns: settled?.returns ?? false, next });
+      const view = revealScreen(app, {
+        round,
+        progress: settled?.label ?? progress(),
+        returns: settled?.returns ?? false,
+        endsRun: settled?.endsRun ?? false,
+        mastered: settled?.mastered ?? round.state.solved,
+        next,
+      });
       app.show("reveal", view.screen, view.leave);
     };
 
@@ -175,11 +206,23 @@ export function startFlow(app: App): void {
       clearProbe();
       const summary = summarize(session);
       const saved = app.store.get();
+      // Best scores belong to the classic scoring; the demo's has a running total and nothing to beat.
+      const keepsBest = choices.scoring === "classic";
       const previousBest = bestScore(saved, deck.id, mode);
-      app.store.patch({ best: withScore(saved, deck.id, mode, summary.score) });
+      if (keepsBest && !summary.outOfLives) app.store.patch({ best: withScore(saved, deck.id, mode, summary.score) });
       app.record(gameEvent("deck_complete", { ts: Date.now(), task }, { deck: deck.id, ...summary }));
-      app.sound.cue("complete");
-      app.show("summary", summaryScreen(app, { deck, session, previousBest, again: () => playDeck(deck, mode), home }));
+      app.sound.cue(summary.outOfLives ? "error" : "complete");
+      app.show(
+        "summary",
+        summaryScreen(app, {
+          deck,
+          session,
+          best: keepsBest ? { previous: previousBest } : null,
+          countsMastered: rules.hint === "unmastered",
+          again: () => playDeck(deck, mode),
+          home,
+        }),
+      );
     };
 
     next();
@@ -188,7 +231,7 @@ export function startFlow(app: App): void {
   const runExam = (deck: Deck): void => {
     const rng = app.rng.fork(`run:${++runs}`);
     const task = "exam";
-    const options = puzzleOptions(app.rules.choices());
+    const options = puzzleOptions(app.rules.choices(), app.content.frames);
     const at = (item: string): { ts: number; item: string; task: string } => ({ ts: Date.now(), item, task });
     let exam = startExam(deck.id, drawDeck(deck, rng.fork("order")));
     const totals = (): { score: number; slots: number; items: number; answered: number } => ({

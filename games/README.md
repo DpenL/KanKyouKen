@@ -10,7 +10,7 @@ platform's event collector, and they run offline without it.
 | `packages/web-kit` | Browser adapters: Web Audio voices, pointer capture, SVG glyph view, event-collector sink, launch parameters, the "not being recorded" notice. |
 | `data` | KanjiVG converter, the starter character set, and the generated glyph file. |
 | `apps/fude-uta` | *Fude Uta*: write kanji stroke by stroke; every component has its own melody. |
-| `apps/kumiki` | *Kumiki*: assemble kanji from look-alike component tiles. |
+| `apps/kumiki` | *Kumiki*: assemble kanji from look-alike component tiles. Its rules come in presets (see "Kumiki: rules and presets"). |
 | `docs/MECHANICS.md` | The mechanics, where each rule comes from, and what is our own design. |
 
 The mechanics are re-implemented from published research: two games by Oleksandra
@@ -56,8 +56,9 @@ https://<host>/fude-uta/?study=<study id>&participant=<participant id>&api=https
 ```
 
 Optional: `session=<session id>`, `condition=<label>` (Fude Uta maps `melody`,
-`changing-melody`, `sfx`, `silent` to its sound mode), `seed=<text>` for a reproducible
-session, `debug` for developer aids. Put the token in the fragment (`#token=`), which
+`changing-melody`, `sfx`, `silent` to its sound mode; Kumiki takes the id of a rule
+preset), `rules=<preset and changes>` (Kumiki, see "Kumiki: rules and presets"),
+`seed=<text>` for a reproducible session, `debug` for developer aids. Put the token in the fragment (`#token=`), which
 browsers do not send to servers.
 
 Each scored action becomes one event with `event_type`, `item_id` (the character),
@@ -191,6 +192,80 @@ participant and stay theirs to change (each change is a `settings_change` event)
   control that opens under the pointer, and its backdrop ignores only the clicks of the
   one that opened it. From memory, the melody stops once a stroke is written, not at a tap
   on the square. The browser's Back returns to the lesson list.
+
+## Kumiki: rules and presets
+
+Kumiki plays by a named preset and any single rules changed from it. The default
+follows the public Zen Hanzi demo as it was seen to play
+(`docs/research/zen-hanzi-demo.md`); what Kumiki did before is kept whole as the preset
+`classic`. Only rules and numbers are taken from the demo: art, colours, names and
+wording are Kumiki's own.
+
+| Preset | Title in Settings | What it plays |
+|---|---|---|
+| `zen-hanzi` (default) | Close to the paper | A Check button beside the full structure; a feedback panel with counts; tiles in their right slot stay; 3 lives for the whole run, half lost per wrong check and per hint, one back per solved character; out of lives the run ends; the hint stays until Continue; a running total with points for what was right; 18 tiles in 3 rows of 6 with copies of right parts; 4 frames, the right one among decoys from a catalogue. |
+| `classic` | Kumiki classic | Check below the board; three lines of feedback; every tile stays; 5 lives per character in Review, unlimited tries in Learn; a lost character returns at the end of the deck; a hint for 25 points, shown for 2.5 s; 100 points per character less 15 per wrong check, and a best score; 12 tiles; near-miss structures with as many slots as the character has parts. |
+| `gentle` | Gentle | For young children: no lives, free hints that stay, a full structure is judged by itself, 8 tiles without copies, the same four frames for every character. |
+| `study-no-hints` | Study: no hints | `zen-hanzi` without the Hint button. |
+
+**Choosing.** A player picks a preset in Settings and can change every single rule
+under "Single rules"; the choice is stored (per study participant when the link names
+one) and applies from the next deck. A study fixes the rules in the link:
+
+```
+https://<host>/kumiki/?rules=<preset>[,<rule>:<value>...]      e.g. ?rules=zen-hanzi,hint:free,lives:5
+```
+
+A `condition` that is a preset id does the same. Rules from a link or a condition are
+shown in Settings but cannot be changed there, and they are not stored as the player's
+own. Parts of the value that name no rule or no value of it are passed over and
+reported (`rules_ignored`); a value whose first part names no preset is passed over
+whole. Settings shows the link value of the rules in force, ready to copy.
+
+| Rule | Values (the default first) | What it sets |
+|---|---|---|
+| `check` | `frame`, `bar`, `auto` | A Check button beside the full structure (the demo), below the board (classic), or judging as soon as every slot is filled. |
+| `afterCheck` | `keep-correct`, `keep`, `clear` | What stays in the structure after a wrong check: the tiles in their right slot (the demo), every tile (classic), none. |
+| `feedback` | `panel`, `lines` | A panel with counts over the structures, closed with Continue (the demo), or three lines under them (classic). |
+| `lives` | `3`, `5`, `2`, `1`, `parts`, `adaptive`, `none` | The number of lives; `parts`: scaled to the number of parts (3 for three parts); `adaptive`: one more after a hard character, one fewer after a first-try solve; `none`: unlimited tries. |
+| `livesScope` | `run`, `character` | Lives last the whole run (the demo) or every character starts full (classic). |
+| `wrongCost` | `half`, `whole`, `none` | What a wrong check costs. |
+| `solveGain` | `one`, `half`, `none` | What a solved character gives back. |
+| `atZero` | `end-run`, `retry-later` | Out of lives the run ends (the demo), or only the character is lost and returns at the end of the deck (classic). |
+| `learnLives` | `same`, `unlimited` | Learn plays by the same lives as Review (the demo) or has unlimited tries (classic). |
+| `hint` | `life`, `points`, `token`, `later`, `unmastered`, `free`, `off` | What a look at the character costs: half a life (the demo); 25 points (classic); a token, earned by first-try solves (one to start with, three at most); the character returns at the end of the deck; it does not count as mastered; nothing; or no hints at all. |
+| `hintStays` | `continue`, `timed` | The hint stays until Continue (the demo) or goes away after 2.5 s (classic). |
+| `scoring` | `demo`, `classic` | The demo's running total, or classic points with a best score per deck and mode. |
+| `structures` | `catalogue`, `alternatives`, `fixed`, `positions` | The frames beside the right one: drawn afresh from a catalogue, any number of slots (the demo); near misses with as many slots as the character has parts (classic); the same four frames for every character; or the character split in two by position (left and right, top and bottom, enclosing) with the four position classes as frames. |
+| `tray` | `3x6`, `3x4`, `2x4`, `4x6` | Rows x tiles per row. |
+| `copies` | `yes`, `no` | Identical copies of right parts in the tray, any of which is accepted (the demo), or every right part once (classic). |
+| `board` | `compact`, `wide` | The demo's arrangement on every screen (status in the top bar, Hint beside the prompt, structures two by two over the tray), or Kumiki's wide board. |
+
+`docs/MECHANICS.md` Part 2 says for each rule whether it comes from the paper, from the
+demo or from us.
+
+### Reading the data: Kumiki
+
+- **`session_start`** carries the rules in force: `rules` (the link form, e.g.
+  `zen-hanzi,hint:free`), `rules_from` (`player`, `link` or `condition`),
+  `rules_ignored` (parts of a link value that named nothing) and `choices` (every rule
+  with its value).
+- **`rules_change`** is recorded when the player changes the rules in Settings: `rules`,
+  `from` (the rules before) and `choices`. A deck under way keeps the rules it started
+  with; the change applies from the next deck.
+- **`choice_attempt`** (a check) carries, besides what was built and whether it was
+  right: `lives_left`, `lives_max`, `lives_lost` and `lives_gained` (in lives, halves as
+  0.5; `null` without lives), `points` earned by this check and the round's `score` so
+  far.
+- **`hint_shown`** carries what the look cost under the rule in force: `policy`,
+  `lives_lost`, `points_lost`, `tokens_spent`, `consequence` (`returns`, `unmastered` or
+  `null`), `lives_left`, `tokens_left`, and `out_of_lives` when it took the last life.
+- **`item_complete`** carries `solved`, `attempts`, `hints`, `score`, `mastered` (false
+  when solved with a hint under `hint:unmastered`), `returns` (the character comes back
+  at the end of the deck), `ends_run`, `hint_policy`, `lives_left`, `lives_max`,
+  `lives_rule` (`fixed`, `parts`, `adaptive` or `none`) and `tokens_left`.
+- **`deck_complete`** and **`deck_abandoned`** carry the totals: `score`, `chars`,
+  `solved`, `mastered`, `firstTry`, `hints`, `outOfLives`.
 
 ## Data and licenses
 

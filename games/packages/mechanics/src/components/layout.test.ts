@@ -2,12 +2,17 @@ import { describe, expect, it } from "vitest";
 import type { Box } from "../util/geometry";
 import { createRng } from "../util/rng";
 import {
+  DEMO_FRAMES,
   ENCLOSE_SHAPES,
   alternativeLayouts,
+  catalogueDecoys,
+  fixedFrames,
+  frameSet,
   layoutCatalogue,
   layoutFromBoxes,
   layoutSignature,
   layoutsEqual,
+  layoutsLookAlike,
   makeLayout,
   parseLayout,
 } from "./layout";
@@ -436,5 +441,143 @@ describe("alternativeLayouts", () => {
     expect(signatures("R(C(S,S),S)", 5, "seed")).toEqual(signatures("R(C(S,S),S)", 5, "seed"));
     const seen = new Set(Array.from({ length: 20 }, (_, seed) => signatures("C(S,S)", 3, seed).join(" ")));
     expect(seen.size).toBeGreaterThan(1);
+  });
+});
+
+describe("layoutsLookAlike", () => {
+  it("takes a grid read by rows and one read by columns for one picture", () => {
+    const byRows = parseLayout("C(R(S,S),R(S,S))");
+    const byColumns = parseLayout("R(C(S,S),C(S,S))");
+    expect(layoutsEqual(byRows, byColumns)).toBe(false);
+    expect(layoutsLookAlike(byRows, byColumns)).toBe(true);
+    expect(layoutsLookAlike(byRows, byRows)).toBe(true);
+  });
+
+  it("tells every other pair of the catalogues apart", () => {
+    for (const count of [2, 3, 4]) {
+      const all = layoutCatalogue(count);
+      all.forEach((a, i) => {
+        for (const b of all.slice(i + 1)) {
+          const grids = [a.signature, b.signature].sort().join(" ") === "C(R(S,S),R(S,S)) R(C(S,S),C(S,S))";
+          expect(layoutsLookAlike(a, b), `${a.signature} and ${b.signature}`).toBe(grids);
+        }
+      });
+    }
+    expect(layoutsLookAlike(parseLayout("R(S,S)"), parseLayout("R(S,S,S)"))).toBe(false);
+    expect(layoutsLookAlike(parseLayout("E:top(S)"), parseLayout("E:bottom(S)"))).toBe(false);
+  });
+});
+
+describe("DEMO_FRAMES", () => {
+  it("are the nine shapes seen in the demo: no enclosure, nothing nested deeper, no two alike", () => {
+    expect(DEMO_FRAMES.map((frame) => frame.signature)).toEqual([
+      "C(S,S)",
+      "R(S,S)",
+      "C(S,S,S)",
+      "R(S,S,S)",
+      "C(R(S,S),R(S,S))",
+      "C(R(S,S),S)",
+      "C(S,R(S,S))",
+      "R(C(S,S),S)",
+      "R(S,C(S,S))",
+    ]);
+    expect(DEMO_FRAMES.map((frame) => frame.slots.length)).toEqual([2, 2, 3, 3, 4, 3, 3, 3, 3]);
+    DEMO_FRAMES.forEach((a, i) => {
+      for (const b of DEMO_FRAMES.slice(i + 1)) expect(layoutsLookAlike(a, b)).toBe(false);
+    });
+  });
+});
+
+describe("catalogueDecoys", () => {
+  const signaturesOf = (layout: string, count: number, seed: number | string): string[] =>
+    catalogueDecoys(parseLayout(layout), DEMO_FRAMES, count, createRng(seed)).map((frame) => frame.signature);
+
+  it("draws distinct frames from the catalogue, never the right one", () => {
+    for (let seed = 0; seed < 30; seed++) {
+      const decoys = signaturesOf("R(S,C(S,S))", 3, seed);
+      expect(decoys).toHaveLength(3);
+      expect(new Set(decoys).size).toBe(3);
+      expect(decoys).not.toContain("R(S,C(S,S))");
+      for (const decoy of decoys) expect(DEMO_FRAMES.map((frame) => frame.signature)).toContain(decoy);
+    }
+  });
+
+  it("does not mind the number of slots, as in the demo", () => {
+    const counts = new Set<number>();
+    for (let seed = 0; seed < 30; seed++) {
+      for (const decoy of catalogueDecoys(parseLayout("R(S,S,S,S)"), DEMO_FRAMES, 3, createRng(seed))) counts.add(decoy.slots.length);
+    }
+    expect([...counts].sort()).toEqual([2, 3, 4]);
+  });
+
+  it("draws afresh for every seed", () => {
+    const seen = new Set(Array.from({ length: 20 }, (_, seed) => signaturesOf("R(S,S)", 3, seed).join(" ")));
+    expect(seen.size).toBeGreaterThan(5);
+    expect(signaturesOf("R(S,S)", 3, "same")).toEqual(signaturesOf("R(S,S)", 3, "same"));
+  });
+
+  it("never offers a frame that looks like the right one", () => {
+    // The right structure is a grid read by columns; the catalogue's grid is the same picture.
+    for (let seed = 0; seed < 30; seed++) {
+      expect(signaturesOf("R(C(S,S),C(S,S))", 8, seed)).not.toContain("C(R(S,S),R(S,S))");
+    }
+    expect(signaturesOf("R(C(S,S),C(S,S))", 100, 1)).toHaveLength(8);
+  });
+
+  it("gives what there is, and nothing for a count below one", () => {
+    expect(signaturesOf("E:top(S)", 100, 1)).toHaveLength(9);
+    expect(signaturesOf("R(S,S)", 0, 1)).toEqual([]);
+    expect(signaturesOf("R(S,S)", Number.NaN, 1)).toEqual([]);
+    expect(catalogueDecoys(parseLayout("R(S,S)"), [], 3, createRng(1))).toEqual([]);
+  });
+});
+
+describe("fixedFrames", () => {
+  const set = (layout: string, count = 4): { signatures: string[]; correct: number } => {
+    const { layouts, correct } = fixedFrames(parseLayout(layout), DEMO_FRAMES, count);
+    return { signatures: layouts.map((frame) => frame.signature), correct };
+  };
+
+  it("shows the same frames in the same places whatever the character", () => {
+    expect(set("R(S,S)")).toEqual({ signatures: ["C(S,S)", "R(S,S)", "C(S,S,S)", "R(S,S,S)"], correct: 1 });
+    expect(set("C(S,S,S)")).toEqual({ signatures: ["C(S,S)", "R(S,S)", "C(S,S,S)", "R(S,S,S)"], correct: 2 });
+  });
+
+  it("gives a structure outside the set the place of the last frame", () => {
+    expect(set("E:top(S)")).toEqual({ signatures: ["C(S,S)", "R(S,S)", "C(S,S,S)", "E:top(S)"], correct: 3 });
+  });
+
+  it("puts the character's own structure where a frame looks like it", () => {
+    expect(set("R(C(S,S),C(S,S))", 5)).toEqual({
+      signatures: ["C(S,S)", "R(S,S)", "C(S,S,S)", "R(S,S,S)", "R(C(S,S),C(S,S))"],
+      correct: 4,
+    });
+  });
+
+  it("copes with short and empty sets", () => {
+    expect(set("R(S,S)", 1)).toEqual({ signatures: ["R(S,S)"], correct: 0 });
+    expect(set("R(S,S)", 0)).toEqual({ signatures: ["R(S,S)"], correct: 0 });
+    expect(set("R(S,S)", 100).signatures).toHaveLength(9);
+    expect(fixedFrames(parseLayout("R(S,S)"), [], 4)).toMatchObject({ correct: 0 });
+    const twice = fixedFrames(parseLayout("R(S,S)"), [parseLayout("C(S,S)"), parseLayout("C(S,S)"), parseLayout("R(S,S)")], 4);
+    expect(twice.layouts.map((frame) => frame.signature)).toEqual(["C(S,S)", "R(S,S)"]);
+  });
+});
+
+describe("frameSet", () => {
+  it("lists the structures in use by how often they are used, then the rest, each look once", () => {
+    const used = ["R(S,C(S,S))", "R(S,S)", "E:top(S)", "R(S,S)", "R(S,S)", "E:top(S)"].map(parseLayout);
+    expect(frameSet(used).map((frame) => frame.signature)).toEqual(["R(S,S)", "E:top(S)", "R(S,C(S,S))"]);
+    const all = frameSet(used, DEMO_FRAMES).map((frame) => frame.signature);
+    expect(all.slice(0, 3)).toEqual(["R(S,S)", "E:top(S)", "R(S,C(S,S))"]);
+    expect(all).toHaveLength(10);
+    expect(new Set(all).size).toBe(10);
+  });
+
+  it("keeps the first of two structures that look the same", () => {
+    const grids = frameSet([parseLayout("R(C(S,S),C(S,S))")], DEMO_FRAMES).map((frame) => frame.signature);
+    expect(grids).toContain("R(C(S,S),C(S,S))");
+    expect(grids).not.toContain("C(R(S,S),R(S,S))");
+    expect(frameSet([])).toEqual([]);
   });
 });
