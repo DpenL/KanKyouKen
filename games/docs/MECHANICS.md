@@ -16,8 +16,15 @@ by Paul Taele and colleagues:
 - **Kanji Workbook**: a writing tutor that scores handwriting the way instructors do.
   Taele, Koh & Hammond, AAAI/IAAI 2020 (arXiv 2504.13888).
 
-Nothing of the original games is copied: no names, art, audio, level data or code. The
-two games in `apps/` are original games built on the same mechanics.
+No art, audio, level data or code of the original games is copied, the two games in
+`apps/` have their own titles, and the sentences on their screens are their own. What
+Kumiki's default rules do take from the public Zen Hanzi demo are its rules, its numbers
+(three lives lost in halves, 18 tiles, the score values), its nine structure shapes and
+its screen arrangement (status on top, the hint beside the prompt, four structures two
+by two over three rows of six tiles); see "What the public demo does" in Part 2. Three
+things coincide by name: the preset id `zen-hanzi`, which appears in study links and in
+recorded data; the mode names Learn and Review, which are the paper's terms; and
+ordinary button words such as Check and Continue.
 
 ## How reliable this catalogue is
 

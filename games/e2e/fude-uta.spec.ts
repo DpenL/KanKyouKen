@@ -45,8 +45,8 @@ const waitForStage = (page: Page, stage: string, char: string): Promise<unknown>
     { timeout: 15_000 },
   );
 
-/** Draw stroke `index` of the character on the board with the mouse, along its median (or against it). */
-async function drawStroke(page: Page, index: number, direction: "forward" | "backward" = "forward"): Promise<void> {
+/** Where stroke `index` of the character on the board runs on screen, along its median (or against it). */
+async function strokePoints(page: Page, index: number, direction: "forward" | "backward" = "forward"): Promise<{ x: number; y: number }[]> {
   const points = await page.evaluate((stroke) => {
     const svg = document.querySelector<SVGSVGElement>(".board svg");
     const matrix = svg?.getScreenCTM();
@@ -55,6 +55,36 @@ async function drawStroke(page: Page, index: number, direction: "forward" | "bac
     return median.map((p) => ({ x: matrix.a * p.x + matrix.c * p.y + matrix.e, y: matrix.b * p.x + matrix.d * p.y + matrix.f }));
   }, index);
   if (direction === "backward") points.reverse();
+  return points;
+}
+
+/**
+ * Draw stroke `index` with one finger. Playwright's touchscreen can only tap, so the
+ * finger is moved through the browser's own input channel: the page sees real touch
+ * pointers (pointerType "touch"), with the browser's handling of scrolling in between.
+ */
+async function touchStroke(page: Page, index: number, direction: "forward" | "backward" = "forward"): Promise<void> {
+  const points = await strokePoints(page, index, direction);
+  const [first, ...rest] = points;
+  if (first === undefined) throw new Error("empty median");
+  const client = await page.context().newCDPSession(page);
+  const at = (point: { x: number; y: number }): { x: number; y: number }[] => [{ x: Math.round(point.x), y: Math.round(point.y) }];
+  await client.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: at(first) });
+  let from = first;
+  for (const to of rest) {
+    for (let step = 1; step <= 8; step++) {
+      const point = { x: from.x + ((to.x - from.x) * step) / 8, y: from.y + ((to.y - from.y) * step) / 8 };
+      await client.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: at(point) });
+    }
+    from = to;
+  }
+  await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await client.detach();
+}
+
+/** Draw stroke `index` of the character on the board with the mouse, along its median (or against it). */
+async function drawStroke(page: Page, index: number, direction: "forward" | "backward" = "forward"): Promise<void> {
+  const points = await strokePoints(page, index, direction);
   const [first, ...rest] = points;
   if (first === undefined) throw new Error("empty median");
   await page.mouse.move(first.x, first.y);
@@ -527,4 +557,77 @@ test("a study participant does not inherit the settings of the one before on the
   expect((await events(page, "session_start"))[0]?.data).toMatchObject({ judging: "normal", plan: "guided-fade" });
   await page.goto(link("P1"));
   expect((await events(page, "session_start"))[0]?.data).toMatchObject({ judging: "gentle", plan: "quick" });
+});
+
+
+test.describe("on a phone held upright, written with a finger", () => {
+  test.use({ viewport: { width: 390, height: 740 }, hasTouch: true });
+
+  test("strokes drawn by touch are judged like strokes drawn with the mouse, and the page stays still", async ({ page }) => {
+    await page.goto(DEBUG);
+    const fits = (): Promise<boolean> => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+    expect(await fits()).toBe(true);
+    // What kind of pointer the writing square is given, to be sure the strokes below are a finger's.
+    await page.evaluate(() => {
+      const seen: string[] = [];
+      (window as unknown as { __pointers: string[] }).__pointers = seen;
+      window.addEventListener("pointerdown", (event) => {
+        if ((event.target as Element | null)?.closest(".board")) seen.push(event.pointerType);
+      }, true);
+    });
+    await page.locator(".lesson-card").first().tap();
+    await waitForStage(page, "demo", "一");
+    await page.getByRole("button", { name: "Skip" }).tap();
+    await waitForStage(page, "trace:dotted", "一");
+    // The whole writing square is on screen, so that no stroke has to start off it.
+    const board = await page.locator(".board").boundingBox();
+    expect(board).not.toBeNull();
+    expect(board!.x).toBeGreaterThanOrEqual(0);
+    expect(board!.x + board!.width).toBeLessThanOrEqual(390);
+    expect(board!.y + board!.height).toBeLessThanOrEqual(740);
+
+    // 一 through its lesson, every stroke with a finger: two traces, three on a blank square.
+    for (const [stage, reps] of [
+      ["trace:dotted", 2],
+      ["trace:none", 3],
+    ] as const) {
+      for (let rep = 0; rep < reps; rep++) {
+        await page.waitForFunction(
+          ([wantedStage, wantedRep]) => {
+            const now = (window as unknown as { __kk: DebugHandle }).__kk.state;
+            return now.stage === wantedStage && now.rep === wantedRep && now.expected === 0;
+          },
+          [stage, rep] as const,
+        );
+        await touchStroke(page, 0);
+        await expect(page.locator('.board .kk-stroke[data-stroke="0"]')).toHaveAttribute("data-state", "done");
+      }
+    }
+    await waitForStage(page, "complete", "一");
+    const written = await events(page, "stroke_attempt");
+    expect(written).toHaveLength(5);
+    for (const attempt of written) expect(attempt.data).toMatchObject({ correct: true, verdict: "correct", stroke_index: 0, attempt: 1 });
+
+    // 十: a finger going the wrong way is turned down like a mouse; then both strokes, the second one downwards.
+    await page.getByRole("button", { name: "Next character" }).tap();
+    await waitForStage(page, "demo", "十");
+    await page.getByRole("button", { name: "Skip" }).tap();
+    await waitForStage(page, "trace:dotted", "十");
+    await touchStroke(page, 0, "backward");
+    await expect(page.locator(".message")).toContainText("Other way round");
+    await expect(page.locator('.board .kk-stroke[data-stroke="0"]')).toHaveAttribute("data-state", "hidden");
+    await touchStroke(page, 0);
+    await expect(page.locator('.board .kk-stroke[data-stroke="0"]')).toHaveAttribute("data-state", "done");
+    // A vertical stroke is the one a browser would take for scrolling.
+    await touchStroke(page, 1);
+    await expect(page.locator('.board .kk-stroke[data-stroke="1"]')).toHaveAttribute("data-state", "done");
+    const cross = (await events(page, "stroke_attempt")).filter((event) => event.item === "十");
+    expect(cross.map((event) => event.data?.["correct"])).toEqual([false, true, true]);
+
+    // Eight strokes, each one a touch.
+    expect(await page.evaluate(() => (window as unknown as { __pointers: string[] }).__pointers)).toEqual(Array.from({ length: 8 }, () => "touch"));
+    // Writing moved nothing: the page did not scroll and is no wider than the screen.
+    expect(await page.evaluate(() => [window.scrollX, window.scrollY])).toEqual([0, 0]);
+    expect(await fits()).toBe(true);
+  });
 });

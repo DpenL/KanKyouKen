@@ -283,8 +283,16 @@ Code and the authored set definitions (`data/sets`) are MIT, like the rest of th
 repository. The glyph shapes in `data/generated` are converted from
 [KanjiVG](https://kanjivg.tagaini.net) (© Ulrich Apel and contributors) and remain
 under CC BY-SA 3.0; see `data/generated/NOTICE.md`. Both games show the attribution in
-their About dialog. Meanings and readings in the starter set were written for this
-project and have not been checked against a dictionary.
+their About dialog.
+
+Meanings and readings in the starter set were written for this project. On 27 November
+2026 the on-readings, meanings and stroke counts of the 92 entries that are jōyō kanji
+were compared with data derived from KANJIDIC2 3.6.2 (its first two on-readings and
+glosses per kanji): no conflict was found. Our meanings are synonyms of its glosses, and
+our on-readings are among its readings (for 女 and 反 we list one more jōyō reading than
+the two compared). **Not checked:** kun-readings, the 26 other entries (four kanji
+outside the jōyō list and the component forms), and whether a meaning is the best one to
+teach. Someone who reads Japanese should go through them before a study.
 
 ## Using the mechanics elsewhere
 
